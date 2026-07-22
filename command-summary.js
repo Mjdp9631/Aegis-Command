@@ -1,0 +1,62 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const config = window.AEGIS_CONFIG || {};
+const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
+const $ = (selector) => document.querySelector(selector);
+const today = new Date().toLocaleDateString("en-CA");
+
+function outcome(trade) {
+  if (trade.trade_status === "Open") return "Open";
+  if (trade.outcome) return trade.outcome;
+  if (Number(trade.r_multiple) > 0) return "Win";
+  if (Number(trade.r_multiple) < 0) return "Loss";
+  return "B/E";
+}
+
+function card(view, label, value, note, className = "") {
+  return `<button class="command-summary-card ${className}" data-summary-view="${view}"><p>${label}</p><strong>${value}</strong><small>${note}</small></button>`;
+}
+
+function render({ missions, trades, projects, content, recoveryLogs, operations }) {
+  const target = $("#command-summary");
+  if (!target) return;
+  const activeMissions = missions.filter((mission) => Number(mission.progress) < 100);
+  const priority = activeMissions.find((mission) => mission.priority === "Do now") || activeMissions[0];
+  const closed = trades.filter((trade) => trade.trade_status !== "Open");
+  const wins = closed.filter((trade) => ["Win", "Small win"].includes(outcome(trade))).length;
+  const losses = closed.filter((trade) => ["Loss", "Small loss"].includes(outcome(trade))).length;
+  const winRate = wins + losses ? `${Math.round((wins / (wins + losses)) * 100)}%` : "--";
+  const activeProjects = projects.filter((project) => project.status === "Active").length;
+  const published = content.filter((item) => item.status === "Published").length;
+  const recovery = missions.find((mission) => mission.category === "Recovery");
+  const loggedRecovery = recoveryLogs[0];
+  const completedOperations = operations.filter((operation) => operation.completed).length;
+  target.innerHTML = `${card("missions", "MISSIONS", `${activeMissions.length} active`, priority ? `Next: ${priority.title}` : "No current objective", "missions")}${card("detective", "DETECTIVE", winRate, closed.length ? `${closed.length} closed trade debriefs` : "Log the next trade debrief", "detective")}${card("enterprise", "SPECIAL PROJECTS", `${activeProjects} active`, `${published} published item${published === 1 ? "" : "s"}`, "special-projects")}${card("recovery", "RECOVERY", recovery ? `${recovery.progress}%` : "Locked", loggedRecovery ? `Latest report: ${loggedRecovery.rehab_completed ? "rehab complete" : "rehab pending"}` : "Awaiting first recovery report", "recovery")}${card("character", "CHARACTER", `${completedOperations}/${operations.length || 0}`, "Today's operations completed", "character")}`;
+}
+
+async function load() {
+  if (!supabase) return;
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) return;
+  const [missionsResult, tradesResult, projectsResult, contentResult, recoveryResult, operationsResult] = await Promise.all([
+    supabase.from("missions").select("*"),
+    supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }),
+    supabase.from("business_projects").select("*"),
+    supabase.from("content_items").select("*"),
+    supabase.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1),
+    supabase.from("operations").select("*").eq("scheduled_date", today)
+  ]);
+  render({ missions: missionsResult.data || [], trades: tradesResult.data || [], projects: projectsResult.data || [], content: contentResult.data || [], recoveryLogs: recoveryResult.data || [], operations: operationsResult.data || [] });
+}
+
+document.addEventListener("click", (event) => {
+  const view = event.target.closest("[data-summary-view]")?.dataset.summaryView;
+  if (view) document.querySelector(`.nav-link[data-view="${view}"]`)?.click();
+});
+
+if (supabase) {
+  load();
+  supabase.auth.onAuthStateChange(() => setTimeout(load, 100));
+  window.addEventListener("aegis:missions-changed", () => setTimeout(load, 100));
+  document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(load, 700); });
+}
