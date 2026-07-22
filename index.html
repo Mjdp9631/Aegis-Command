@@ -37,7 +37,7 @@
           </div>
           <div class="top-actions">
             <span class="status-pill"><i></i> SYSTEM ONLINE</span>
-            <button class="profile" aria-label="Profile">M</button>
+            <button class="profile" id="auth-button" aria-label="Sign in">M</button>
           </div>
         </header>
 
@@ -97,6 +97,8 @@
     </div>
     <dialog id="operation-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">NEW OPERATION</p><h2>What moves the mission forward?</h2><label>Operation <input id="operation-input" required placeholder="e.g. Complete prescribed ACL rehab" /></label><label>Department <select id="operation-category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Mind</option></select></label><button class="primary" id="save-operation" value="default">Add to queue</button></form></dialog>
     <dialog id="trade-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow blue-text">NEW MISSION DEBRIEF</p><h2>Log the execution.</h2><div class="two-col"><label>Pair <input id="trade-pair" required placeholder="EURUSD" /></label><label>Result (R) <input id="trade-r" required type="number" step="0.1" placeholder="1.5" /></label></div><div class="two-col"><label>Setup <input id="trade-setup" placeholder="Your setup" /></label><label>Execution <select id="trade-grade"><option>A</option><option>B</option><option>C</option><option>D</option></select></label></div><button class="primary" id="save-trade" value="default">Save debrief</button></form></dialog>
-    <script src="app.js"></script>
+    <dialog id="auth-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow blue-text">SECURE ACCESS</p><h2>Enter the command center.</h2><p class="auth-copy">Sign in with your email. A secure link will be sent to you—no password required.</p><label>Email address <input id="auth-email" required type="email" placeholder="you@example.com" /></label><p id="auth-message" class="auth-message"></p><button class="primary" id="send-link" value="default">Send secure link</button></form></dialog>
+    <script src="config.js"></script>
+    <script type="module" src="app.js"></script>
   </body>
 </html>

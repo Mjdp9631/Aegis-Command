@@ -1,84 +1,16 @@
-const defaultOperations = [
-  { title: "Complete prescribed ACL rehab", category: "Recovery", done: false },
-  { title: "Pre-market analysis", category: "Trading", done: false },
-  { title: "Review charts and document one lesson", category: "Trading", done: false },
-  { title: "Read 20 pages", category: "Mind", done: false },
-  { title: "Evening mission debrief", category: "Mind", done: false },
-];
-
-const briefings = [
-  "“The mission is not intensity. It is repeatable excellence.”",
-  "“You do not need more noise. You need a clearer next move.”",
-  "“Capital and capacity are both protected by restraint.”",
-  "“Build the system. The system carries you when motivation does not.”",
-];
-
-let operations = JSON.parse(localStorage.getItem("aegis-operations")) || defaultOperations;
-let trades = JSON.parse(localStorage.getItem("aegis-trades")) || [];
-
-const save = () => {
-  localStorage.setItem("aegis-operations", JSON.stringify(operations));
-  localStorage.setItem("aegis-trades", JSON.stringify(trades));
-};
-
-function renderOperations() {
-  const list = document.querySelector("#operations-list");
-  list.innerHTML = operations.map((operation, index) => `
-    <label class="operation ${operation.done ? "done" : ""}">
-      <input type="checkbox" ${operation.done ? "checked" : ""} data-operation="${index}" />
-      <span><strong>${escapeHtml(operation.title)}</strong><small>${escapeHtml(operation.category)} · TODAY</small></span>
-    </label>`).join("");
-  list.querySelectorAll("[data-operation]").forEach(input => input.addEventListener("change", event => {
-    operations[Number(event.target.dataset.operation)].done = event.target.checked;
-    save(); renderOperations();
-  }));
-  const completed = operations.filter(o => o.done).length;
-  document.querySelector("#operation-count").innerHTML = `${completed}<span>/${operations.length}</span>`;
-  document.querySelector("#operation-meter").style.width = `${operations.length ? completed / operations.length * 100 : 0}%`;
-  document.querySelector("#operation-caption").textContent = completed === operations.length ? "Mission accomplished" : `${operations.length - completed} operations remaining`;
-}
-
-function renderTrades() {
-  const table = document.querySelector("#trade-log");
-  if (!trades.length) { table.innerHTML = '<tr class="empty-row"><td colspan="6">No trade debriefs yet. Preserve data; log the next execution.</td></tr>'; return; }
-  table.innerHTML = trades.map(trade => {
-    const positive = Number(trade.r) >= 0;
-    return `<tr><td>${escapeHtml(trade.time)}</td><td>${escapeHtml(trade.pair)}</td><td>${escapeHtml(trade.setup || "—")}</td><td class="${positive ? "result-positive" : "result-negative"}">${positive ? "+" : ""}${escapeHtml(trade.r)}R</td><td>${positive ? "WIN" : "LOSS"}</td><td>${escapeHtml(trade.grade)}</td></tr>`;
-  }).join("");
-}
-
-function escapeHtml(value) { const div = document.createElement("div"); div.textContent = value; return div.innerHTML; }
-
-document.querySelectorAll(".nav-link, [data-view-target]").forEach(link => link.addEventListener("click", event => {
-  const view = link.dataset.view || link.dataset.viewTarget;
-  if (!view) return;
-  event.preventDefault();
-  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-  document.querySelector(`#${view}`).classList.add("active");
-  document.querySelectorAll(".nav-link").forEach(n => n.classList.toggle("active", n.dataset.view === view));
-  document.querySelector("#view-title").textContent = view === "command" ? "COMMAND CENTER" : view.toUpperCase().replace("-", " ");
-  window.history.replaceState(null, "", `#${view}`);
-}));
-
-const operationDialog = document.querySelector("#operation-dialog");
-document.querySelectorAll('[data-action="add-operation"]').forEach(button => button.addEventListener("click", () => operationDialog.showModal()));
-document.querySelector("#save-operation").addEventListener("click", event => {
-  const title = document.querySelector("#operation-input").value.trim();
-  if (!title) { event.preventDefault(); return; }
-  operations.push({ title, category: document.querySelector("#operation-category").value, done: false });
-  save(); renderOperations(); document.querySelector("#operation-input").value = "";
-});
-
-const tradeDialog = document.querySelector("#trade-dialog");
-document.querySelectorAll('[data-action="add-trade"]').forEach(button => button.addEventListener("click", () => tradeDialog.showModal()));
-document.querySelector("#save-trade").addEventListener("click", event => {
-  const pair = document.querySelector("#trade-pair").value.trim();
-  const r = document.querySelector("#trade-r").value;
-  if (!pair || !r) { event.preventDefault(); return; }
-  trades.unshift({ pair, r, setup: document.querySelector("#trade-setup").value.trim(), grade: document.querySelector("#trade-grade").value, time: new Date().toLocaleTimeString([], {hour: "2-digit", minute:"2-digit"}) });
-  save(); renderTrades(); document.querySelector("#trade-pair").value = ""; document.querySelector("#trade-r").value = ""; document.querySelector("#trade-setup").value = "";
-});
-
-document.querySelector("#new-briefing").addEventListener("click", () => { document.querySelector("#briefing-text").textContent = briefings[Math.floor(Math.random() * briefings.length)]; });
-const date = new Date(); document.querySelector("#system-date").textContent = date.toLocaleDateString("en-US", { weekday:"long", month:"long", day:"numeric" }).toUpperCase().replace(",", " ·");
-renderOperations(); renderTrades();
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+const defaults=[["Complete prescribed ACL rehab","Recovery"],["Pre-market analysis","Trading"],["Review charts and document one lesson","Trading"],["Read 20 pages","Mind"],["Evening mission debrief","Mind"]];
+const briefings=["“The mission is not intensity. It is repeatable excellence.”","“You do not need more noise. You need a clearer next move.”","“Capital and capacity are both protected by restraint.”","“Build the system. The system carries you when motivation does not.”"];
+const config=window.AEGIS_CONFIG||{},cloudReady=Boolean(config.supabaseUrl&&config.supabaseAnonKey),sb=cloudReady?createClient(config.supabaseUrl,config.supabaseAnonKey):null,today=new Date().toLocaleDateString("en-CA"),$=s=>document.querySelector(s);
+let session=null,operations=JSON.parse(localStorage.getItem("aegis-operations"))||defaults.map(([title,category])=>({title,category,completed:false})),trades=JSON.parse(localStorage.getItem("aegis-trades"))||[];
+const escape=v=>{const x=document.createElement("span");x.textContent=v;return x.innerHTML},saveLocal=()=>{localStorage.setItem("aegis-operations",JSON.stringify(operations));localStorage.setItem("aegis-trades",JSON.stringify(trades))};
+function renderOperations(){$("#operations-list").innerHTML=operations.map((o,i)=>`<label class="operation ${o.completed?"done":""}"><input type="checkbox" ${o.completed?"checked":""} data-operation="${i}"><span><strong>${escape(o.title)}</strong><small>${escape(o.category)} · TODAY</small></span></label>`).join("");document.querySelectorAll("[data-operation]").forEach(input=>input.addEventListener("change",async e=>{const o=operations[Number(e.target.dataset.operation)];o.completed=e.target.checked;if(session){const {error}=await sb.from("operations").update({completed:o.completed}).eq("id",o.id);if(error)console.error(error)}else saveLocal();renderOperations()}));const done=operations.filter(o=>o.completed).length;$("#operation-count").innerHTML=`${done}<span>/${operations.length}</span>`;$("#operation-meter").style.width=`${operations.length?done/operations.length*100:0}%`;$("#operation-caption").textContent=done===operations.length?"Mission accomplished":`${operations.length-done} operations remaining`}
+function renderTrades(){const target=$("#trade-log");if(!trades.length){target.innerHTML='<tr class="empty-row"><td colspan="6">No trade debriefs yet. Preserve data; log the next execution.</td></tr>';return}target.innerHTML=trades.map(t=>{const r=Number(t.r_multiple??t.r),positive=r>=0,time=t.traded_at?new Date(t.traded_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):t.time;return `<tr><td>${escape(time)}</td><td>${escape(t.pair)}</td><td>${escape(t.setup||"—")}</td><td class="${positive?"result-positive":"result-negative"}">${positive?"+":""}${r}R</td><td>${positive?"WIN":"LOSS"}</td><td>${escape(t.execution_grade??t.grade)}</td></tr>`}).join("")}
+async function loadCloud(){const {data:opData,error}=await sb.from("operations").select("*").eq("scheduled_date",today).order("created_at");if(error)return console.error(error);if(opData.length)operations=opData;else{const {data,error:insertError}=await sb.from("operations").insert(defaults.map(([title,category])=>({title,category,scheduled_date:today}))).select();if(insertError)return console.error(insertError);operations=data}const {data:tradeData}=await sb.from("trade_debriefs").select("*").order("traded_at",{ascending:false}).limit(40);if(tradeData)trades=tradeData;renderOperations();renderTrades()}
+function setAuth(){ $("#auth-button").textContent=session?.user?.email?.[0]?.toUpperCase()||"M";$(".status-pill").lastChild.textContent=session?" SECURE ACCESS":" LOCAL PROTOTYPE" }
+async function bootAuth(){if(!cloudReady)return;({data:{session}}=await sb.auth.getSession());setAuth();if(session)await loadCloud();sb.auth.onAuthStateChange(async(_e,next)=>{session=next;setAuth();if(session)await loadCloud()})}
+document.querySelectorAll(".nav-link, [data-view-target]").forEach(link=>link.addEventListener("click",e=>{const view=link.dataset.view||link.dataset.viewTarget;if(!view)return;e.preventDefault();document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));$(`#${view}`).classList.add("active");document.querySelectorAll(".nav-link").forEach(n=>n.classList.toggle("active",n.dataset.view===view));$("#view-title").textContent=view==="command"?"COMMAND CENTER":view.toUpperCase().replace("-"," ")}));
+const operationDialog=$("#operation-dialog");document.querySelectorAll('[data-action="add-operation"]').forEach(b=>b.addEventListener("click",()=>operationDialog.showModal()));$("#save-operation").addEventListener("click",async e=>{const title=$("#operation-input").value.trim();if(!title)return e.preventDefault();const category=$("#operation-category").value;if(session){const {data,error}=await sb.from("operations").insert({title,category,scheduled_date:today}).select().single();if(error)return console.error(error);operations.push(data)}else{operations.push({title,category,completed:false});saveLocal()}renderOperations();$("#operation-input").value=""});
+const tradeDialog=$("#trade-dialog");document.querySelectorAll('[data-action="add-trade"]').forEach(b=>b.addEventListener("click",()=>tradeDialog.showModal()));$("#save-trade").addEventListener("click",async e=>{const pair=$("#trade-pair").value.trim(),r=$("#trade-r").value;if(!pair||!r)return e.preventDefault();const setup=$("#trade-setup").value.trim(),grade=$("#trade-grade").value;if(session){const {data,error}=await sb.from("trade_debriefs").insert({pair,r_multiple:r,setup,execution_grade:grade}).select().single();if(error)return console.error(error);trades.unshift(data)}else{trades.unshift({pair,r,setup,grade,time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})});saveLocal()}renderTrades();$("#trade-pair").value="";$("#trade-r").value="";$("#trade-setup").value=""});
+$("#new-briefing").addEventListener("click",()=>$("#briefing-text").textContent=briefings[Math.floor(Math.random()*briefings.length)]);$("#auth-button").addEventListener("click",async()=>{if(!cloudReady)return alert("Secure access will activate after the Supabase connection is added.");if(session)return sb.auth.signOut();$("#auth-dialog").showModal()});$("#send-link").addEventListener("click",async e=>{const email=$("#auth-email").value.trim();if(!email)return e.preventDefault();e.preventDefault();$("#auth-message").textContent="Sending secure link…";const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:window.location.origin}});$("#auth-message").textContent=error?error.message:"Secure link sent. Check your email."});
+$("#system-date").textContent=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"}).toUpperCase().replace(","," ·");renderOperations();renderTrades();bootAuth();
