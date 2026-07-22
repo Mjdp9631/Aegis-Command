@@ -341,3 +341,116 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Command deck upgrade: full left control rail and a live trading terminal in Mission Control. */
+@media (min-width: 761px) {
+  .app-shell { grid-template-columns: 252px minmax(0, 1fr) !important; }
+  .sidebar,
+  .sidebar:hover,
+  .sidebar:focus-within {
+    width: 252px !important;
+    min-width: 252px !important;
+    padding: 18px 14px 22px !important;
+    background:
+      linear-gradient(180deg, rgba(5, 13, 22, .97), rgba(4, 10, 17, .94)),
+      linear-gradient(90deg, rgba(81, 164, 244, .08), transparent 46%) !important;
+    box-shadow: 14px 0 38px rgba(0,0,0,.34), inset -1px 0 rgba(105, 176, 246, .18) !important;
+  }
+  .sidebar::before {
+    content: "SYSTEM STATUS     •  •  •  •";
+    display: block;
+    margin: 1px 5px 23px;
+    color: rgba(131, 180, 228, .62);
+    font: 700 8px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .14em;
+    white-space: nowrap;
+  }
+  .brand { min-width: 0; padding: 0 8px 21px !important; border-bottom: 1px solid rgba(112, 166, 223, .16); }
+  .brand-mark { width: 29px; height: 29px; }
+  .brand > span:last-child,
+  .system-label,
+  .sidebar-foot span {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .brand > span:last-child strong { font-size: 16px; letter-spacing: .23em; color: #f3bd62; }
+  .brand > span:last-child small { margin-top: 4px; color: rgba(243, 183, 83, .68); letter-spacing: .19em; }
+  .system-label { margin: 22px 9px 10px !important; color: rgba(143, 177, 214, .55) !important; }
+  .sidebar nav { min-width: 0; }
+  .nav-link,
+  .sidebar:hover .nav-link,
+  .sidebar:focus-within .nav-link {
+    min-width: 0;
+    height: 48px;
+    padding: 0 12px !important;
+    font-size: 12px !important;
+    font-weight: 700;
+    letter-spacing: .04em;
+    color: rgba(204, 220, 236, .72);
+    border-left: 2px solid transparent;
+    border-radius: 2px;
+  }
+  .nav-link > span { width: 24px; flex-basis: 24px; color: #9bb0c7; font-size: 16px !important; }
+  .nav-link.active { color: #f1bd65 !important; background: linear-gradient(90deg, rgba(240, 170, 71, .16), rgba(69, 138, 216, .05) 76%, transparent) !important; }
+  .nav-link.active > span { color: #f1bd65; filter: drop-shadow(0 0 8px rgba(243,183,83,.45)); }
+  .nav-link:nth-of-type(6) { margin-top: 17px; border-top: 1px solid rgba(112,166,223,.14); padding-top: 17px !important; height: 65px; }
+  .sidebar-foot { left: 23px; bottom: 21px; font: 700 9px/1.2 ui-monospace,monospace; letter-spacing: .12em; color: rgba(129, 180, 222, .68); }
+}
+
+#command > .hero {
+  min-height: 492px;
+  background:
+    linear-gradient(90deg, rgba(8, 17, 30, .93) 0%, rgba(8, 17, 30, .82) 34%, rgba(5, 13, 23, .34) 100%) !important;
+}
+#command > .hero .hero-copy { max-width: 35%; }
+#command > .hero::before { display: none; }
+#command > .hero .signal-orb { display: none; }
+#command .hero-copy::after { margin-top: 42px; }
+.hero-console {
+  position: absolute;
+  z-index: 2;
+  top: 34px;
+  right: 30px;
+  bottom: 31px;
+  width: 60%;
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(175px, .8fr);
+  gap: 13px;
+}
+.terminal-chart,
+.terminal-instruments > article {
+  border: 1px solid rgba(103, 177, 245, .21);
+  background: linear-gradient(135deg, rgba(5, 14, 24, .78), rgba(6, 18, 32, .50));
+  box-shadow: inset 0 1px rgba(150, 206, 255, .07), 0 12px 32px rgba(0,0,0,.20);
+}
+.terminal-chart { display: grid; grid-template-rows: 31px 1fr 28px; overflow: hidden; border-radius: 5px; }
+.terminal-toolbar,
+.terminal-footer { display: flex; align-items: center; gap: 7px; padding: 0 10px; border-bottom: 1px solid rgba(97, 165, 228, .13); color: rgba(134, 184, 229, .65); font: 700 7px/1 ui-monospace,monospace; letter-spacing: .13em; }
+.terminal-toolbar i { width: 5px; height: 5px; border-radius: 50%; background: #5fb4f5; box-shadow: 0 0 8px rgba(95,180,245,.7); }
+.terminal-toolbar i + i { background: #e9ae56; box-shadow: 0 0 8px rgba(233,174,86,.6); }
+.terminal-toolbar span { margin-right: auto; }
+.terminal-toolbar b { color: var(--lab-amber); font-size: 8px; }
+.terminal-screen { min-height: 250px; background: url("assets/market-terminal.svg") center / cover no-repeat; opacity: .98; }
+.terminal-footer { justify-content: space-between; border-top: 1px solid rgba(97,165,228,.13); border-bottom: 0; }
+.terminal-footer .positive { color: var(--lab-green); text-shadow: 0 0 9px rgba(102,224,168,.42); }
+.terminal-instruments { display: grid; grid-template-rows: 1.25fr 1.05fr .65fr; gap: 13px; }
+.terminal-instruments > article { position: relative; overflow: hidden; border-radius: 5px; padding: 12px; }
+.terminal-instruments span,
+.terminal-instruments small { position: relative; z-index: 2; display: block; color: rgba(140, 185, 226, .66); font: 700 7px/1 ui-monospace,monospace; letter-spacing: .14em; }
+.readiness-dial { display: grid; place-content: center; text-align: center; }
+.readiness-dial::before { content:""; position:absolute; width:118px; aspect-ratio:1; border-radius:50%; border: 2px solid rgba(88,177,250,.52); box-shadow: 0 0 0 9px rgba(89,171,242,.05), inset 0 0 20px rgba(55,146,233,.13); }
+.readiness-dial::after { content:""; position:absolute; width:95px; aspect-ratio:1; border-radius:50%; border: 1px dashed rgba(243,183,83,.46); transform:rotate(28deg); }
+.readiness-dial strong { position:relative; z-index:2; color:#eaf4ff; font: 700 34px/1 ui-monospace,monospace; text-shadow:0 0 18px rgba(99,181,255,.5); }
+.readiness-dial span { margin-bottom: 9px; }.readiness-dial small { margin-top: 8px; color:var(--lab-amber); }
+.radar-dial { display:grid; place-content:center; text-align:center; }
+.radar-dial::before { content:""; position:absolute; inset:15px; border-radius:50%; background: repeating-radial-gradient(circle, transparent 0 23px, rgba(90,170,242,.22) 24px 25px), conic-gradient(from 20deg, transparent 0 22%, rgba(243,183,83,.28) 23% 25%, transparent 26% 47%, rgba(95,180,245,.28) 48% 50%, transparent 51%); opacity:.78; }
+.radar-dial i { position:relative; width:66px; height:39px; border:1px solid rgba(243,183,83,.47); clip-path:polygon(48% 0,100% 32%,75% 100%,19% 86%,0 40%); background:rgba(243,183,83,.12); }
+.radar-dial span { margin-bottom: 10px; }.radar-dial small { margin-top:8px; color:var(--lab-amber); }
+.signal-bars { display:grid; grid-template-columns:1fr 1fr; align-content:center; gap:8px 9px; }.signal-bars span { grid-column:1/-1; }.signal-bars i { height:3px; background:rgba(126,165,205,.28); position:relative; }.signal-bars i::before { content:""; position:absolute; inset:0 auto 0 0; width:var(--w,65%); background:var(--lab-blue); box-shadow:0 0 8px rgba(96,179,249,.48); }.signal-bars i:nth-of-type(2)::before{--w:38%;background:var(--lab-amber)}.signal-bars i:nth-of-type(3)::before{--w:74%}.signal-bars i:nth-of-type(4)::before{--w:52%;background:var(--lab-green)}
+
+@media (max-width: 760px) {
+  .hero-console { width:60%; right:12px; top:110px; bottom:15px; grid-template-columns:1fr; }
+  .terminal-instruments { display:none; }
+  .terminal-screen { min-height:180px; }
+  #command > .hero .hero-copy { max-width:65%; }
+}
