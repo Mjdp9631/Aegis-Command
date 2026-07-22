@@ -16,8 +16,9 @@ function renderMissions() {
 }
 
 function renderCommandMissions() {
-  const target = $("#command-missions");
+  const target = $("#command-missions") || document.querySelector("#command .mission-panel .mission-list");
   if (!target) return;
+  target.id = "command-missions";
   const priority = { "Do now": 0, Schedule: 1, Delegate: 2, Eliminate: 3 };
   const active = missions.filter(mission => Number(mission.progress) < 100).sort((a, b) => (priority[a.priority] ?? 9) - (priority[b.priority] ?? 9) || b.progress - a.progress).slice(0, 3);
   const icon = category => category === "Recovery" ? "＋" : category === "Trading" ? "◈" : category === "Business" ? "▦" : "◇";
