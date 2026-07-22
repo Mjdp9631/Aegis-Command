@@ -5,13 +5,13 @@ const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(con
 const today = new Date().toLocaleDateString("en-CA");
 const $ = (selector) => document.querySelector(selector);
 
-function ensurePanel() {
-  let panel = $("#adviser-panel");
+function ensurePanel(id, className, anchor, position) {
+  let panel = $(`#${id}`);
   if (panel) return panel;
   panel = document.createElement("section");
-  panel.id = "adviser-panel";
-  panel.className = "adviser-panel";
-  $(".intel-strip").insertAdjacentElement("afterend", panel);
+  panel.id = id;
+  panel.className = className;
+  $(anchor).insertAdjacentElement(position, panel);
   return panel;
 }
 
@@ -23,26 +23,26 @@ function outcomeOf(trade) {
   return "B/E";
 }
 
+function missionProgress(mission) {
+  return mission.completion_type === "units" && Number(mission.target_count) > 0 ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission.completed ? 100 : 0;
+}
+
 function render({ operations, missions, trades }) {
-  const panel = ensurePanel();
+  const morning = ensurePanel("morning-briefing", "adviser-panel morning-briefing", ".hero", "afterend");
+  const panel = ensurePanel("adviser-panel", "adviser-panel", ".intel-strip", "afterend");
   const remaining = operations.filter((operation) => !operation.completed);
   const completed = operations.length - remaining.length;
-  const priority = remaining[0]?.title || "Protect recovery and capital.";
-  const activeMission = [...missions].sort((a, b) => b.progress - a.progress)[0];
+  const nextOperation = remaining[0]?.title || "Close the day deliberately and protect recovery.";
+  const activeMission = [...missions].filter((mission) => missionProgress(mission) < 100).sort((a, b) => missionProgress(b) - missionProgress(a))[0];
   const closedTrades = trades.filter((trade) => trade.trade_status !== "Open");
   const wins = closedTrades.filter((trade) => ["Win", "Small win"].includes(outcomeOf(trade))).length;
   const losses = closedTrades.filter((trade) => ["Loss", "Small loss"].includes(outcomeOf(trade))).length;
   const decisive = wins + losses;
   const winRate = decisive ? `${Math.round((wins / decisive) * 100)}%` : "awaiting data";
 
-  panel.innerHTML = `
-    <div class="adviser-head"><p class="eyebrow blue-text">DUAL ADVISORY SYSTEM</p><h3>JARVIS &amp; ALFRED</h3></div>
-    <div class="adviser-grid">
-      <article><span class="adviser-name jarvis">JARVIS / PLAN</span><p>Priority identified: <strong>${priority}</strong>${activeMission ? ` This supports <strong>${activeMission.title}</strong>.` : ""}</p></article>
-      <article><span class="adviser-name alfred">ALFRED / PLAN</span><p>${remaining.length ? `There are ${remaining.length} commitments left. Complete the next one cleanly; do not negotiate with the plan.` : "The work is complete. Protect the standard and recover deliberately."}</p></article>
-      <article><span class="adviser-name jarvis">JARVIS / EVALUATION</span><p>Operations: <strong>${completed}/${operations.length || 0}</strong> complete. Closed trade win rate: <strong>${winRate}</strong>.</p></article>
-      <article><span class="adviser-name alfred">ALFRED / EVALUATION</span><p>${operations.length && completed === operations.length ? "A disciplined day. Record the lesson, then leave the result alone." : completed ? "Progress is real. Finish the remaining commitments before judging the day." : "The day has not been lost; it has simply not been executed yet."}</p></article>
-    </div>`;
+  morning.innerHTML = `<div class="adviser-head"><p class="eyebrow amber">MORNING DIRECTIVE</p><h3>GOOD MORNING</h3></div><div class="adviser-grid"><article><span class="adviser-name jarvis">JARVIS / TODAY'S PLAN</span><p>Today’s priority is <strong>${nextOperation}</strong>${activeMission ? `. It supports <strong>${activeMission.title}</strong>.` : ""}</p></article><article><span class="adviser-name alfred">ALFRED / STANDARD</span><p>${remaining.length ? `There are ${remaining.length} commitments on the board. Begin with the first; do not spend energy negotiating with the plan.` : "The day’s commitments are complete. Preserve the standard and recover deliberately."}</p></article></div>`;
+
+  panel.innerHTML = `<div class="adviser-head"><p class="eyebrow blue-text">DUAL ADVISORY SYSTEM</p><h3>EXAMINATION / RE-EVALUATION</h3></div><div class="adviser-grid"><article><span class="adviser-name jarvis">JARVIS / EXAMINATION</span><p>Operations: <strong>${completed}/${operations.length || 0}</strong> complete. Closed trade win rate: <strong>${winRate}</strong>. Current data indicates ${remaining.length ? `${remaining.length} unfinished commitment${remaining.length === 1 ? "" : "s"}` : "the plan is complete"}.</p></article><article><span class="adviser-name alfred">ALFRED / RE-EVALUATION</span><p>${operations.length && completed === operations.length ? "A disciplined day. Record the lesson, then leave the result alone." : completed ? "Progress is real. Finish the remaining commitments before judging the day." : "The day has not been lost; it has simply not been executed yet."}</p></article></div>`;
 }
 
 async function loadAdvisory() {
@@ -61,7 +61,6 @@ async function loadAdvisory() {
 if (supabase) {
   loadAdvisory();
   supabase.auth.onAuthStateChange(() => setTimeout(loadAdvisory, 100));
-  document.addEventListener("change", (event) => {
-    if (event.target.matches("[data-operation]")) setTimeout(loadAdvisory, 700);
-  });
+  window.addEventListener("aegis:missions-changed", () => setTimeout(loadAdvisory, 100));
+  document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(loadAdvisory, 700); });
 }
