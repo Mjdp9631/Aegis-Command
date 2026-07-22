@@ -24,6 +24,16 @@ function resolvedOutcome(trade) {
   return "B/E";
 }
 
+function displaySetup(value) {
+  if (!value) return "—";
+  try {
+    const choices = JSON.parse(value);
+    return Array.isArray(choices) ? choices.join(" + ") : value;
+  } catch {
+    return value;
+  }
+}
+
 function renderMetrics(trades) {
   const outcomes = trades.map(resolvedOutcome);
   const wins = outcomes.filter((outcome) => outcome === "Win" || outcome === "Small win").length;
@@ -33,12 +43,13 @@ function renderMetrics(trades) {
   const averageR = average(trades.map((trade) => trade.r_multiple));
   const averageMae = average(trades.filter((trade) => trade.mae_30m != null).map((trade) => trade.mae_30m));
   const averageMfe = average(trades.filter((trade) => trade.mfe_30m != null).map((trade) => trade.mfe_30m));
+  const totalPnl = trades.reduce((total, trade) => total + (Number(trade.pnl_percent) || 0), 0);
 
   $("#detective-win-rate").textContent = decisiveTrades ? `${Math.round((wins / decisiveTrades) * 100)}%` : "—";
   $("#detective-win-rate-note").textContent = decisiveTrades ? `${wins} win${wins === 1 ? "" : "s"} / ${decisiveTrades} closed trade${decisiveTrades === 1 ? "" : "s"}` : "Log closed trades to calculate";
   $("#detective-average-r").textContent = displayNumber(averageR, "R");
   $("#detective-excursion").textContent = averageMae == null && averageMfe == null ? "—" : `${displayNumber(averageMae)} / ${displayNumber(averageMfe)}`;
-  $("#detective-violations").textContent = String(trades.filter((trade) => trade.plan_violation).length);
+  $("#detective-violations").textContent = displayNumber(totalPnl, "%");
 }
 
 function renderTrades(trades) {
@@ -56,7 +67,7 @@ function renderTrades(trades) {
       <td>${date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
       <td><strong>${escapeHtml(trade.pair)}</strong></td>
       <td>${escapeHtml(trade.trade_type || "—")}</td>
-      <td>${escapeHtml(trade.setup || "—")}</td>
+      <td>${escapeHtml(displaySetup(trade.setup))}</td>
       <td>${escapeHtml(trade.market_condition || "—")}</td>
       <td>${escapeHtml(trade.cb_hour || "—")}</td>
       <td>${displayNumber(trade.mae_30m)}</td>
@@ -102,7 +113,7 @@ async function saveTrade(event) {
   }
   const payload = {
     pair: $("#detective-pair").value.trim().toUpperCase(),
-    setup: $("#detective-setup").value.trim() || null,
+    setup: JSON.stringify(Array.from($("#detective-setup").selectedOptions).map((option) => option.value)),
     trade_type: $("#detective-type").value.trim() || null,
     market_condition: $("#detective-market-condition").value.trim() || null,
     cb_hour: $("#detective-cb-hour").value.trim() || null,
@@ -133,6 +144,14 @@ async function saveTrade(event) {
 
 function init() {
   const dialog = $("#detective-trade-dialog");
+  const setup = $("#detective-setup");
+  setup.multiple = true;
+  setup.size = 4;
+  setup.title = "Hold Ctrl (Windows) or Command (Mac) to select more than one setup.";
+  const pnlMetric = $("#detective-violations").closest(".metric");
+  pnlMetric.querySelector("p").textContent = "TOTAL PNL";
+  pnlMetric.querySelector("small").textContent = "Sum across logged trades";
+  $("#detective-excursion").closest(".metric").querySelector("p").textContent = "AVG MAE / MFE";
   document.addEventListener("click", (event) => {
     if (event.target.closest('[data-action="add-trade-v2"]')) {
       if (!supabase) {
