@@ -55,7 +55,7 @@ async function load() {
 }
 
 if (supabase) {
-  buildDialogs(); load();
+  buildDialogs(); render(); load();
   supabase.auth.onAuthStateChange(() => setTimeout(load, 80));
   document.addEventListener("click", (event) => { const areaButton = event.target.closest("[data-mastery-area]"); const bodyButton = event.target.closest("[data-body-area]"); const categoryButton = event.target.closest("[data-category]"); const action = event.target.closest("[data-mastery-action]")?.dataset.masteryAction; if (areaButton) { area = areaButton.dataset.masteryArea; render(); } if (bodyButton) { bodyArea = bodyButton.dataset.bodyArea; render(); } if (categoryButton) { selectedCategory = categoryButton.dataset.category; area = "mind"; render(); } if (action === "entry" || action === "health" || action === "performance") { $("#mastery-category").value = action === "health" ? "Health" : action === "performance" ? "Performance" : selectedCategory; $("#mastery-entry-dialog").showModal(); } if (action === "gym" || action === "sports") { $("#gym-session-dialog form").dataset.sessionType = action === "sports" ? "Sports" : "Gym"; $("#gym-session-dialog").showModal(); } });
 }
