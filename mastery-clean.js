@@ -104,7 +104,12 @@ document.addEventListener("click", event => {
   if (event.target.closest("[data-mastery-clean-add]")) openDialog();
 });
 
-window.addEventListener("load", () => {
+function startMastery() {
+  if (window.__aegisMasteryCleanStarted) return;
+  window.__aegisMasteryCleanStarted = true;
   buildDialog();
   load();
-});
+}
+
+if (document.readyState === "complete") startMastery();
+else window.addEventListener("load", startMastery, { once: true });
