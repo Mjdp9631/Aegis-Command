@@ -14,6 +14,17 @@ function renderMissions() {
   target.innerHTML = missions.length ? missions.map(mission => `<article class="mission-card"><span class="eyebrow amber">${escape(mission.priority)}</span><h3>${escape(mission.title)}</h3><p>${escape(mission.category)} mission · ${mission.progress}% complete</p><div class="meter"><i style="width:${mission.progress}%"></i></div></article>`).join("") : '<article class="mission-card"><span class="eyebrow amber">MISSION CONTROL</span><h3>No active missions yet.</h3><p>Open the few objectives that matter now.</p></article>';
 }
 
+function syncRecoveryVisibility() {
+  const recoveryNav = document.querySelector("[data-recovery-nav]");
+  if (!recoveryNav) return;
+  const recoveryMissions = missions.filter(mission => mission.category === "Recovery");
+  const recoveryIsActive = recoveryMissions.some(mission => Number(mission.progress) < 100);
+  if (recoveryIsActive || !recoveryMissions.length) { recoveryNav.hidden = false; return; }
+  const approved = window.confirm("Recovery has reached 100%. Archive the Recovery section from navigation? You can bring it back later if needed.");
+  recoveryNav.hidden = approved;
+  if (approved && location.hash === "#recovery") location.hash = "#missions";
+}
+
 function renderRecovery(log) {
   const state = $("#recovery-state"), summary = $("#recovery-summary");
   if (!state || !summary) return;
@@ -33,6 +44,7 @@ async function loadData() {
     missions = data;
   }
   renderMissions();
+  syncRecoveryVisibility();
   const { data: logs } = await client.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1);
   renderRecovery(logs?.[0]);
 }
