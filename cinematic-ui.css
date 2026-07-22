@@ -423,6 +423,14 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   background: linear-gradient(135deg, rgba(5, 14, 24, .78), rgba(6, 18, 32, .50));
   box-shadow: inset 0 1px rgba(150, 206, 255, .07), 0 12px 32px rgba(0,0,0,.20);
 }
+.terminal-instruments > button {
+  position: relative;
+  overflow: hidden;
+  border-radius: 5px;
+  padding: 12px;
+  background: linear-gradient(135deg, rgba(5, 14, 24, .78), rgba(6, 18, 32, .50));
+  box-shadow: inset 0 1px rgba(150, 206, 255, .07), 0 12px 32px rgba(0,0,0,.20);
+}
 .terminal-chart { display: grid; grid-template-rows: 31px 1fr 28px; overflow: hidden; border-radius: 5px; }
 .terminal-toolbar,
 .terminal-footer { display: flex; align-items: center; gap: 7px; padding: 0 10px; border-bottom: 1px solid rgba(97, 165, 228, .13); color: rgba(134, 184, 229, .65); font: 700 7px/1 ui-monospace,monospace; letter-spacing: .13em; }
@@ -453,4 +461,124 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   .terminal-instruments { display:none; }
   .terminal-screen { min-height:180px; }
   #command > .hero .hero-copy { max-width:65%; }
+}
+
+/* Approved command-deck pass: remove the accidental recovery divider and use real data modules. */
+@media (min-width: 761px) {
+  .sidebar { padding: 0 15px 22px !important; }
+  .sidebar::before {
+    content: "SYSTEM STATUS        ●  ●  ●  ●";
+    height: 41px;
+    display: flex;
+    align-items: center;
+    margin: 0 -15px 22px;
+    padding-left: 105px;
+    border-bottom: 1px solid rgba(120,178,237,.2);
+    color: rgba(161,193,225,.62);
+    background: rgba(5,12,20,.74);
+  }
+  .brand { padding: 0 8px 24px !important; border-bottom: 1px solid rgba(112,166,223,.16); }
+  .brand-wordmark { color: #f1bd66; font: 700 18px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .19em; white-space: nowrap; }
+  .system-label { margin: 21px 9px 12px !important; }
+  .nav-link:nth-of-type(6) { margin-top: 0; padding-top: 0 !important; height: 48px; border-top: 0; }
+  .sidebar-foot { display: flex; align-items: flex-start; gap: 11px; padding: 12px 8px; left: 15px; border-top: 1px solid rgba(112,166,223,.16); }
+  .sidebar-foot span { line-height: 1.7; }
+  .sidebar-foot small { color: rgba(120,176,226,.58); font-size: 8px; letter-spacing: .12em; }
+}
+
+.terminal-chart,
+.readiness-dial,
+.radar-dial,
+.signal-bars { cursor: pointer; }
+.terminal-chart:focus-visible,
+.readiness-dial:focus-visible,
+.radar-dial:focus-visible,
+.signal-bars:focus-visible { outline: 2px solid var(--lab-amber); outline-offset: 3px; }
+.chart-ranges { margin-left: auto; display: flex; gap: 4px; }
+.chart-ranges button { cursor: pointer; border: 1px solid transparent; border-radius: 3px; padding: 3px 5px; background: rgba(100,155,209,.08); color: rgba(144,191,232,.65); font: 700 7px/1 ui-monospace,monospace; }
+.chart-ranges button.active { color: var(--lab-amber); border-color: rgba(243,183,83,.45); background: rgba(243,183,83,.13); }
+.terminal-screen { position: relative; overflow: hidden; background: rgba(3,11,19,.56); }
+.terminal-screen svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.chart-grid path { stroke: rgba(82,150,212,.15); stroke-width: 1; }
+.chart-line { fill: none; stroke: #5bb7fa; stroke-width: 3; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 5px rgba(91,183,250,.5)); }
+.chart-empty { display: grid; height: 100%; place-items: center; padding: 20px; color: rgba(137,187,229,.55); font: 700 8px/1.7 ui-monospace,monospace; letter-spacing: .13em; text-align: center; }
+.terminal-footer .negative { color: #ff8d8d; text-shadow: 0 0 9px rgba(255,118,118,.4); }
+.terminal-instruments button { color: inherit; text-align: inherit; font: inherit; }
+.readiness-dial { appearance: none; border: 1px solid rgba(103,177,245,.21); width: 100%; }
+.readiness-dial strong { font-size: 25px; }
+.radar-dial { appearance: none; border: 1px solid rgba(103,177,245,.21); width: 100%; }
+.radar-dial i { transform: scale(var(--mission-scale, .42)); transition: transform .3s ease; }
+.market-tickers { appearance: none; width: 100%; color: inherit; text-align: left; font: inherit; border: 1px solid rgba(103,177,245,.21); }
+.market-tickers > span { display: block; margin-bottom: 7px; }
+.market-tickers > div { display:grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 8px; padding: 5px 0; border-top: 1px solid rgba(97,165,228,.13); }
+.market-tickers b { color: rgba(154, 195, 230, .78); font: 700 8px/1 ui-monospace,monospace; letter-spacing:.12em; }
+.market-tickers strong { color: #edf5ff; text-align:right; font: 700 13px/1 ui-monospace,monospace; letter-spacing:-.04em; }
+.market-tickers small { grid-column: 1 / -1; color: rgba(117, 217, 166, .72); font: 700 6px/1 ui-monospace,monospace; letter-spacing:.12em; }
+.market-tickers small.negative { color: #ff9b9b; }
+.signal-bars { appearance: none; border: 1px solid rgba(103,177,245,.21); width: 100%; text-align: left; }
+.signal-bars i::before { width: var(--w, 4%); background: var(--bar, var(--lab-blue)); transition: width .35s ease; }
+.signal-bars small { grid-column: 1 / -1; padding-top: 2px; color: rgba(165,198,229,.65); font-size: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Command Center layout: briefing first, level second, work surface below. */
+#command.active {
+  grid-template-columns: minmax(0, 1.18fr) minmax(310px, .72fr);
+  grid-template-areas:
+    "hero hero"
+    "metrics metrics"
+    "content content"
+    "summary summary"
+    "intel intel"
+    "evening evening";
+  gap: 16px;
+}
+#command > .hero { min-height: 610px; }
+#command > .hero .hero-copy { max-width: 35%; }
+#command > .hero .hero-console { top: 176px; right: 32px; bottom: 31px; width: 59%; }
+#morning-briefing {
+  grid-area: hero;
+  z-index: 8;
+  width: min(34%, 465px);
+  min-height: 117px;
+  margin: 26px 29px 0 0 !important;
+  justify-self: end;
+  align-self: start;
+  background: linear-gradient(135deg, rgba(10, 24, 40, .48), rgba(5, 13, 23, .32)) !important;
+  backdrop-filter: blur(7px);
+}
+#morning-briefing .adviser-head { margin-bottom: 9px; }
+#morning-briefing .adviser-head h3 { font-size: 12px; letter-spacing: .08em; }
+#morning-briefing .adviser-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+#morning-briefing .adviser-grid article { padding: 9px; }
+#morning-briefing .adviser-grid p { font-size: 10px; line-height: 1.45; }
+#command > .metric-grid { grid-template-columns: repeat(4, 1fr); }
+#command > .content-grid { grid-template-columns: minmax(0, 1.16fr) minmax(0, .84fr); }
+#command > .intel-strip { min-height: 112px; }
+#adviser-panel { min-height: 150px; }
+
+/* Let the laboratory remain visible through every live-data module. */
+.panel, .metric, .command-summary > *, .stat-grid article, .mission-card, .mastery-type-card {
+  background: linear-gradient(135deg, rgba(10, 25, 43, .38), rgba(5, 14, 25, .25)) !important;
+  backdrop-filter: blur(5px);
+}
+.hero {
+  background: linear-gradient(100deg, rgba(8, 17, 30, .76), rgba(10, 23, 40, .48), rgba(5, 13, 23, .22)) !important;
+}
+.terminal-chart,
+.terminal-instruments > article,
+.terminal-instruments > button {
+  background: linear-gradient(135deg, rgba(5, 14, 24, .58), rgba(6, 18, 32, .28)) !important;
+}
+
+@media (max-width: 1120px) and (min-width: 761px) {
+  #command > .hero { min-height: 600px; }
+  #command > .hero .hero-console { width: 62%; }
+  #morning-briefing { width: 38%; }
+  #morning-briefing .adviser-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  #command.active { display: block; }
+  #command > .hero { min-height: 400px; }
+  #command > .hero .hero-console { top: 118px; right: 12px; bottom: 16px; width: 61%; }
+  #morning-briefing { width: auto; margin: 15px 0 !important; }
+  #morning-briefing .adviser-grid { grid-template-columns: 1fr; }
 }
