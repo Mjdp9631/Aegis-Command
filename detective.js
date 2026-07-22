@@ -4,6 +4,7 @@ const config = window.AEGIS_CONFIG || {};
 const ready = config.supabaseUrl && config.supabaseAnonKey;
 const supabase = ready ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const $ = (selector) => document.querySelector(selector);
+let syncSetupUi = () => {};
 
 function numberOrNull(value) {
   return value === "" || value == null ? null : Number(value);
@@ -101,6 +102,7 @@ async function loadTrades() {
 
 function clearForm() {
   $("#detective-trade-dialog form").reset();
+  syncSetupUi();
 }
 
 async function saveTrade(event) {
@@ -146,8 +148,26 @@ function init() {
   const dialog = $("#detective-trade-dialog");
   const setup = $("#detective-setup");
   setup.multiple = true;
-  setup.size = 4;
-  setup.title = "Hold Ctrl (Windows) or Command (Mac) to select more than one setup.";
+  setup.style.display = "none";
+  const setupMenu = document.createElement("details");
+  setupMenu.className = "setup-multi-select";
+  setupMenu.innerHTML = `<summary>Choose setup(s)</summary><div class="setup-options">${Array.from(setup.options).map((option, index) => `<label><input type="checkbox" data-setup-index="${index}" /> ${option.text}</label>`).join("")}</div>`;
+  setup.insertAdjacentElement("afterend", setupMenu);
+  const summary = setupMenu.querySelector("summary");
+  const updateSummary = () => {
+    const selected = Array.from(setup.selectedOptions).map((option) => option.text);
+    summary.textContent = selected.length ? selected.join(" + ") : "Choose setup(s)";
+  };
+  syncSetupUi = () => {
+    setupMenu.querySelectorAll("input").forEach((checkbox) => { checkbox.checked = setup.options[Number(checkbox.dataset.setupIndex)].selected; });
+    updateSummary();
+  };
+  setupMenu.addEventListener("change", (event) => {
+    if (!event.target.matches("input[data-setup-index]")) return;
+    setup.options[Number(event.target.dataset.setupIndex)].selected = event.target.checked;
+    updateSummary();
+  });
+  syncSetupUi();
   const pnlMetric = $("#detective-violations").closest(".metric");
   pnlMetric.querySelector("p").textContent = "TOTAL PNL";
   pnlMetric.querySelector("small").textContent = "Sum across logged trades";
