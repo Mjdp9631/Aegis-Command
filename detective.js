@@ -87,7 +87,7 @@ function renderTrades(trades) {
       <td>${escapeHtml(trade.session_time || "—")}</td>
       <td>${escapeHtml(trade.entry_timeframe || "—")}</td>
       <td>${escapeHtml(trade.wick || "—")}</td>
-      <td><button class="edit-trade" data-trade-id="${trade.id}">Edit</button></td>
+      <td><div class="trade-actions"><button class="edit-trade" data-trade-id="${trade.id}">Edit</button><button class="delete-trade" data-trade-id="${trade.id}">Delete</button></div></td>
     </tr>`;
   }).join("");
 }
@@ -141,6 +141,16 @@ function editTrade(trade) {
   syncSetupUi();
   $("#save-detective-trade").textContent = "Update debrief";
   $("#detective-trade-dialog").showModal();
+}
+
+async function deleteTrade(id) {
+  if (!confirm("Delete this trade log permanently? This cannot be undone.")) return;
+  const { error } = await supabase.from("trade_debriefs").delete().eq("id", id);
+  if (error) {
+    alert(`The trade could not be deleted: ${error.message}`);
+    return;
+  }
+  await loadTrades();
 }
 
 async function saveTrade(event) {
@@ -231,6 +241,8 @@ function init() {
     }
     const editButton = event.target.closest(".edit-trade");
     if (editButton) editTrade(loadedTrades.find((trade) => trade.id === editButton.dataset.tradeId));
+    const deleteButton = event.target.closest(".delete-trade");
+    if (deleteButton) deleteTrade(deleteButton.dataset.tradeId);
     if (event.target.closest("#detective-trade-dialog .dialog-close")) dialog.close();
   });
   dialog.querySelector("form").addEventListener("submit", saveTrade);
