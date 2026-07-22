@@ -61,7 +61,8 @@ async function loadAdvisory() {
   const [operationsResult, missionsResult, tradesResult] = await Promise.all([
     supabase.from("operations").select("*").eq("scheduled_date", today).order("created_at"),
     supabase.from("missions").select("*").order("created_at", { ascending: false }),
-    supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }).limit(50)
+    // Use the complete journal so the debrief agrees with Detective and Command Center.
+    supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false })
   ]);
   if (operationsResult.error || missionsResult.error || tradesResult.error) return;
   render({ operations: operationsResult.data || [], missions: missionsResult.data || [], trades: tradesResult.data || [] });
