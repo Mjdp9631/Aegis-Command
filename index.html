@@ -31,7 +31,7 @@
           <a class="nav-link" href="#enterprise" data-view="enterprise"><span>▦</span> Special Projects</a>
           <a class="nav-link" href="#recovery" data-view="recovery" data-recovery-nav><span>＋</span> Recovery</a>
           <a class="nav-link" href="#mastery" data-view="mastery"><span>✦</span> Mastery</a>
-          <a class="nav-link" href="#character" data-view="character"><span>&#11041;</span> Character Systems</a>
+          <a class="nav-link" href="#character" data-view="character"><span>&#9817;</span> Character Systems</a>
         </nav>
         <div class="sidebar-foot">
           <div class="secure-dot"></div>
@@ -52,6 +52,7 @@
         </header>
 
         <section class="view active" id="command">
+          <div class="command-stage">
           <div class="hero">
             <div class="hero-copy">
               <p class="eyebrow amber">CURRENT OBJECTIVE</p>
@@ -65,16 +66,21 @@
                 <div class="terminal-screen" id="hero-trade-chart"></div>
                 <div class="terminal-footer"><span id="hero-trade-caption">AWAITING TRADE DATA</span><span class="positive" id="hero-trade-pnl">—</span></div>
               </section>
-              <section class="terminal-instruments">
-                <button class="readiness-dial dashboard-link" data-dashboard-view="character"><span>CHARACTER LEVEL</span><strong id="hero-character-level">LV 0</strong><small id="hero-character-xp">0 / 100 XP</small></button>
-                <button class="radar-dial dashboard-link" data-dashboard-view="missions"><span>MISSION CONTROL</span><i id="hero-mission-radar"></i><small id="hero-mission-count">0 ACTIVE</small></button>
-                <button class="market-tickers dashboard-link" data-dashboard-view="detective"><span>MARKET TICKERS / INDICATIVE</span><div><b>XAU/USD</b><strong id="hero-xau-price">LOADING</strong><small id="hero-xau-state">GOLD SPOT</small></div><div><b>XRP/USD</b><strong id="hero-xrp-price">LOADING</strong><small id="hero-xrp-change">CRYPTO SPOT</small></div></button>
-              </section>
             </div>
             <div class="signal-orb" aria-hidden="true"><span></span><span></span><span></span><b>01</b></div>
           </div>
+          <aside class="command-side-rail">
+            <div id="morning-slot"></div>
+            <section class="terminal-instruments">
+              <button class="readiness-dial dashboard-link" data-dashboard-view="character"><span>CHARACTER LEVEL</span><strong id="hero-character-level">LV 0</strong><small id="hero-character-xp">0 / 100 XP</small></button>
+              <button class="radar-dial dashboard-link" data-dashboard-view="missions"><span>MISSION CONTROL</span><i id="hero-mission-radar"></i><small id="hero-mission-count">0 ACTIVE</small></button>
+              <button class="market-tickers dashboard-link" data-dashboard-view="detective"><span>EXTERNAL MARKETS</span><div><b>XAU/USD</b><strong id="hero-xau-price">LOADING</strong><small id="hero-xau-state">GOLD SPOT</small></div><div><b>XRP/USD</b><strong id="hero-xrp-price">LOADING</strong><small id="hero-xrp-change">CRYPTO SPOT</small></div></button>
+            </section>
+            <section class="command-summary" id="command-summary"></section>
+          </aside>
+          </div>
 
-          <div class="metric-grid">
+          <div class="metric-grid" aria-hidden="true">
             <article class="metric"><p>RECOVERY</p><strong>72<span>%</span></strong><div class="meter"><i style="width:72%"></i></div><small>On track · Phase 0</small></article>
             <article class="metric"><p>TRADING PROCESS</p><strong>86<span>%</span></strong><div class="meter blue"><i style="width:86%"></i></div><small>3 clean sessions this week</small></article>
             <article class="metric"><p>OPERATIONS</p><strong id="operation-count">0<span>/5</span></strong><div class="meter green"><i id="operation-meter" style="width:0%"></i></div><small id="operation-caption">Awaiting first action</small></article>
@@ -95,8 +101,6 @@
               </div>
             </section>
           </div>
-
-          <section class="command-summary" id="command-summary"></section>
 
           <section class="panel intel-strip">
             <div><p class="eyebrow">COMMAND DAILY SIGNAL</p><h3 id="briefing-text">“The mission is not intensity. It is repeatable excellence.”</h3></div>

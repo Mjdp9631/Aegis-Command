@@ -37,7 +37,7 @@ function missionProgress(mission) {
 }
 
 function render({ operations, missions, trades }) {
-  const morning = ensurePanel("morning-briefing", "adviser-panel morning-briefing", ".hero", "afterend");
+  const morning = ensurePanel("morning-briefing", "adviser-panel morning-briefing", "#morning-slot", "beforeend");
   const panel = ensurePanel("adviser-panel", "adviser-panel", ".intel-strip", "afterend");
   const remaining = operations.filter((operation) => !operation.completed);
   const completed = operations.length - remaining.length;
