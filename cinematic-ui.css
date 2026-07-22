@@ -34,6 +34,15 @@ body::before {
   animation: aegis-grid-drift 26s linear infinite;
 }
 
+/* Each system opens into its own physical room. The active app tab selects the room. */
+body:has(#detective.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.78), rgba(3,8,14,.32) 52%, rgba(3,8,14,.68)), linear-gradient(180deg, rgba(3,8,14,.08), rgba(3,8,14,.58)), url("assets/detective-desk.png") !important; }
+body:has(#missions.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.79), rgba(3,8,14,.37) 52%, rgba(3,8,14,.68)), linear-gradient(180deg, rgba(3,8,14,.08), rgba(3,8,14,.62)), url("assets/missions-bay.png") !important; }
+body:has(#enterprise.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.77), rgba(3,8,14,.35) 52%, rgba(3,8,14,.66)), linear-gradient(180deg, rgba(3,8,14,.08), rgba(3,8,14,.58)), url("assets/projects-studio.png") !important; }
+body:has(#recovery.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.76), rgba(3,8,14,.32) 52%, rgba(3,8,14,.63)), linear-gradient(180deg, rgba(3,8,14,.06), rgba(3,8,14,.53)), url("assets/recovery-bay.png") !important; }
+body:has(#mastery.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.75), rgba(3,8,14,.28) 52%, rgba(3,8,14,.64)), linear-gradient(180deg, rgba(3,8,14,.05), rgba(3,8,14,.52)), url("assets/mastery-library.png") !important; }
+body:has(#mastery.active[data-mastery-lane="body"]) { background-image: linear-gradient(90deg, rgba(3,8,14,.75), rgba(3,8,14,.27) 52%, rgba(3,8,14,.64)), linear-gradient(180deg, rgba(3,8,14,.05), rgba(3,8,14,.52)), url("assets/mastery-gym.png") !important; }
+body:has(#character.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.78), rgba(3,8,14,.32) 52%, rgba(3,8,14,.68)), linear-gradient(180deg, rgba(3,8,14,.08), rgba(3,8,14,.58)), url("assets/character-vault.png") !important; }
+
 .app-shell { position: relative; z-index: 1; grid-template-columns: 74px minmax(0, 1fr) !important; }
 
 /* Compact console rail that unfolds into the full navigation on hover. */
@@ -92,10 +101,10 @@ main { background: linear-gradient(90deg, rgba(4, 10, 17, .29), rgba(4, 10, 17, 
 
 /* Glass modules over the cave/lab scene. */
 .panel, .metric, .command-summary > *, .stat-grid article, .mission-card, .mastery-type-card {
-  background: linear-gradient(135deg, rgba(13, 25, 42, .93), rgba(7, 15, 27, .78)) !important;
+  background: linear-gradient(135deg, rgba(13, 25, 42, .70), rgba(7, 15, 27, .57)) !important;
   border: 1px solid var(--lab-line) !important;
   box-shadow: 0 18px 48px rgba(0,0,0,.18), inset 0 1px rgba(156, 205, 255, .035) !important;
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(9px);
 }
 .panel, .metric, .mission-card, .stat-grid article { position: relative; overflow: hidden; }
 .panel::before, .metric::before, .mission-card::before, .stat-grid article::before {
@@ -158,13 +167,9 @@ main { background: linear-gradient(90deg, rgba(4, 10, 17, .29), rgba(4, 10, 17, 
   height: 290px;
   border: 1px solid rgba(95, 179, 255, .20);
   border-radius: 5px;
-  opacity: .78;
-  background:
-    linear-gradient(155deg, transparent 0 15%, rgba(243, 183, 83, .9) 15.4% 16%, transparent 16.4% 29%, rgba(93, 183, 255, .95) 29.4% 30.1%, transparent 30.5% 43%, rgba(97, 184, 255, .9) 43.4% 44.1%, transparent 44.5% 61%, rgba(243, 183, 83, .86) 61.4% 62%, transparent 62.4% 75%, rgba(99, 222, 168, .9) 75.4% 76.1%, transparent 76.5%),
-    repeating-linear-gradient(90deg, transparent 0 34px, rgba(99, 171, 241, .12) 35px),
-    repeating-linear-gradient(0deg, transparent 0 35px, rgba(99, 171, 241, .11) 36px),
-    linear-gradient(135deg, rgba(7, 25, 44, .82), rgba(5, 12, 22, .3));
-  box-shadow: inset 0 0 36px rgba(48, 141, 242, .10), 0 0 28px rgba(38, 130, 230, .06);
+  opacity: .94;
+  background: url("assets/market-terminal.svg") center / cover no-repeat;
+  box-shadow: inset 0 0 36px rgba(48, 141, 242, .14), 0 0 28px rgba(38, 130, 230, .12);
 }
 #command > .hero .signal-orb { position: absolute; z-index: 2; right: 14px; bottom: 18px; transform: scale(.68); transform-origin: bottom right; }
 #morning-briefing { grid-area: briefing; margin: 0 !important; min-height: 190px; }

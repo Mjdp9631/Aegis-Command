@@ -27,6 +27,7 @@ function tabs(types, current, attribute) {
 function render() {
   if (!root) return;
   cleanRendering = true;
+  root.dataset.masteryLane = lane;
   const types = lane === "mind" ? mindTypes : bodyTypes;
   const visible = entries.filter(entry => entry.category === activeType);
   const isCurrentLocked = isLocked(activeType);
