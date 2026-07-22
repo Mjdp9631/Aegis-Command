@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#070b12" />
+    <title>AEGIS COMMAND</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Primary navigation">
+        <a class="brand" href="#command">
+          <span class="brand-mark">A</span>
+          <span><strong>AEGIS</strong><small>COMMAND</small></span>
+        </a>
+        <p class="system-label">PERSONAL OPERATING SYSTEM</p>
+        <nav>
+          <a class="nav-link active" href="#command" data-view="command"><span>⌁</span> Command Center</a>
+          <a class="nav-link" href="#detective" data-view="detective"><span>◈</span> Detective</a>
+          <a class="nav-link" href="#missions" data-view="missions"><span>◎</span> Missions</a>
+          <a class="nav-link" href="#recovery" data-view="recovery"><span>＋</span> Recovery</a>
+          <a class="nav-link" href="#enterprise" data-view="enterprise"><span>▦</span> Wayne Enterprises</a>
+          <a class="nav-link" href="#character" data-view="character"><span>◇</span> Character Systems</a>
+        </nav>
+        <div class="sidebar-foot">
+          <div class="secure-dot"></div>
+          <span>PRIVATE SYSTEM</span>
+        </div>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="system-date">TUESDAY · JULY 22</p>
+            <h1 id="view-title">COMMAND CENTER</h1>
+          </div>
+          <div class="top-actions">
+            <span class="status-pill"><i></i> SYSTEM ONLINE</span>
+            <button class="profile" aria-label="Profile">M</button>
+          </div>
+        </header>
+
+        <section class="view active" id="command">
+          <div class="hero">
+            <div class="hero-copy">
+              <p class="eyebrow amber">CURRENT OBJECTIVE</p>
+              <h2>Build quietly.<br /><em>Execute precisely.</em></h2>
+              <p>Phase 0 — Rebuild the foundation, protect capital, and improve one deliberate action at a time.</p>
+              <button class="primary" data-action="add-operation">+ Log an operation</button>
+            </div>
+            <div class="signal-orb" aria-hidden="true"><span></span><span></span><span></span><b>01</b></div>
+          </div>
+
+          <div class="metric-grid">
+            <article class="metric"><p>RECOVERY</p><strong>72<span>%</span></strong><div class="meter"><i style="width:72%"></i></div><small>On track · Phase 0</small></article>
+            <article class="metric"><p>TRADING PROCESS</p><strong>86<span>%</span></strong><div class="meter blue"><i style="width:86%"></i></div><small>3 clean sessions this week</small></article>
+            <article class="metric"><p>OPERATIONS</p><strong id="operation-count">0<span>/5</span></strong><div class="meter green"><i id="operation-meter" style="width:0%"></i></div><small id="operation-caption">Awaiting first action</small></article>
+            <article class="metric"><p>FOCUS STREAK</p><strong>04<span>d</span></strong><div class="meter"><i style="width:40%"></i></div><small>Keep the chain intact</small></article>
+          </div>
+
+          <div class="content-grid">
+            <section class="panel operations-panel">
+              <div class="panel-head"><div><p class="eyebrow">01 — TODAY</p><h3>Operations Queue</h3></div><button class="text-button" data-action="add-operation">+ Add</button></div>
+              <div id="operations-list" class="operations-list"></div>
+            </section>
+            <section class="panel mission-panel">
+              <div class="panel-head"><div><p class="eyebrow">02 — PRIORITY</p><h3>Active Missions</h3></div><button class="text-button" data-view-target="missions">View all</button></div>
+              <div class="mission-list">
+                <article><div class="mission-icon recovery-icon">＋</div><div><strong>Restore ACL Capacity</strong><small>Recovery · High priority</small></div><span>72%</span></article>
+                <article><div class="mission-icon trade-icon">◈</div><div><strong>Execute Trading Process</strong><small>Trading · Non-negotiable</small></div><span>86%</span></article>
+                <article><div class="mission-icon business-icon">▦</div><div><strong>Build CCFX Foundation</strong><small>Enterprise · Strategic</small></div><span>41%</span></article>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel intel-strip">
+            <div><p class="eyebrow">JARVIS / ALFRED BRIEFING</p><h3 id="briefing-text">“The mission is not intensity. It is repeatable excellence.”</h3></div>
+            <button class="icon-button" id="new-briefing" aria-label="New briefing">↻</button>
+          </section>
+        </section>
+
+        <section class="view" id="detective">
+          <div class="section-intro"><p class="eyebrow blue-text">DETECTIVE / TRADING INTELLIGENCE</p><h2>Trade with evidence, not impulse.</h2><p>Every decision has a record. Every record leaves a lesson.</p></div>
+          <div class="metric-grid detective-metrics"><article class="metric"><p>WIN RATE</p><strong>—</strong><small>Log trades to calculate</small></article><article class="metric"><p>AVERAGE R</p><strong>—</strong><small>Process before outcome</small></article><article class="metric"><p>PLAN VIOLATIONS</p><strong>0</strong><small>Current period</small></article></div>
+          <section class="panel trade-panel"><div class="panel-head"><div><p class="eyebrow">01 — TRADE LOG</p><h3>Mission Debriefs</h3></div><button class="primary compact" data-action="add-trade">+ Log trade</button></div><div class="table-wrap"><table><thead><tr><th>TIME</th><th>PAIR</th><th>SETUP</th><th>R</th><th>RESULT</th><th>EXECUTION</th></tr></thead><tbody id="trade-log"><tr class="empty-row"><td colspan="6">No trade debriefs yet. Preserve data; log the next execution.</td></tr></tbody></table></div></section>
+        </section>
+
+        <section class="view" id="missions"><div class="section-intro"><p class="eyebrow amber">MISSION CONTROL</p><h2>Five missions. No noise.</h2><p>The system surfaces the few objectives that matter now.</p></div><div class="mission-cards" id="mission-cards"></div></section>
+
+        <section class="view" id="recovery"><div class="section-intro"><p class="eyebrow green-text">RECOVERY WING</p><h2>Rebuild the foundation.</h2><p>Health is the prerequisite—not the interruption.</p></div><div class="content-grid"><section class="panel"><div class="panel-head"><h3>Rehab Readiness</h3><span class="large-number">72%</span></div><div class="readiness"><div><span>Range of motion</span><b>Improving</b></div><div><span>Swelling management</span><b>Stable</b></div><div><span>Daily rehab</span><b>Scheduled</b></div></div></section><section class="panel"><div class="panel-head"><h3>Next Milestone</h3></div><p class="body-copy">Complete your prescribed rehab protocol and log response. Progress only when your clinician clears the next stage.</p><button class="primary compact">Log recovery</button></section></div></section>
+
+        <section class="view" id="enterprise"><div class="section-intro"><p class="eyebrow amber">WAYNE ENTERPRISES / CCFX</p><h2>Build assets that compound.</h2><p>Trading is the craft. Clarified Chaos FX is the enterprise.</p></div><div class="content-grid"><section class="panel"><div class="panel-head"><h3>Strategic Projects</h3><span class="status-pill muted">2 ACTIVE</span></div><div class="mission-list"><article><div class="mission-icon business-icon">▦</div><div><strong>CCFX Foundation</strong><small>Brand system and positioning</small></div><span>41%</span></article><article><div class="mission-icon trade-icon">◌</div><div><strong>Content Engine v1</strong><small>Publish with consistency</small></div><span>25%</span></article></div></section><section class="panel"><div class="panel-head"><h3>Next Asset</h3></div><p class="body-copy">Define what Clarified Chaos FX stands for in one clear, useful public message.</p><button class="primary compact">Open content pipeline</button></section></div></section>
+
+        <section class="view" id="character"><div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS</p><h2>Measure evidence. Earn upgrades.</h2><p>No arbitrary scores. Every level is earned by proof.</p></div><div class="stat-grid"><article><span>DISCIPLINE</span><strong>—</strong><small>Build a 12-week evidence trail</small></article><article><span>TRADING</span><strong>—</strong><small>Process consistency first</small></article><article><span>RECOVERY</span><strong>—</strong><small>Complete clinical milestones</small></article><article><span>BUSINESS</span><strong>—</strong><small>Ship useful systems</small></article></div></section>
+      </main>
+    </div>
+    <dialog id="operation-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">NEW OPERATION</p><h2>What moves the mission forward?</h2><label>Operation <input id="operation-input" required placeholder="e.g. Complete prescribed ACL rehab" /></label><label>Department <select id="operation-category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Mind</option></select></label><button class="primary" id="save-operation" value="default">Add to queue</button></form></dialog>
+    <dialog id="trade-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow blue-text">NEW MISSION DEBRIEF</p><h2>Log the execution.</h2><div class="two-col"><label>Pair <input id="trade-pair" required placeholder="EURUSD" /></label><label>Result (R) <input id="trade-r" required type="number" step="0.1" placeholder="1.5" /></label></div><div class="two-col"><label>Setup <input id="trade-setup" placeholder="Your setup" /></label><label>Execution <select id="trade-grade"><option>A</option><option>B</option><option>C</option><option>D</option></select></label></div><button class="primary" id="save-trade" value="default">Save debrief</button></form></dialog>
+    <script src="app.js"></script>
+  </body>
+</html>
