@@ -49,9 +49,15 @@ function render({ operations, missions, trades }) {
   const decisive = wins + losses;
   const winRate = decisive ? `${Math.round((wins / decisive) * 100)}%` : "awaiting data";
 
+  const signal = (id, value) => { const target = document.querySelector(id); if (target) target.textContent = value; };
+  signal("#signal-market-tone", decisive ? `${winRate} CLOSED WIN RATE` : "AWAITING CLOSED TRADES");
+  signal("#signal-window", nextOperation.toUpperCase());
+  signal("#signal-focus", activeMission ? activeMission.title.toUpperCase() : "DEFINE NEXT MISSION");
+  signal("#signal-risk", remaining.length ? `${remaining.length} OPEN COMMITMENT${remaining.length === 1 ? "" : "S"}` : "PLAN COMPLETE");
+
   morning.innerHTML = `<div class="adviser-head"><p class="eyebrow amber">MORNING DIRECTIVE</p><h3>GOOD MORNING</h3></div><div class="adviser-grid"><article><span class="adviser-name jarvis">JARVIS / TODAY'S PLAN</span><p>Today’s priority is <strong>${nextOperation}</strong>${activeMission ? `. It supports <strong>${activeMission.title}</strong>.` : ""}</p></article><article><span class="adviser-name alfred">ALFRED / STANDARD</span><p>${remaining.length ? `There are ${remaining.length} commitments on the board. Begin with the first; do not spend energy negotiating with the plan.` : "The day’s commitments are complete. Preserve the standard and recover deliberately."}</p></article></div>`;
 
-  panel.innerHTML = `<div class="adviser-head"><p class="eyebrow blue-text">EVENING DEBRIEF</p><h3>EXAMINATION / RE-EVALUATION</h3></div><div class="adviser-grid"><article><span class="adviser-name jarvis">JARVIS / EXAMINATION</span><p>Operations: <strong>${completed}/${operations.length || 0}</strong> complete. Closed trade win rate: <strong>${winRate}</strong> (${wins} wins / ${losses} losses; B/E excluded). Current data indicates ${remaining.length ? `${remaining.length} unfinished commitment${remaining.length === 1 ? "" : "s"}` : "the plan is complete"}.</p></article><article><span class="adviser-name alfred">ALFRED / RE-EVALUATION</span><p>${operations.length && completed === operations.length ? "A disciplined day. Record the lesson, then leave the result alone." : completed ? "Progress is real. Finish the remaining commitments before judging the day." : "The day has not been lost; it has simply not been executed yet."}</p></article></div>`;
+  panel.innerHTML = `<div class="adviser-head"><p class="eyebrow blue-text">EVENING DEBRIEF</p><h3>EXAMINATION / RE-EVALUATION</h3></div><div class="evening-columns"><article><span>JARVIS / KEY TAKEAWAYS</span><p>${completed}/${operations.length || 0} operations complete. Closed-trade win rate: ${winRate}.</p></article><article><span>ALFRED / WHAT WORKED</span><p>${completed ? `${completed} commitment${completed === 1 ? "" : "s"} were executed.` : "No execution evidence logged yet."}</p></article><article><span>WHAT TO IMPROVE</span><p>${remaining.length ? `${remaining.length} open commitment${remaining.length === 1 ? " remains" : "s remain"}.` : "Protect recovery and close the day deliberately."}</p></article><article><span>TOMORROW'S FOCUS</span><p>${nextOperation}</p></article></div>`;
 }
 
 async function loadAdvisory() {

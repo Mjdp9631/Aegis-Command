@@ -904,3 +904,71 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   #adviser-panel { margin-top:14px !important; min-height:122px; padding:16px 20px; border-radius:5px; }
   #adviser-panel .adviser-grid { grid-template-columns:1fr 1fr; }
 }
+
+/* Replica detail layer: data table, chart readout, and bottom system strips. */
+@media (min-width: 761px) {
+  #command > .command-stage > .hero { background:linear-gradient(100deg,rgba(5,14,24,.48),rgba(5,14,24,.22) 48%,rgba(4,12,20,.10)) !important; }
+  #command > .command-stage .hero-copy { padding-top:8px; }
+  #command > .command-stage .hero-copy h2 { font-family:"Rajdhani",sans-serif; font-weight:700; }
+  #command > .command-stage .hero-console { width:52%; right:24px; }
+  #command > .command-stage .terminal-chart { background:rgba(3,11,19,.70) !important; }
+  .terminal-screen { overflow:hidden; }
+  .chart-axis-y,.chart-axis-x { fill:rgba(171,205,233,.64); font:700 7px/1 "Space Mono",ui-monospace,monospace; }
+  .chart-crosshair { position:absolute; z-index:3; top:0; bottom:0; width:1px; opacity:0; pointer-events:none; background:linear-gradient(rgba(243,183,83,0),rgba(243,183,83,.95),rgba(243,183,83,0)); box-shadow:0 0 10px rgba(243,183,83,.55); transition:opacity .12s ease; }
+  .chart-crosshair.visible { opacity:1; }
+  .chart-tooltip { position:absolute; z-index:4; top:14px; opacity:0; pointer-events:none; min-width:120px; padding:7px 8px; border:1px solid rgba(243,183,83,.42); border-radius:3px; background:rgba(3,11,19,.92); transform:translateX(-2%); transition:opacity .12s ease; font-family:"Space Mono",ui-monospace,monospace; }
+  .chart-tooltip.visible { opacity:1; }
+  .chart-tooltip b { display:block; color:#64bbff; font-size:11px; }
+  .chart-tooltip span { display:block; margin-top:3px; color:rgba(201,221,240,.68); font-size:7px; white-space:nowrap; }
+
+  #command > .content-grid .panel { overflow:hidden; }
+  #command > .content-grid .panel-head { height:39px; display:flex; align-items:flex-start; }
+  #command > .content-grid .operations-panel { display:grid; grid-template-rows:auto minmax(0,1fr); }
+  #operations-list { min-height:0; overflow-y:auto; padding-right:4px; scrollbar-width:thin; scrollbar-color:rgba(89,180,255,.45) transparent; }
+  #operations-list::-webkit-scrollbar { width:5px; }
+  #operations-list::-webkit-scrollbar-thumb { background:rgba(89,180,255,.45); border-radius:99px; }
+  .operation-table-head,.operation-table-row { display:grid; grid-template-columns:20px 92px minmax(0,1fr) 76px 62px 42px; align-items:center; column-gap:8px; }
+  .operation-table-head { position:sticky; top:0; z-index:2; height:28px; padding:0 2px; border-bottom:1px solid rgba(126,185,239,.16); background:rgba(4,13,22,.92); color:rgba(157,197,228,.62); font:700 7px/1 "Space Mono",ui-monospace,monospace; letter-spacing:.09em; }
+  .operation-table-row { min-height:40px !important; padding:6px 2px !important; border-bottom:1px solid rgba(126,185,239,.12); cursor:pointer; }
+  .operation-table-row input { width:14px; height:14px; margin:0; accent-color:#efb54f; }
+  .operation-table-row .operation-title { min-width:0; }
+  .operation-table-row .operation-title strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:600 12px/1.15 "Rajdhani",sans-serif; }
+  .operation-status,.operation-category,.operation-priority,.operation-eta { white-space:nowrap; font:700 8px/1 "Space Mono",ui-monospace,monospace; letter-spacing:.05em; }
+  .operation-status { color:#63bbff; display:flex; align-items:center; gap:5px; }
+  .operation-status i { width:8px; height:8px; border-radius:50%; background:#4eacf6; box-shadow:0 0 8px rgba(78,172,246,.6); }
+  .operation-status.complete { color:#74d9a8; }.operation-status.complete i { background:#74d9a8; box-shadow:0 0 8px rgba(116,217,168,.6); }
+  .operation-category,.operation-eta { color:rgba(183,208,231,.7); }
+  .operation-priority.high { color:#ff8f73; }.operation-priority.medium { color:#efb54f; }.operation-priority.standard { color:#63bbff; }
+  #command > .content-grid .mission-panel { display:grid; grid-template-rows:auto minmax(0,1fr); }
+  #command > .content-grid .mission-list { overflow-y:auto; min-height:0; padding-right:4px; }
+  #command > .content-grid .mission-list article { min-height:70px !important; padding:11px 0 !important; }
+  #command > .content-grid .mission-list article > span { font:700 9px/1 "Space Mono",ui-monospace,monospace; }
+  #command > .content-grid .mission-list strong { font-size:15px; }
+  #command > .content-grid .mission-list small { font-family:"Space Mono",ui-monospace,monospace; font-size:8px; }
+
+  #command > .intel-strip { display:grid; grid-template-columns:minmax(240px,1.55fr) repeat(4,minmax(105px,1fr)); gap:0; align-items:stretch; }
+  #command > .intel-strip > div { display:contents; }
+  #command > .intel-strip .signal-primary { display:block; padding-right:20px; }
+  #command > .intel-strip .protocol-line { margin:0; border:0; }
+  #command > .intel-strip .signal-columns { display:contents; }
+  #command > .intel-strip .signal-columns article { display:grid; align-content:center; gap:5px; min-width:0; padding:0 17px; border-left:1px solid rgba(128,184,235,.18); }
+  #command > .intel-strip .signal-columns span { color:rgba(150,192,225,.62); font:700 8px/1 "Space Mono",ui-monospace,monospace; letter-spacing:.11em; }
+  #command > .intel-strip .signal-columns b { overflow:hidden; color:#dce9f8; text-overflow:ellipsis; white-space:nowrap; font:600 13px/1 "Rajdhani",sans-serif; }
+  #command > .intel-strip .icon-button { display:none; }
+  #adviser-panel .adviser-head { margin-bottom:10px; }
+  #adviser-panel .evening-columns { display:grid; grid-template-columns:1.25fr repeat(3,1fr); }
+  #adviser-panel .evening-columns article { min-height:52px; padding:0 18px; border-left:1px solid rgba(128,184,235,.18); }
+  #adviser-panel .evening-columns article:first-child { padding-left:0; border-left:0; }
+  #adviser-panel .evening-columns span { display:block; margin-bottom:7px; color:rgba(150,192,225,.62); font:700 8px/1 "Space Mono",ui-monospace,monospace; letter-spacing:.11em; }
+  #adviser-panel .evening-columns p { margin:0; color:#dce9f8; font:600 13px/1.28 "Rajdhani",sans-serif; }
+}
+
+/* The right rail owns as much vertical space as its real data needs.  The
+   Command Center scrolls; modules never stack on top of each other. */
+@media (min-width: 761px) {
+  .command-stage { grid-template-rows:392px minmax(292px, auto); align-items:start; }
+  .command-side-rail { align-self:start; min-height:0; }
+  #command > .command-stage .command-summary { min-height:0; }
+  #command > .command-stage .command-summary-card { min-height:46px; }
+  #command > .content-grid { align-self:start; }
+}

@@ -5,6 +5,7 @@ const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(con
 const $ = (selector) => document.querySelector(selector);
 let dashboardData = null;
 let activeRange = "all";
+let activeChart = null;
 
 function normalOutcome(value) {
   const item = String(value || "").trim().toLowerCase();
@@ -73,30 +74,55 @@ function valueSeries(trades) {
   const filtered = activeRange === "all" ? completed : completed.filter((trade) => new Date(trade.traded_at || trade.created_at) >= cutoff);
   const usablePnl = filtered.some((trade) => trade.pnl_percent != null && Number.isFinite(Number(trade.pnl_percent)));
   let total = 0;
-  const series = filtered.map((trade) => {
+  const entries = filtered.map((trade) => {
     total += usablePnl ? Number(trade.pnl_percent || 0) : Number(trade.r_multiple || 0);
-    return total;
+    return { total, delta: usablePnl ? Number(trade.pnl_percent || 0) : Number(trade.r_multiple || 0), date: new Date(trade.traded_at || trade.created_at) };
   });
-  return { series, total, unit: usablePnl ? "%" : "R", count: filtered.length };
+  return { entries, total, unit: usablePnl ? "%" : "R", count: filtered.length };
 }
 
-function chartSvg(series) {
-  if (!series.length) return '<div class="chart-empty">LOG CLOSED TRADE DATA TO ACTIVATE THIS DISPLAY</div>';
-  const width = 620, height = 255, pad = 18;
-  const values = [0, ...series];
+function chartSvg(entries, unit) {
+  if (!entries.length) return '<div class="chart-empty">LOG CLOSED TRADE DATA TO ACTIVATE THIS DISPLAY</div>';
+  const width = 620, height = 255, padLeft = 52, padRight = 16, padTop = 18, padBottom = 28;
+  const values = [0, ...entries.map((entry) => entry.total)];
   const min = Math.min(...values), max = Math.max(...values);
   const span = max - min || 1;
-  const points = series.map((value, index) => `${pad + (index / Math.max(1, series.length - 1)) * (width - (pad * 2))},${height - pad - ((value - min) / span) * (height - (pad * 2))}`).join(" ");
-  const area = `${pad},${height - pad} ${points} ${width - pad},${height - pad}`;
-  const grid = [45, 95, 145, 195].map((y) => `<path d="M 0 ${y} H ${width}"/>`).join("") + [85, 170, 255, 340, 425, 510].map((x) => `<path d="M ${x} 0 V ${height}"/>`).join("");
-  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><g class="chart-grid">${grid}</g><defs><linearGradient id="pnl-fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#58b4ff" stop-opacity=".34"/><stop offset="1" stop-color="#58b4ff" stop-opacity="0"/></linearGradient></defs><polygon points="${area}" fill="url(#pnl-fill)"/><polyline points="${points}" class="chart-line"/></svg>`;
+  const xAt = (index) => padLeft + (index / Math.max(1, entries.length - 1)) * (width - padLeft - padRight);
+  const yAt = (value) => height - padBottom - ((value - min) / span) * (height - padTop - padBottom);
+  const points = entries.map((entry, index) => `${xAt(index)},${yAt(entry.total)}`).join(" ");
+  const area = `${padLeft},${height - padBottom} ${points} ${width - padRight},${height - padBottom}`;
+  const horizontal = Array.from({ length: 5 }, (_, index) => { const value=min+(span*(4-index)/4);const y=yAt(value);return `<path d="M ${padLeft} ${y} H ${width-padRight}"/><text class="chart-axis-y" x="4" y="${y+3}">${value.toFixed(1)}${unit}</text>`; }).join("");
+  const vertical = Array.from({ length: 6 }, (_, index) => { const item=entries[Math.round((entries.length-1)*(index/5))];const x=padLeft+((width-padLeft-padRight)*(index/5));const label=item?.date?.toLocaleDateString(undefined,{month:"short",day:"numeric"})||"";return `<path d="M ${x} ${padTop} V ${height-padBottom}"/><text class="chart-axis-x" x="${x}" y="${height-7}" text-anchor="middle">${label}</text>`; }).join("");
+  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><g class="chart-grid">${horizontal}${vertical}</g><defs><linearGradient id="pnl-fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#58b4ff" stop-opacity=".34"/><stop offset="1" stop-color="#58b4ff" stop-opacity="0"/></linearGradient></defs><polygon points="${area}" fill="url(#pnl-fill)"/><polyline points="${points}" class="chart-line"/></svg><div class="chart-crosshair" aria-hidden="true"></div><div class="chart-tooltip" aria-hidden="true"></div>`;
+}
+
+function attachCrosshair(chart) {
+  const host = $("#hero-trade-chart");
+  if (!host) return;
+  host.onpointermove = (event) => {
+    if (!chart?.entries?.length) return;
+    const rect = host.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const index = Math.round(ratio * (chart.entries.length - 1));
+    const entry = chart.entries[index];
+    const x = (index / Math.max(1, chart.entries.length - 1)) * 100;
+    const crosshair = host.querySelector(".chart-crosshair");
+    const tooltip = host.querySelector(".chart-tooltip");
+    if (!crosshair || !tooltip) return;
+    crosshair.style.left = `${x}%`; crosshair.classList.add("visible");
+    tooltip.innerHTML = `<b>${entry.total >= 0 ? "+" : ""}${entry.total.toFixed(2)}${chart.unit}</b><span>${entry.date.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} · ${entry.delta >= 0 ? "+" : ""}${entry.delta.toFixed(2)}${chart.unit}</span>`;
+    tooltip.style.left = `${Math.min(78, Math.max(3, x))}%`; tooltip.classList.add("visible");
+  };
+  host.onpointerleave = () => { host.querySelector(".chart-crosshair")?.classList.remove("visible"); host.querySelector(".chart-tooltip")?.classList.remove("visible"); };
 }
 
 function render() {
   if (!dashboardData) return;
   const { trades, operations, missions, projects, content, mastery } = dashboardData;
   const chart = valueSeries(trades);
-  $("#hero-trade-chart").innerHTML = chartSvg(chart.series);
+  $("#hero-trade-chart").innerHTML = chartSvg(chart.entries, chart.unit);
+  activeChart = chart;
+  attachCrosshair(chart);
   $("#hero-trade-caption").textContent = chart.count ? `${chart.count} CLOSED TRADES // ${activeRange.toUpperCase()}` : "AWAITING TRADE DATA";
   const pnl = `${chart.total >= 0 ? "+" : ""}${chart.total.toFixed(2)}${chart.unit}`;
   $("#hero-trade-pnl").textContent = chart.count ? pnl : "—";
