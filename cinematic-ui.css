@@ -11,8 +11,8 @@
 
 body {
   background:
-    linear-gradient(90deg, rgba(3, 8, 14, .93) 0%, rgba(3, 8, 14, .72) 21%, rgba(3, 8, 14, .55) 58%, rgba(3, 8, 14, .87) 100%),
-    linear-gradient(180deg, rgba(3, 8, 14, .20), rgba(3, 8, 14, .88)),
+    linear-gradient(90deg, rgba(3, 8, 14, .83) 0%, rgba(3, 8, 14, .53) 21%, rgba(3, 8, 14, .35) 58%, rgba(3, 8, 14, .72) 100%),
+    linear-gradient(180deg, rgba(3, 8, 14, .10), rgba(3, 8, 14, .66)),
     url("assets/aegis-lab-background.png") center / cover fixed,
     var(--lab-ink) !important;
   min-height: 100vh;
@@ -24,7 +24,7 @@ body::before {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  opacity: .28;
+  opacity: .34;
   background-image:
     linear-gradient(rgba(103, 178, 255, .08) 1px, transparent 1px),
     linear-gradient(90deg, rgba(103, 178, 255, .06) 1px, transparent 1px),
@@ -84,7 +84,7 @@ body::before {
 .nav-link.active { background: linear-gradient(90deg, rgba(243, 183, 83, .17), rgba(91, 170, 252, .055) 72%, transparent) !important; border-left-color: var(--lab-amber) !important; }
 .secure-dot { flex: 0 0 auto; box-shadow: 0 0 12px var(--lab-green); animation: aegis-led 2.3s ease-in-out infinite; }
 
-main { background: linear-gradient(90deg, rgba(4, 10, 17, .43), rgba(4, 10, 17, .15)) !important; }
+main { background: linear-gradient(90deg, rgba(4, 10, 17, .29), rgba(4, 10, 17, .08)) !important; }
 .topbar { border-bottom: 1px solid rgba(104, 157, 221, .12) !important; background: rgba(4, 10, 17, .38); backdrop-filter: blur(10px); }
 .status-pill { border-color: rgba(99, 179, 255, .20) !important; background: rgba(4, 14, 24, .7); box-shadow: inset 0 0 12px rgba(70, 166, 255, .04); }
 .status-pill i { box-shadow: 0 0 11px var(--lab-green); animation: aegis-led 2s ease-in-out infinite; }
@@ -133,6 +133,63 @@ main { background: linear-gradient(90deg, rgba(4, 10, 17, .43), rgba(4, 10, 17, 
 .signal-orb span:nth-child(2) { animation-duration: 17s; animation-direction: reverse; }
 .signal-orb span:nth-child(3) { animation-duration: 22s; }
 
+/* COMMAND CENTER — rearrange the existing live modules into a command-console layout. */
+#command {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(330px, .85fr);
+  grid-template-areas:
+    "hero briefing"
+    "hero metrics"
+    "content content"
+    "summary summary"
+    "intel intel"
+    "evening evening";
+  gap: 14px;
+}
+#command > .hero { grid-area: hero; min-height: 430px; margin: 0; }
+#command > .hero .hero-copy { position: relative; z-index: 2; max-width: 47%; }
+#command > .hero::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 56px;
+  right: 28px;
+  width: 51%;
+  height: 290px;
+  border: 1px solid rgba(95, 179, 255, .20);
+  border-radius: 5px;
+  opacity: .78;
+  background:
+    linear-gradient(155deg, transparent 0 15%, rgba(243, 183, 83, .9) 15.4% 16%, transparent 16.4% 29%, rgba(93, 183, 255, .95) 29.4% 30.1%, transparent 30.5% 43%, rgba(97, 184, 255, .9) 43.4% 44.1%, transparent 44.5% 61%, rgba(243, 183, 83, .86) 61.4% 62%, transparent 62.4% 75%, rgba(99, 222, 168, .9) 75.4% 76.1%, transparent 76.5%),
+    repeating-linear-gradient(90deg, transparent 0 34px, rgba(99, 171, 241, .12) 35px),
+    repeating-linear-gradient(0deg, transparent 0 35px, rgba(99, 171, 241, .11) 36px),
+    linear-gradient(135deg, rgba(7, 25, 44, .82), rgba(5, 12, 22, .3));
+  box-shadow: inset 0 0 36px rgba(48, 141, 242, .10), 0 0 28px rgba(38, 130, 230, .06);
+}
+#command > .hero .signal-orb { position: absolute; z-index: 2; right: 14px; bottom: 18px; transform: scale(.68); transform-origin: bottom right; }
+#morning-briefing { grid-area: briefing; margin: 0 !important; min-height: 190px; }
+#morning-briefing .adviser-grid { grid-template-columns: 1fr; }
+#command > .metric-grid { grid-area: metrics; grid-template-columns: 1fr 1fr; gap: 14px; margin: 0; align-self: stretch; }
+#command > .metric-grid .metric { min-height: 116px; }
+#command > .content-grid { grid-area: content; margin: 0; }
+#command > .command-summary { grid-area: summary; margin: 0; }
+#command > .intel-strip { grid-area: intel; margin: 0; }
+#adviser-panel { grid-area: evening; margin: 0 !important; }
+
+/* Tactical labels and display frames make live data feel like instrumentation, not generic cards. */
+#command .hero::after { opacity: .65; }
+#command .hero .hero-copy::after {
+  content: "LIVE STRATEGY DISPLAY  /  SIGNAL FEED ACTIVE";
+  display: block;
+  margin-top: 34px;
+  color: rgba(107, 185, 255, .68);
+  font: 700 8px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .18em;
+}
+#command > .content-grid .panel:first-child { border-color: rgba(89, 182, 255, .28) !important; }
+#command > .content-grid .panel:last-child { border-color: rgba(243, 183, 83, .24) !important; }
+#command .command-summary-card { min-height: 112px; }
+
 .primary, .primary.compact { box-shadow: 0 8px 20px rgba(243, 161, 52, .22), inset 0 1px rgba(255,255,255,.23) !important; }
 .primary:hover { box-shadow: 0 10px 28px rgba(243, 161, 52, .35), 0 0 22px rgba(243,183,83,.18) !important; }
 .meter { background: rgba(132, 167, 210, .16) !important; overflow: visible !important; }
@@ -180,11 +237,25 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
 @keyframes aegis-orbit { to { transform:rotate(360deg); } }
 
 @media (max-width: 760px) {
+  #command { display: block; }
+  #command > * { margin-top: 16px !important; }
+  #command > .hero { min-height: 350px; }
+  #command > .hero .hero-copy { max-width: 66%; }
+  #command > .hero::before { right: 12px; top: 110px; width: 66%; height: 190px; opacity: .47; }
+  #command > .metric-grid { grid-template-columns: 1fr 1fr; }
   .app-shell { grid-template-columns: 58px minmax(0, 1fr) !important; }
   .sidebar { width: 58px !important; min-width:58px !important; }
   .sidebar:hover, .sidebar:focus-within { width: 222px !important; }
   .hero { background: linear-gradient(135deg, rgba(8,17,30,.95), rgba(11,24,42,.82)) !important; }
   #detective .section-intro::after { opacity:.34; width:100%; }
+}
+@media (min-width: 761px) and (max-width: 1120px) {
+  #command {
+    grid-template-columns: 1fr;
+    grid-template-areas: "hero" "briefing" "metrics" "content" "summary" "intel" "evening";
+  }
+  #command > .metric-grid { grid-template-columns: repeat(4, 1fr); }
+  #command > .hero { min-height: 385px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
