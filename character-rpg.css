@@ -1,0 +1,1 @@
+.stat-meter{height:3px;background:#273141;margin-top:14px;border-radius:99px;overflow:hidden}.stat-meter i{display:block;height:100%;border-radius:99px}.evidence-card.blue .stat-meter i{background:var(--blue)}.evidence-card.amber .stat-meter i{background:var(--amber)}.evidence-card.green .stat-meter i{background:var(--green)}
