@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="character-rpg.css" />
     <link rel="stylesheet" href="tab-advisory.css" />
     <link rel="stylesheet" href="command-summary.css" />
+    <link rel="stylesheet" href="mastery.css" />
   </head>
   <body>
     <div class="app-shell">
@@ -31,6 +32,7 @@
           <a class="nav-link" href="#detective" data-view="detective"><span>◈</span> Detective</a>
           <a class="nav-link" href="#enterprise" data-view="enterprise"><span>▦</span> Special Projects</a>
           <a class="nav-link" href="#recovery" data-view="recovery" data-recovery-nav><span>＋</span> Recovery</a>
+          <a class="nav-link" href="#mastery" data-view="mastery"><span>✦</span> Mastery</a>
           <a class="nav-link" href="#character" data-view="character"><span>◇</span> Character Systems</a>
         </nav>
         <div class="sidebar-foot">
@@ -104,6 +106,8 @@
 
         <section class="view" id="enterprise"><div class="section-intro"><p class="eyebrow amber">SPECIAL PROJECTS / CCFX</p><h2>Build assets that compound.</h2><p>Trading is the craft. Clarified Chaos FX is the enterprise.</p></div><div class="content-grid"><section class="panel"><div class="panel-head"><h3>Strategic Projects</h3><span class="status-pill muted">2 ACTIVE</span></div><div class="mission-list"><article><div class="mission-icon business-icon">▦</div><div><strong>CCFX Foundation</strong><small>Brand system and positioning</small></div><span>41%</span></article><article><div class="mission-icon trade-icon">◌</div><div><strong>Content Engine v1</strong><small>Publish with consistency</small></div><span>25%</span></article></div></section><section class="panel"><div class="panel-head"><h3>Next Asset</h3></div><p class="body-copy">Define what Clarified Chaos FX stands for in one clear, useful public message.</p><button class="primary compact">Open content pipeline</button></section></div></section>
 
+        <section class="view" id="mastery"></section>
+
         <section class="view" id="character"><div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS</p><h2>Measure evidence. Earn upgrades.</h2><p>No arbitrary scores. Every level is earned by proof.</p></div><div class="stat-grid"><article><span>DISCIPLINE</span><strong>—</strong><small>Build a 12-week evidence trail</small></article><article><span>TRADING</span><strong>—</strong><small>Process consistency first</small></article><article><span>RECOVERY</span><strong>—</strong><small>Complete clinical milestones</small></article><article><span>BUSINESS</span><strong>—</strong><small>Ship useful systems</small></article></div></section>
       </main>
     </div>
@@ -123,6 +127,7 @@
     <script type="module" src="character.js"></script>
     <script type="module" src="command-center.js"></script>
     <script type="module" src="command-summary.js"></script>
+    <script type="module" src="mastery.js"></script>
     <script type="module" src="tab-advisory.js"></script>
   </body>
 </html>

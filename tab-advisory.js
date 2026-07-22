@@ -5,6 +5,7 @@ const messages = {
   missions: ["Priority is a decision to leave other things undone for now.", "One proper objective is worth more than five noble intentions."],
   enterprise: ["Assets compound when they are shipped, measured, and improved.", "Build something useful enough that you would be proud to attach your name to it."],
   recovery: ["Recovery data is mission intelligence. Respect it before making the next call.", "There is no prize for rushing a foundation, sir."],
+  mastery: ["Learning becomes leverage only when it is captured and used.", "Take the lesson with you, sir. Knowledge is meant to improve the next decision."],
   character: ["Your character sheet is simply the evidence made visible.", "Keep the promises small enough to keep, then keep them without drama."]
 };
 
