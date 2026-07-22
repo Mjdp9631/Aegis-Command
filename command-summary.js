@@ -21,7 +21,7 @@ function card(view, label, value, note, className = "") {
   return `<button class="command-summary-card ${className}" data-summary-view="${view}"><p>${label}</p><strong>${value}</strong><small>${note}</small></button>`;
 }
 
-function render({ missions, trades, projects, content, recoveryLogs, operations }) {
+function render({ missions, trades, projects, content, recoveryLogs, operations, masteryEntries }) {
   const target = $("#command-summary");
   if (!target) return;
   const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
@@ -35,22 +35,25 @@ function render({ missions, trades, projects, content, recoveryLogs, operations 
   const recovery = missions.find((mission) => mission.category === "Recovery");
   const loggedRecovery = recoveryLogs[0];
   const completedOperations = operations.filter((operation) => operation.completed).length;
-  target.innerHTML = `${card("missions", "MISSIONS", `${activeMissions.length} active`, priority ? `Next: ${priority.title}` : "No current objective", "missions")}${card("detective", "DETECTIVE", winRate, closed.length ? `${closed.length} closed trade debriefs` : "Log the next trade debrief", "detective")}${card("enterprise", "SPECIAL PROJECTS", `${activeProjects} active`, `${published} published item${published === 1 ? "" : "s"}`, "special-projects")}${card("recovery", "RECOVERY", recovery ? missionLabel(recovery) : "Locked", loggedRecovery ? `Latest report: ${loggedRecovery.rehab_completed ? "rehab complete" : "rehab pending"}` : "Awaiting first recovery report", "recovery")}${card("character", "CHARACTER", `${completedOperations}/${operations.length || 0}`, "Today's operations completed", "character")}`;
+  const mindEntries = masteryEntries.filter((entry) => ["Book", "Quote", "Trading Note", "Psychology", "Space", "Business", "Stoicism"].includes(entry.category)).length;
+  const bodyEntries = masteryEntries.filter((entry) => ["Health", "Gym", "Sports", "Performance"].includes(entry.category)).length;
+  target.innerHTML = `${card("missions", "MISSIONS", `${activeMissions.length} active`, priority ? `Next: ${priority.title}` : "No current objective", "missions")}${card("detective", "DETECTIVE", winRate, closed.length ? `${closed.length} closed trade debriefs` : "Log the next trade debrief", "detective")}${card("enterprise", "SPECIAL PROJECTS", `${activeProjects} active`, `${published} published item${published === 1 ? "" : "s"}`, "special-projects")}${card("recovery", "RECOVERY", recovery ? missionLabel(recovery) : "Locked", loggedRecovery ? `Latest report: ${loggedRecovery.rehab_completed ? "rehab complete" : "rehab pending"}` : "Awaiting first recovery report", "recovery")}${card("mastery", "MASTERY", `${mindEntries} mind`, `${bodyEntries} body entries`, "mastery")}${card("character", "CHARACTER", `${completedOperations}/${operations.length || 0}`, "Today's operations completed", "character")}`;
 }
 
 async function load() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [missionsResult, tradesResult, projectsResult, contentResult, recoveryResult, operationsResult] = await Promise.all([
+  const [missionsResult, tradesResult, projectsResult, contentResult, recoveryResult, operationsResult, masteryResult] = await Promise.all([
     supabase.from("missions").select("*"),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }),
     supabase.from("business_projects").select("*"),
     supabase.from("content_items").select("*"),
     supabase.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1),
-    supabase.from("operations").select("*").eq("scheduled_date", today)
+    supabase.from("operations").select("*").eq("scheduled_date", today),
+    supabase.from("mastery_entries").select("*")
   ]);
-  render({ missions: missionsResult.data || [], trades: tradesResult.data || [], projects: projectsResult.data || [], content: contentResult.data || [], recoveryLogs: recoveryResult.data || [], operations: operationsResult.data || [] });
+  render({ missions: missionsResult.data || [], trades: tradesResult.data || [], projects: projectsResult.data || [], content: contentResult.data || [], recoveryLogs: recoveryResult.data || [], operations: operationsResult.data || [], masteryEntries: masteryResult.data || [] });
 }
 
 document.addEventListener("click", (event) => {
@@ -62,5 +65,6 @@ if (supabase) {
   load();
   supabase.auth.onAuthStateChange(() => setTimeout(load, 100));
   window.addEventListener("aegis:missions-changed", () => setTimeout(load, 100));
+  window.addEventListener("aegis:mastery-changed", () => setTimeout(load, 100));
   document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(load, 700); });
 }
