@@ -143,7 +143,7 @@ main { background: linear-gradient(90deg, rgba(4, 10, 17, .29), rgba(4, 10, 17, 
 .signal-orb span:nth-child(3) { animation-duration: 22s; }
 
 /* COMMAND CENTER — rearrange the existing live modules into a command-console layout. */
-#command {
+#command.active {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(330px, .85fr);
   grid-template-areas:
@@ -155,6 +155,7 @@ main { background: linear-gradient(90deg, rgba(4, 10, 17, .29), rgba(4, 10, 17, 
     "evening evening";
   gap: 14px;
 }
+#command:not(.active) { display: none !important; }
 #command > .hero { grid-area: hero; min-height: 430px; margin: 0; }
 #command > .hero .hero-copy { position: relative; z-index: 2; max-width: 47%; }
 #command > .hero::before {
@@ -231,6 +232,76 @@ main { background: linear-gradient(90deg, rgba(4, 10, 17, .29), rgba(4, 10, 17, 
 #character .section-intro { border-left: 2px solid rgba(210, 126, 247, .8); padding-left: 18px; }
 #character .stat-grid article { background: radial-gradient(circle at 82% 25%, rgba(113, 75, 204, .15), transparent 26%), linear-gradient(135deg, rgba(16, 22, 42, .92), rgba(8,15,28,.82)) !important; }
 
+/* Shared command-console grammar for every department. Backgrounds change; the operating system does not. */
+.view.active:not(#command) {
+  position: relative;
+  isolation: isolate;
+  padding: 28px;
+  border: 1px solid rgba(108, 165, 224, .18);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(5, 14, 24, .48), rgba(7, 15, 26, .22));
+  box-shadow: 0 24px 70px rgba(0,0,0,.22), inset 0 1px rgba(165, 215, 255, .055);
+}
+.view.active:not(#command)::before {
+  content: "AEGIS // LIVE DEPARTMENT FEED";
+  position: absolute;
+  right: 22px;
+  top: 17px;
+  color: rgba(105, 184, 255, .54);
+  font: 700 8px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .17em;
+}
+.view.active:not(#command) > .section-intro {
+  position: relative;
+  margin: 0 0 23px;
+  padding: 3px 0 19px;
+  border-bottom: 1px solid rgba(103, 164, 225, .17);
+}
+.view.active:not(#command) > .section-intro::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 92px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--lab-amber), var(--lab-blue), transparent);
+  box-shadow: 0 0 12px rgba(99, 180, 255, .48);
+}
+.view.active:not(#command) > .section-intro h2 { max-width: 760px; }
+.view.active:not(#command) .metric-grid { margin: 0 0 16px; }
+.view.active:not(#command) .content-grid { margin-top: 0; }
+.view.active:not(#command) .panel,
+.view.active:not(#command) .mission-card,
+.view.active:not(#command) .mastery-category,
+.view.active:not(#command) .mastery-entry { background: linear-gradient(135deg, rgba(10,24,40,.67), rgba(5,13,23,.51)) !important; }
+
+/* Detective becomes a trading terminal: metrics above, journal below in a single framed console. */
+#detective.active .detective-metrics { max-width: none; grid-template-columns: repeat(4, 1fr); }
+#detective.active .trade-panel { margin-top: 0; }
+#detective.active .trade-panel .panel-head { padding-bottom: 13px; border-bottom: 1px solid rgba(92, 177, 255, .16); }
+
+/* Mission Control and Special Projects share a mission-board rhythm, not a plain-card page. */
+#missions.active .mission-cards,
+#enterprise.active .content-grid { margin-top: 0; }
+#missions.active .mission-card { min-height: 230px; }
+#missions.active .mission-card::after {
+  content: "MISSION NODE";
+  display: block;
+  margin-top: 16px;
+  color: rgba(243, 183, 83, .52);
+  font: 700 8px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .17em;
+}
+
+/* Recovery stays quieter and clinical; Mastery becomes a library/workshop console; Character remains a vault. */
+#recovery.active .content-grid { margin-top: 0; }
+#recovery.active .panel::after { content: "CLINICAL TRACKING // LIVE"; display: block; margin-top: 18px; color: rgba(102,224,168,.54); font:700 8px/1 ui-monospace,monospace; letter-spacing:.16em; }
+#mastery.active .mastery-tabs { margin: 0 0 15px; }
+#mastery.active .mastery-category-grid { margin-top: 0; }
+#mastery.active .mastery-toolbar { border-top: 1px solid rgba(102, 176, 244, .16); padding-top: 18px; }
+#character.active .stat-grid { margin-top: 0; }
+#character.active .stat-grid article { min-height: 190px; }
+
 .intel-strip { background: linear-gradient(90deg, rgba(15, 29, 48, .94), rgba(10, 17, 29, .78)) !important; }
 dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); }
 .dialog-card { border: 1px solid rgba(111, 183, 254, .30) !important; box-shadow: 0 28px 95px rgba(0,0,0,.65), 0 0 42px rgba(57,145,240,.13) !important; }
@@ -242,7 +313,10 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
 @keyframes aegis-orbit { to { transform:rotate(360deg); } }
 
 @media (max-width: 760px) {
-  #command { display: block; }
+  .view.active:not(#command) { padding: 20px 16px; }
+  .view.active:not(#command)::before { display: none; }
+  #detective.active .detective-metrics { grid-template-columns: repeat(2, 1fr); }
+  #command.active { display: block; }
   #command > * { margin-top: 16px !important; }
   #command > .hero { min-height: 350px; }
   #command > .hero .hero-copy { max-width: 66%; }
@@ -255,7 +329,7 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   #detective .section-intro::after { opacity:.34; width:100%; }
 }
 @media (min-width: 761px) and (max-width: 1120px) {
-  #command {
+  #command.active {
     grid-template-columns: 1fr;
     grid-template-areas: "hero" "briefing" "metrics" "content" "summary" "intel" "evening";
   }
