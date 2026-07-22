@@ -5,8 +5,8 @@ const db = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.su
 const root = document.querySelector("#mastery");
 const mindTypes = ["Book", "Quote", "Trading Note", "Psychology", "Space", "Business", "Stoicism"];
 const bodyTypes = ["Health", "Gym", "Sports", "Performance"];
-let lane = "mind";
-let activeType = "Book";
+let lane = localStorage.getItem("aegis-mastery-lane") === "body" ? "body" : "mind";
+let activeType = localStorage.getItem("aegis-mastery-type") || (lane === "body" ? "Health" : "Book");
 let entries = [];
 let recoveryReady = false;
 let cleanRendering = false;
@@ -14,6 +14,7 @@ let cleanRendering = false;
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]));
 const isLocked = type => ["Sports", "Performance"].includes(type) && !recoveryReady;
 const typeLabel = type => type === "Trading Note" ? "Trading Notes" : type;
+const saveView = () => { localStorage.setItem("aegis-mastery-lane", lane); localStorage.setItem("aegis-mastery-type", activeType); };
 
 function entryCard(entry) {
   return `<article class="mastery-entry"><div class="entry-meta"><span>${escapeHtml(entry.category)}</span>${entry.rating ? `<b>${entry.rating}/5</b>` : ""}</div><h3>${escapeHtml(entry.title)}</h3>${entry.summary ? `<p>${escapeHtml(entry.summary)}</p>` : ""}${entry.key_lessons ? `<p><b>Key takeaways:</b> ${escapeHtml(entry.key_lessons)}</p>` : ""}</article>`;
@@ -82,6 +83,7 @@ async function saveEntry(event) {
   }
   lane = bodyTypes.includes(category) ? "body" : "mind";
   activeType = category;
+  saveView();
   document.querySelector("#mastery-clean-dialog").close();
   await load();
   window.dispatchEvent(new Event("aegis:mastery-changed"));
@@ -102,8 +104,8 @@ document.addEventListener("click", event => {
   const laneButton = event.target.closest("[data-mastery-clean-lane]");
   const typeButton = event.target.closest("[data-mastery-clean-type]");
   const categoryCard = event.target.closest("[data-mastery-clean-type]");
-  if (laneButton) { lane = laneButton.dataset.masteryCleanLane; activeType = lane === "mind" ? "Book" : "Health"; render(); return; }
-  if (typeButton || categoryCard) { const next = (typeButton || categoryCard).dataset.masteryCleanType; if (!isLocked(next)) { activeType = next; render(); } return; }
+  if (laneButton) { lane = laneButton.dataset.masteryCleanLane; activeType = lane === "mind" ? "Book" : "Health"; saveView(); render(); return; }
+  if (typeButton || categoryCard) { const next = (typeButton || categoryCard).dataset.masteryCleanType; if (!isLocked(next)) { activeType = next; saveView(); render(); } return; }
   if (event.target.closest("[data-mastery-clean-add]")) openDialog();
 });
 
