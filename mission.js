@@ -11,7 +11,7 @@ let missions = [];
 function renderMissions() {
   const target = $("#mission-cards");
   if (!target) return;
-  target.innerHTML = missions.length ? missions.map(mission => `<article class="mission-card"><span class="eyebrow amber">${escape(mission.priority)}</span><h3>${escape(mission.title)}</h3><p>${escape(mission.category)} mission · ${mission.progress}% complete</p><div class="meter"><i style="width:${mission.progress}%"></i></div></article>`).join("") : '<article class="mission-card"><span class="eyebrow amber">MISSION CONTROL</span><h3>No active missions yet.</h3><p>Open the few objectives that matter now.</p></article>';
+  target.innerHTML = missions.length ? missions.map(mission => `<button class="mission-card mission-open" data-mission-id="${mission.id}"><span class="eyebrow amber">${escape(mission.priority)}</span><h3>${escape(mission.title)}</h3><p>${escape(mission.category)} mission · ${mission.progress}% complete</p><div class="meter"><i style="width:${mission.progress}%"></i></div><small>Click to update</small></button>`).join("") : '<article class="mission-card"><span class="eyebrow amber">MISSION CONTROL</span><h3>No active missions yet.</h3><p>Open the few objectives that matter now.</p></article>';
 }
 
 function syncRecoveryVisibility() {
@@ -19,9 +19,11 @@ function syncRecoveryVisibility() {
   if (!recoveryNav) return;
   const recoveryMissions = missions.filter(mission => mission.category === "Recovery");
   const recoveryIsActive = recoveryMissions.some(mission => Number(mission.progress) < 100);
-  if (recoveryIsActive || !recoveryMissions.length) { recoveryNav.hidden = false; return; }
+  if (recoveryIsActive || !recoveryMissions.length) { localStorage.removeItem("aegis-recovery-archived"); recoveryNav.hidden = false; return; }
+  if (localStorage.getItem("aegis-recovery-archived") === "yes") { recoveryNav.hidden = true; return; }
   const approved = window.confirm("Recovery has reached 100%. Archive the Recovery section from navigation? You can bring it back later if needed.");
   recoveryNav.hidden = approved;
+  if (approved) localStorage.setItem("aegis-recovery-archived", "yes");
   if (approved && location.hash === "#recovery") location.hash = "#missions";
 }
 
@@ -50,8 +52,39 @@ async function loadData() {
 }
 
 function closeButtons() { document.querySelectorAll("#mission-dialog .dialog-close,#recovery-dialog .dialog-close").forEach(button => button.addEventListener("click", () => button.closest("dialog").close())); }
+function buildMissionEditor() {
+  const dialog = document.createElement("dialog");
+  dialog.id = "mission-editor-dialog";
+  dialog.innerHTML = '<form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Update the objective.</h2><label>Mission <input id="edit-mission-title" required /></label><label>Progress <input id="edit-mission-progress" type="number" min="0" max="100" required /></label><button class="primary" value="default">Save mission</button></form>';
+  document.body.appendChild(dialog);
+  dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
+  dialog.querySelector("form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const mission = missions.find(item => item.id === dialog.dataset.missionId);
+    const title = $("#edit-mission-title").value.trim(), progress = Number($("#edit-mission-progress").value);
+    if (!mission || !title || progress < 0 || progress > 100) return;
+    const { data, error } = await client.from("missions").update({ title, progress }).eq("id", mission.id).select().single();
+    if (error) return alert(`Mission could not be updated: ${error.message}`);
+    missions = missions.map(item => item.id === data.id ? data : item);
+    dialog.close();
+    renderMissions();
+    syncRecoveryVisibility();
+  });
+  return dialog;
+}
 function bindDialogs() {
   const missionDialog = $("#mission-dialog"), recoveryDialog = $("#recovery-dialog");
+  const editor = buildMissionEditor();
+  document.addEventListener("click", event => {
+    const button = event.target.closest(".mission-open");
+    if (!button || !session) return;
+    const mission = missions.find(item => item.id === button.dataset.missionId);
+    if (!mission) return;
+    editor.dataset.missionId = mission.id;
+    $("#edit-mission-title").value = mission.title;
+    $("#edit-mission-progress").value = mission.progress;
+    editor.showModal();
+  });
   document.querySelectorAll('[data-action="add-mission"]').forEach(button => button.addEventListener("click", () => { if (!session) return alert("Sign in before opening a mission."); missionDialog.showModal(); }));
   $("#save-mission").addEventListener("click", async event => { const title = $("#mission-title").value.trim(); if (!title) return event.preventDefault(); const { data, error } = await client.from("missions").insert({ title, category: $("#mission-category").value, priority: $("#mission-priority").value, progress: Number($("#mission-progress").value || 0) }).select().single(); if (error) { event.preventDefault(); return console.error(error); } missions.unshift(data); renderMissions(); $("#mission-title").value = ""; });
   document.querySelectorAll('[data-action="log-recovery"]').forEach(button => button.addEventListener("click", () => { if (!session) return alert("Sign in before logging recovery."); recoveryDialog.showModal(); }));

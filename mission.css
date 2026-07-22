@@ -1,0 +1,1 @@
+.mission-card.mission-open{width:100%;text-align:left;color:var(--ink);cursor:pointer;font:inherit}.mission-card.mission-open:hover{border-color:rgba(228,173,99,.52);transform:translateY(-1px)}.mission-card.mission-open small{display:block;margin-top:12px;color:var(--amber);font-size:10px}
