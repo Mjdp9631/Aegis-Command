@@ -424,6 +424,86 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   #adviser-panel { margin-top: 14px !important; min-height: 142px; }
 }
 
+/* Pixel-layout pass — Command Center matches the approved deck architecture. */
+@media (min-width: 761px) {
+  body, button, input, select, textarea { font-family: "Rajdhani", ui-sans-serif, system-ui, sans-serif; }
+  .app-shell { grid-template-columns: 224px minmax(0, 1fr) !important; }
+  .sidebar, .sidebar:hover, .sidebar:focus-within { width: 224px !important; min-width: 224px !important; }
+  .sidebar { transition: none !important; background: linear-gradient(180deg, rgba(3,10,17,.98), rgba(3,11,18,.94)) !important; }
+  .sidebar nav { min-width: 0; }
+  .brand, .sidebar:hover .brand { min-width: 0; }
+  .brand > span:last-child, .system-label, .sidebar-foot span { opacity: 1; transform: none; }
+  .brand-wordmark { font-family: "Space Mono", ui-monospace, monospace; font-size: 17px; }
+  .nav-link, .sidebar:hover .nav-link { min-width: 0; font-size: 14px !important; letter-spacing: .04em; }
+  .nav-link > span { font-size: 17px !important; }
+  main { max-width: none; margin: 0; padding: 20px 32px 42px; }
+  .topbar { height: 42px; margin-bottom: 14px; }
+  .topbar h1 { font-size: 14px; letter-spacing: .14em; }
+  .topbar .eyebrow { font-family: "Space Mono", ui-monospace, monospace; font-size: 8px; }
+
+  #command.active { display: block; }
+  .command-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1.03fr) minmax(0, .97fr) 316px;
+    grid-template-rows: 392px 292px;
+    gap: 14px;
+    align-items: stretch;
+  }
+  #command > .command-stage > .hero {
+    grid-column: 1 / 3;
+    grid-row: 1;
+    min-height: 392px;
+    padding: 38px 42px;
+    border-radius: 5px;
+    background: linear-gradient(100deg, rgba(5,14,24,.57), rgba(5,14,24,.30) 48%, rgba(4,12,20,.16)) !important;
+    border-color: rgba(117, 179, 236, .25) !important;
+    box-shadow: inset 0 1px rgba(184,220,255,.08), 0 18px 48px rgba(0,0,0,.22) !important;
+  }
+  #command > .command-stage .hero-copy { max-width: 43%; }
+  #command > .command-stage .hero-copy h2 { font-size: clamp(44px, 3.8vw, 62px); line-height: .92; letter-spacing: -.055em; }
+  #command > .command-stage .hero-copy p:not(.eyebrow) { max-width: 360px; font-size: 17px; line-height: 1.42; }
+  #command > .command-stage .hero-console { top: 42px; right: 32px; bottom: 31px; width: 49%; }
+  #command > .command-stage .terminal-chart { border-radius: 4px; }
+  #command > .command-stage .terminal-toolbar,
+  #command > .command-stage .terminal-footer,
+  .command-side-rail span,
+  .command-side-rail p { font-family: "Space Mono", ui-monospace, monospace; }
+
+  .command-side-rail { grid-column: 3; grid-row: 1 / 3; display: grid; grid-template-rows: auto auto auto 1fr; gap: 10px; align-content: start; }
+  #morning-slot { min-height: 0; }
+  #morning-briefing { position: static; width: 100%; min-height: 0; margin: 0 !important; padding: 14px; border-radius: 5px; background: linear-gradient(135deg, rgba(7,18,31,.77), rgba(3,11,19,.60)) !important; border-color: rgba(130,188,245,.27) !important; }
+  #morning-briefing .adviser-head h3 { font-size: 13px; }
+  #morning-briefing .adviser-grid { grid-template-columns: 1fr; gap: 5px; }
+  #morning-briefing .adviser-grid article { padding: 7px 0 0; border: 0; }
+  #morning-briefing .adviser-grid p { font-size: 11px; line-height: 1.35; }
+  .command-side-rail .terminal-instruments { display: grid; grid-template-columns: 1fr; grid-template-rows: 158px 108px; gap: 10px; }
+  .command-side-rail .readiness-dial { grid-row: 1; }
+  .command-side-rail .radar-dial { display: none; }
+  .command-side-rail .market-tickers { grid-column: 1; grid-row: 2; padding: 12px; border-radius: 5px; }
+  .command-side-rail .readiness-dial::before { width: 108px; }
+  .command-side-rail .readiness-dial::after { width: 84px; }
+  .command-side-rail .readiness-dial strong { font-size: 32px; }
+  #command > .command-stage .command-summary { display: grid; grid-template-columns: 1fr; gap: 0; margin: 0; border: 1px solid rgba(117,179,236,.25); border-radius: 5px; overflow: hidden; background: linear-gradient(135deg, rgba(5,14,24,.72), rgba(5,14,24,.48)); }
+  #command > .command-stage .command-summary-card { min-height: 43px; padding: 7px 11px; border: 0; border-bottom: 1px solid rgba(117,179,236,.15); border-radius: 0; background: transparent !important; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 8px; }
+  #command > .command-stage .command-summary-card:last-child { border-bottom: 0; }
+  #command > .command-stage .command-summary-card p { grid-column: 1; margin: 0; font-size: 9px; letter-spacing: .11em; }
+  #command > .command-stage .command-summary-card strong { grid-column: 2; grid-row: 1; margin: 0; font: 700 16px/1 "Space Mono", ui-monospace, monospace; }
+  #command > .command-stage .command-summary-card small { grid-column: 1 / -1; font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #command > .command-stage .command-summary-card.character { display: none; }
+
+  #command > .metric-grid { display: none !important; }
+  #command > .content-grid { grid-column: 1 / 3; grid-row: 2; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 0; }
+  #command > .content-grid .panel { min-height: 292px; padding: 17px 20px; border-radius: 5px; background: linear-gradient(135deg, rgba(5,14,24,.67), rgba(5,14,24,.42)) !important; }
+  #command > .content-grid .panel-head { margin-bottom: 12px; padding-bottom: 11px; }
+  #command > .content-grid .panel-head h3 { font-size: 19px; letter-spacing: -.025em; }
+  #command > .content-grid .operations-list article, #command > .content-grid .mission-list article { min-height: 42px; padding: 8px 0; }
+  #command > .content-grid .operation strong, #command > .content-grid .mission-list strong { font-size: 13px; }
+  #command > .intel-strip { margin-top: 14px; min-height: 76px; padding: 14px 20px; border-radius: 5px; background: linear-gradient(100deg, rgba(5,14,24,.72), rgba(5,14,24,.44)) !important; }
+  #command > .intel-strip h3 { font-size: 15px; }
+  #adviser-panel { margin-top: 14px !important; min-height: 122px; padding: 16px 20px; border-radius: 5px; }
+  #adviser-panel .adviser-grid { grid-template-columns: 1fr 1fr; }
+}
+
 @media (max-width: 760px) {
   .command-stage { display: block; }
   .command-side-rail { margin-top: 14px; }
@@ -766,4 +846,61 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   #morning-briefing .adviser-grid { grid-template-columns: 1fr; }
   #command > .content-grid { grid-template-columns: 1fr; }
   #command > .command-summary { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* === COMMAND DECK REPLICA: final cascade authority === */
+@media (min-width: 761px) {
+  body, button, input, select, textarea { font-family: "Rajdhani", ui-sans-serif, system-ui, sans-serif; }
+  .app-shell { grid-template-columns: 224px minmax(0, 1fr) !important; }
+  .sidebar, .sidebar:hover, .sidebar:focus-within { width:224px !important; min-width:224px !important; transition:none !important; background:linear-gradient(180deg,rgba(3,10,17,.98),rgba(3,11,18,.94)) !important; }
+  .sidebar nav,.brand,.sidebar:hover .brand { min-width:0; }
+  .brand > span:last-child,.system-label,.sidebar-foot span { opacity:1; transform:none; }
+  .brand-wordmark { font-family:"Space Mono",ui-monospace,monospace; font-size:17px; }
+  .nav-link,.sidebar:hover .nav-link { min-width:0; font-size:14px !important; letter-spacing:.04em; }
+  .nav-link > span { font-size:17px !important; }
+  main { max-width:none; margin:0; padding:20px 32px 42px; }
+  .topbar { height:42px; margin-bottom:14px; }
+  .topbar h1 { font-size:14px; letter-spacing:.14em; }
+  .topbar .eyebrow { font-family:"Space Mono",ui-monospace,monospace; font-size:8px; }
+  #command.active { display:block; }
+  .command-stage { display:grid; grid-template-columns:minmax(0,1.03fr) minmax(0,.97fr) 316px; grid-template-rows:392px 292px; gap:14px; align-items:stretch; }
+  #command > .command-stage > .hero { grid-column:1 / 3; grid-row:1; min-height:392px; margin:0; padding:38px 42px; border-radius:5px; background:linear-gradient(100deg,rgba(5,14,24,.57),rgba(5,14,24,.30) 48%,rgba(4,12,20,.16)) !important; border-color:rgba(117,179,236,.25) !important; }
+  #command > .command-stage .hero-copy { max-width:43%; }
+  #command > .command-stage .hero-copy h2 { font-size:clamp(44px,3.8vw,62px); line-height:.92; letter-spacing:-.055em; }
+  #command > .command-stage .hero-copy p:not(.eyebrow) { max-width:360px; font-size:17px; line-height:1.42; }
+  #command > .command-stage .hero-console { top:42px; right:32px; bottom:31px; width:49%; }
+  #command > .command-stage .terminal-chart { height:100%; border-radius:4px; }
+  #command > .command-stage .terminal-toolbar,#command > .command-stage .terminal-footer,.command-side-rail span,.command-side-rail p { font-family:"Space Mono",ui-monospace,monospace; }
+  .command-side-rail { grid-column:3; grid-row:1 / 3; display:grid; grid-template-rows:auto auto auto 1fr; gap:10px; align-content:start; }
+  #morning-slot { min-height:0; }
+  #morning-briefing { position:static; width:100%; min-height:0; margin:0 !important; padding:14px; border-radius:5px; background:linear-gradient(135deg,rgba(7,18,31,.77),rgba(3,11,19,.60)) !important; border-color:rgba(130,188,245,.27) !important; }
+  #morning-briefing .adviser-head h3 { font-size:13px; }
+  #morning-briefing .adviser-grid { grid-template-columns:1fr; gap:5px; }
+  #morning-briefing .adviser-grid article { padding:7px 0 0; border:0; }
+  #morning-briefing .adviser-grid p { font-size:11px; line-height:1.35; }
+  .command-side-rail .terminal-instruments { display:grid; grid-template-columns:1fr; grid-template-rows:158px 108px; gap:10px; }
+  .command-side-rail .readiness-dial { grid-row:1; }
+  .command-side-rail .radar-dial { display:none; }
+  .command-side-rail .market-tickers { grid-column:1; grid-row:2; padding:12px; border-radius:5px; }
+  .command-side-rail .readiness-dial::before { width:108px; }
+  .command-side-rail .readiness-dial::after { width:84px; }
+  .command-side-rail .readiness-dial strong { font-size:32px; }
+  #command > .command-stage .command-summary { display:grid; grid-template-columns:1fr; gap:0; margin:0; border:1px solid rgba(117,179,236,.25); border-radius:5px; overflow:hidden; background:linear-gradient(135deg,rgba(5,14,24,.72),rgba(5,14,24,.48)); }
+  #command > .command-stage .command-summary-card { min-height:43px; padding:7px 11px; border:0; border-bottom:1px solid rgba(117,179,236,.15); border-radius:0; background:transparent !important; display:grid; grid-template-columns:1fr auto; align-items:center; gap:2px 8px; }
+  #command > .command-stage .command-summary-card:last-child { border-bottom:0; }
+  #command > .command-stage .command-summary-card p { grid-column:1; margin:0; font-size:9px; letter-spacing:.11em; }
+  #command > .command-stage .command-summary-card strong { grid-column:2; grid-row:1; margin:0; font:700 16px/1 "Space Mono",ui-monospace,monospace; }
+  #command > .command-stage .command-summary-card small { grid-column:1 / -1; font-size:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #command > .command-stage .command-summary-card.character { display:none; }
+  #command > .metric-grid { display:none !important; }
+  #command > .content-grid { grid-column:1 / 3; grid-row:2; display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:0; }
+  #command > .content-grid .panel { min-height:292px; padding:17px 20px; border-radius:5px; background:linear-gradient(135deg,rgba(5,14,24,.67),rgba(5,14,24,.42)) !important; }
+  #command > .content-grid .panel-head { margin-bottom:12px; padding-bottom:11px; }
+  #command > .content-grid .panel-head h3 { font-size:19px; letter-spacing:-.025em; }
+  #command > .content-grid .operations-list article,#command > .content-grid .mission-list article { min-height:42px; padding:8px 0; }
+  #command > .content-grid .operation strong,#command > .content-grid .mission-list strong { font-size:13px; }
+  #command > .intel-strip { margin-top:14px; min-height:76px; padding:14px 20px; border-radius:5px; background:linear-gradient(100deg,rgba(5,14,24,.72),rgba(5,14,24,.44)) !important; }
+  #command > .intel-strip h3 { font-size:15px; }
+  #adviser-panel { margin-top:14px !important; min-height:122px; padding:16px 20px; border-radius:5px; }
+  #adviser-panel .adviser-grid { grid-template-columns:1fr 1fr; }
 }
