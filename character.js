@@ -18,6 +18,14 @@ function levelFromXp(xp) {
   return { level, current: remaining, required, progress: (remaining / required) * 100 };
 }
 
+function missionProgress(mission) {
+  return mission?.completion_type === "units" && Number(mission.target_count) > 0 ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission?.completed ? 100 : 0;
+}
+
+function missionLabel(mission) {
+  return mission?.completion_type === "units" && Number(mission.target_count) > 0 ? `${Math.min(Number(mission.completed_count) || 0, Number(mission.target_count))} / ${mission.target_count} ${mission.unit_label || "units"}` : mission?.completed ? "Complete" : "Not complete";
+}
+
 function monthKey(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -85,7 +93,7 @@ function render({ operations, trades, missions, projects, contentItems }) {
   const trading = tradingXp(trades);
   const ccfx = ccfxXp(projects, contentItems);
   const recovery = missions.find((mission) => mission.category === "Recovery");
-  $("#character").innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>Real execution earns XP. Levels require sustained proof.</p></div><section class="evidence-grid">${xpStat("DISCIPLINE", discipline.xp, discipline.ledger, "daily", "amber")}${xpStat("TRADING INTEL", trading.xp, trading.ledger, "monthly", "blue")}${xpStat("CCFX QUESTS", ccfx.xp, ccfx.ledger, "CCFX", "amber")}${metricCard("RECOVERY QUEST", recovery ? `${recovery.progress}%` : "LOCKED", recovery ? escape(recovery.title) : "Awaiting a Recovery mission", recovery ? recovery.progress : 0, "green")}</section><section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
+  $("#character").innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>Real execution earns XP. Levels require sustained proof.</p></div><section class="evidence-grid">${xpStat("DISCIPLINE", discipline.xp, discipline.ledger, "daily", "amber")}${xpStat("TRADING INTEL", trading.xp, trading.ledger, "monthly", "blue")}${xpStat("CCFX QUESTS", ccfx.xp, ccfx.ledger, "CCFX", "amber")}${metricCard("RECOVERY QUEST", recovery ? missionLabel(recovery) : "LOCKED", recovery ? escape(recovery.title) : "Awaiting a Recovery mission", missionProgress(recovery), "green")}</section><section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
 }
 
 async function load() {

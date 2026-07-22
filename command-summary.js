@@ -13,6 +13,10 @@ function outcome(trade) {
   return "B/E";
 }
 
+function isMeasured(mission) { return mission.completion_type === "units" && Number(mission.target_count) > 0; }
+function missionProgress(mission) { return isMeasured(mission) ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission.completed ? 100 : 0; }
+function missionLabel(mission) { return isMeasured(mission) ? `${Math.min(Number(mission.completed_count) || 0, Number(mission.target_count))} / ${mission.target_count} ${mission.unit_label || "units"}` : mission.completed ? "Complete" : "Not complete"; }
+
 function card(view, label, value, note, className = "") {
   return `<button class="command-summary-card ${className}" data-summary-view="${view}"><p>${label}</p><strong>${value}</strong><small>${note}</small></button>`;
 }
@@ -20,7 +24,7 @@ function card(view, label, value, note, className = "") {
 function render({ missions, trades, projects, content, recoveryLogs, operations }) {
   const target = $("#command-summary");
   if (!target) return;
-  const activeMissions = missions.filter((mission) => Number(mission.progress) < 100);
+  const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
   const priority = activeMissions.find((mission) => mission.priority === "Do now") || activeMissions[0];
   const closed = trades.filter((trade) => trade.trade_status !== "Open");
   const wins = closed.filter((trade) => ["Win", "Small win"].includes(outcome(trade))).length;
@@ -31,7 +35,7 @@ function render({ missions, trades, projects, content, recoveryLogs, operations 
   const recovery = missions.find((mission) => mission.category === "Recovery");
   const loggedRecovery = recoveryLogs[0];
   const completedOperations = operations.filter((operation) => operation.completed).length;
-  target.innerHTML = `${card("missions", "MISSIONS", `${activeMissions.length} active`, priority ? `Next: ${priority.title}` : "No current objective", "missions")}${card("detective", "DETECTIVE", winRate, closed.length ? `${closed.length} closed trade debriefs` : "Log the next trade debrief", "detective")}${card("enterprise", "SPECIAL PROJECTS", `${activeProjects} active`, `${published} published item${published === 1 ? "" : "s"}`, "special-projects")}${card("recovery", "RECOVERY", recovery ? `${recovery.progress}%` : "Locked", loggedRecovery ? `Latest report: ${loggedRecovery.rehab_completed ? "rehab complete" : "rehab pending"}` : "Awaiting first recovery report", "recovery")}${card("character", "CHARACTER", `${completedOperations}/${operations.length || 0}`, "Today's operations completed", "character")}`;
+  target.innerHTML = `${card("missions", "MISSIONS", `${activeMissions.length} active`, priority ? `Next: ${priority.title}` : "No current objective", "missions")}${card("detective", "DETECTIVE", winRate, closed.length ? `${closed.length} closed trade debriefs` : "Log the next trade debrief", "detective")}${card("enterprise", "SPECIAL PROJECTS", `${activeProjects} active`, `${published} published item${published === 1 ? "" : "s"}`, "special-projects")}${card("recovery", "RECOVERY", recovery ? missionLabel(recovery) : "Locked", loggedRecovery ? `Latest report: ${loggedRecovery.rehab_completed ? "rehab complete" : "rehab pending"}` : "Awaiting first recovery report", "recovery")}${card("character", "CHARACTER", `${completedOperations}/${operations.length || 0}`, "Today's operations completed", "character")}`;
 }
 
 async function load() {
