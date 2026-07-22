@@ -531,9 +531,9 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
     "evening evening";
   gap: 16px;
 }
-#command > .hero { min-height: 610px; }
+#command > .hero { min-height: 690px; }
 #command > .hero .hero-copy { max-width: 35%; }
-#command > .hero .hero-console { top: 176px; right: 32px; bottom: 31px; width: 59%; }
+#command > .hero .hero-console { top: 230px; right: 32px; bottom: 31px; width: 59%; }
 #morning-briefing {
   grid-area: hero;
   z-index: 8;
@@ -555,30 +555,78 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
 #command > .intel-strip { min-height: 112px; }
 #adviser-panel { min-height: 150px; }
 
+/* Retire the original placeholder status row on Command Center.  Its live,
+   clickable replacements are the Command Summary modules below, so there is
+   only one visual system on the page. */
+#command > .metric-grid { display: none; }
+
+/* The live work queue and mission control now form the main lower console,
+   rather than looking like the earlier generic dashboard cards. */
+#command > .content-grid {
+  grid-template-columns: minmax(0, 1.12fr) minmax(360px, .88fr);
+  gap: 18px;
+}
+#command > .content-grid .panel {
+  min-height: 348px;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(9, 25, 43, .68), rgba(5, 14, 25, .46)),
+    repeating-linear-gradient(90deg, transparent 0 45px, rgba(93, 175, 245, .035) 46px) !important;
+}
+#command > .content-grid .panel-head {
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(106, 172, 234, .16);
+}
+#command > .content-grid .panel-head h3 { letter-spacing: -.035em; }
+#command > .content-grid .operations-list article,
+#command > .content-grid .mission-list article {
+  min-height: 54px;
+  border-bottom-color: rgba(109, 171, 230, .13);
+}
+#command > .command-summary {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 14px;
+}
+#command > .command-summary-card {
+  min-height: 116px;
+  padding: 15px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, rgba(9, 25, 43, .62), rgba(5, 14, 25, .42)) !important;
+}
+#command > .command-summary-card strong { margin: 11px 0 6px; }
+#command > .intel-strip,
+#adviser-panel {
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(9, 25, 43, .68), rgba(5, 14, 25, .44)) !important;
+}
+
 /* Let the laboratory remain visible through every live-data module. */
 .panel, .metric, .command-summary > *, .stat-grid article, .mission-card, .mastery-type-card {
-  background: linear-gradient(135deg, rgba(10, 25, 43, .38), rgba(5, 14, 25, .25)) !important;
-  backdrop-filter: blur(5px);
+  background: linear-gradient(135deg, rgba(10, 25, 43, .52), rgba(5, 14, 25, .34)) !important;
+  backdrop-filter: blur(14px) saturate(118%);
 }
 .hero {
-  background: linear-gradient(100deg, rgba(8, 17, 30, .76), rgba(10, 23, 40, .48), rgba(5, 13, 23, .22)) !important;
+  background: linear-gradient(100deg, rgba(8, 17, 30, .80), rgba(10, 23, 40, .56), rgba(5, 13, 23, .30)) !important;
 }
 .terminal-chart,
 .terminal-instruments > article,
 .terminal-instruments > button {
-  background: linear-gradient(135deg, rgba(5, 14, 24, .58), rgba(6, 18, 32, .28)) !important;
+  background: linear-gradient(135deg, rgba(5, 14, 24, .72), rgba(6, 18, 32, .48)) !important;
 }
 
 @media (max-width: 1120px) and (min-width: 761px) {
-  #command > .hero { min-height: 600px; }
-  #command > .hero .hero-console { width: 62%; }
+  #command > .hero { min-height: 690px; }
+  #command > .hero .hero-console { top: 238px; width: 62%; }
   #morning-briefing { width: 38%; }
   #morning-briefing .adviser-grid { grid-template-columns: 1fr; }
+  #command > .command-summary { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 760px) {
   #command.active { display: block; }
-  #command > .hero { min-height: 400px; }
-  #command > .hero .hero-console { top: 118px; right: 12px; bottom: 16px; width: 61%; }
+  #command > .hero { min-height: 450px; }
+  #command > .hero .hero-console { top: 146px; right: 12px; bottom: 16px; width: 61%; }
   #morning-briefing { width: auto; margin: 15px 0 !important; }
   #morning-briefing .adviser-grid { grid-template-columns: 1fr; }
+  #command > .content-grid { grid-template-columns: 1fr; }
+  #command > .command-summary { grid-template-columns: repeat(2, 1fr); }
 }
