@@ -11,8 +11,8 @@
 
 body {
   background:
-    linear-gradient(90deg, rgba(3, 8, 14, .83) 0%, rgba(3, 8, 14, .53) 21%, rgba(3, 8, 14, .35) 58%, rgba(3, 8, 14, .72) 100%),
-    linear-gradient(180deg, rgba(3, 8, 14, .10), rgba(3, 8, 14, .66)),
+    linear-gradient(90deg, rgba(3, 8, 14, .63) 0%, rgba(3, 8, 14, .31) 21%, rgba(3, 8, 14, .17) 58%, rgba(3, 8, 14, .51) 100%),
+    linear-gradient(180deg, rgba(3, 8, 14, .03), rgba(3, 8, 14, .43)),
     url("assets/aegis-lab-background.png") center / cover fixed,
     var(--lab-ink) !important;
   min-height: 100vh;
@@ -35,13 +35,13 @@ body::before {
 }
 
 /* Each system opens into its own physical room. The active app tab selects the room. */
-body:has(#detective.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.78), rgba(3,8,14,.32) 52%, rgba(3,8,14,.68)), linear-gradient(180deg, rgba(3,8,14,.08), rgba(3,8,14,.58)), url("assets/detective-desk.png") !important; }
-body:has(#missions.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.79), rgba(3,8,14,.37) 52%, rgba(3,8,14,.68)), linear-gradient(180deg, rgba(3,8,14,.08), rgba(3,8,14,.62)), url("assets/missions-bay.png") !important; }
-body:has(#enterprise.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.77), rgba(3,8,14,.35) 52%, rgba(3,8,14,.66)), linear-gradient(180deg, rgba(3,8,14,.08), rgba(3,8,14,.58)), url("assets/projects-studio.png") !important; }
-body:has(#recovery.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.76), rgba(3,8,14,.32) 52%, rgba(3,8,14,.63)), linear-gradient(180deg, rgba(3,8,14,.06), rgba(3,8,14,.53)), url("assets/recovery-bay.png") !important; }
-body:has(#mastery.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.75), rgba(3,8,14,.28) 52%, rgba(3,8,14,.64)), linear-gradient(180deg, rgba(3,8,14,.05), rgba(3,8,14,.52)), url("assets/mastery-library.png") !important; }
-body:has(#mastery.active[data-mastery-lane="body"]) { background-image: linear-gradient(90deg, rgba(3,8,14,.75), rgba(3,8,14,.27) 52%, rgba(3,8,14,.64)), linear-gradient(180deg, rgba(3,8,14,.05), rgba(3,8,14,.52)), url("assets/mastery-gym.png") !important; }
-body:has(#character.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.78), rgba(3,8,14,.32) 52%, rgba(3,8,14,.68)), linear-gradient(180deg, rgba(3,8,14,.08), rgba(3,8,14,.58)), url("assets/character-vault.png") !important; }
+body:has(#detective.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.59), rgba(3,8,14,.17) 52%, rgba(3,8,14,.48)), linear-gradient(180deg, rgba(3,8,14,.02), rgba(3,8,14,.37)), url("assets/detective-desk.png") !important; }
+body:has(#missions.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.61), rgba(3,8,14,.20) 52%, rgba(3,8,14,.49)), linear-gradient(180deg, rgba(3,8,14,.02), rgba(3,8,14,.39)), url("assets/missions-bay.png") !important; }
+body:has(#enterprise.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.59), rgba(3,8,14,.18) 52%, rgba(3,8,14,.47)), linear-gradient(180deg, rgba(3,8,14,.02), rgba(3,8,14,.37)), url("assets/projects-studio.png") !important; }
+body:has(#recovery.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.57), rgba(3,8,14,.16) 52%, rgba(3,8,14,.44)), linear-gradient(180deg, rgba(3,8,14,.02), rgba(3,8,14,.33)), url("assets/recovery-bay.png") !important; }
+body:has(#mastery.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.56), rgba(3,8,14,.14) 52%, rgba(3,8,14,.44)), linear-gradient(180deg, rgba(3,8,14,.02), rgba(3,8,14,.32)), url("assets/mastery-library.png") !important; }
+body:has(#mastery.active[data-mastery-lane="body"]) { background-image: linear-gradient(90deg, rgba(3,8,14,.56), rgba(3,8,14,.14) 52%, rgba(3,8,14,.44)), linear-gradient(180deg, rgba(3,8,14,.02), rgba(3,8,14,.32)), url("assets/mastery-gym.png") !important; }
+body:has(#character.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.59), rgba(3,8,14,.17) 52%, rgba(3,8,14,.48)), linear-gradient(180deg, rgba(3,8,14,.02), rgba(3,8,14,.37)), url("assets/character-vault.png") !important; }
 
 .app-shell { position: relative; z-index: 1; grid-template-columns: 74px minmax(0, 1fr) !important; }
 
@@ -101,7 +101,7 @@ main { background: linear-gradient(90deg, rgba(4, 10, 17, .29), rgba(4, 10, 17, 
 
 /* Glass modules over the cave/lab scene. */
 .panel, .metric, .command-summary > *, .stat-grid article, .mission-card, .mastery-type-card {
-  background: linear-gradient(135deg, rgba(13, 25, 42, .70), rgba(7, 15, 27, .57)) !important;
+  background: linear-gradient(135deg, rgba(13, 25, 42, .55), rgba(7, 15, 27, .42)) !important;
   border: 1px solid var(--lab-line) !important;
   box-shadow: 0 18px 48px rgba(0,0,0,.18), inset 0 1px rgba(156, 205, 255, .035) !important;
   backdrop-filter: blur(9px);
@@ -239,7 +239,7 @@ main { background: linear-gradient(90deg, rgba(4, 10, 17, .29), rgba(4, 10, 17, 
   padding: 28px;
   border: 1px solid rgba(108, 165, 224, .18);
   border-radius: 16px;
-  background: linear-gradient(135deg, rgba(5, 14, 24, .48), rgba(7, 15, 26, .22));
+  background: linear-gradient(135deg, rgba(5, 14, 24, .30), rgba(7, 15, 26, .10));
   box-shadow: 0 24px 70px rgba(0,0,0,.22), inset 0 1px rgba(165, 215, 255, .055);
 }
 .view.active:not(#command)::before {
@@ -273,7 +273,7 @@ main { background: linear-gradient(90deg, rgba(4, 10, 17, .29), rgba(4, 10, 17, 
 .view.active:not(#command) .panel,
 .view.active:not(#command) .mission-card,
 .view.active:not(#command) .mastery-category,
-.view.active:not(#command) .mastery-entry { background: linear-gradient(135deg, rgba(10,24,40,.67), rgba(5,13,23,.51)) !important; }
+.view.active:not(#command) .mastery-entry { background: linear-gradient(135deg, rgba(10,24,40,.51), rgba(5,13,23,.37)) !important; }
 
 /* Detective becomes a trading terminal: metrics above, journal below in a single framed console. */
 #detective.active .detective-metrics { max-width: none; grid-template-columns: repeat(4, 1fr); }
