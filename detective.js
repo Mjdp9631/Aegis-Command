@@ -7,6 +7,7 @@ const $ = (selector) => document.querySelector(selector);
 let syncSetupUi = () => {};
 let currentTradeId = null;
 let loadedTrades = [];
+let activeFilters = {};
 
 function numberOrNull(value) {
   return value === "" || value == null ? null : Number(value);
@@ -36,6 +37,32 @@ function displaySetup(value) {
   } catch {
     return value;
   }
+}
+
+function setupValues(value) {
+  try { const choices = JSON.parse(value || "[]"); return Array.isArray(choices) ? choices : [value]; }
+  catch { return value ? [value] : []; }
+}
+
+function filteredTrades() {
+  return loadedTrades.filter((trade) => {
+    if (activeFilters.pair && trade.pair !== activeFilters.pair) return false;
+    if (Array.isArray(activeFilters.setup) && activeFilters.setup.length && !activeFilters.setup.some((setup) => setupValues(trade.setup).includes(setup))) return false;
+    if (activeFilters.cb_hour && trade.cb_hour !== activeFilters.cb_hour) return false;
+    if (activeFilters.session_time && trade.session_time !== activeFilters.session_time) return false;
+    if (activeFilters.trade_type && trade.trade_type !== activeFilters.trade_type) return false;
+    if (activeFilters.market_condition && trade.market_condition !== activeFilters.market_condition) return false;
+    if (activeFilters.position && trade.position !== activeFilters.position) return false;
+    return true;
+  });
+}
+
+function applyFilters() {
+  const trades = filteredTrades();
+  renderMetrics(trades);
+  renderTrades(trades);
+  const count = $("#filter-result-count");
+  if (count) count.textContent = `${trades.length} matching trade${trades.length === 1 ? "" : "s"}`;
 }
 
 function renderMetrics(trades) {
@@ -101,9 +128,47 @@ async function loadTrades() {
     console.error(error);
     return;
   }
-  renderMetrics(data || []);
-  renderTrades(data || []);
   loadedTrades = data || [];
+  applyFilters();
+}
+
+function buildFilters() {
+  const selectOptions = (selector) => Array.from($(selector).options).map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.text)}</option>`).join("");
+  const filterBar = document.createElement("section");
+  filterBar.className = "detective-filter-bar";
+  filterBar.innerHTML = `<div class="filter-heading"><p class="eyebrow blue-text">02 — FILTER INTELLIGENCE</p><small id="filter-result-count">All trades</small></div><div class="filter-controls"><label>Pair <select data-filter="pair"><option value="">All pairs</option>${selectOptions("#detective-pair")}</select></label><label>Setup <select data-filter="setup"><option value="">All setups</option>${selectOptions("#detective-setup")}</select></label><label>CB Hour <select data-filter="cb_hour"><option value="">All CB hours</option>${selectOptions("#detective-cb-hour")}</select></label><label>Session time <select data-filter="session_time"><option value="">All sessions</option>${selectOptions("#detective-session-time")}</select></label><label>Type <select data-filter="trade_type"><option value="">All types</option>${selectOptions("#detective-type")}</select></label><label>Market condition <select data-filter="market_condition"><option value="">All conditions</option>${selectOptions("#detective-market-condition")}</select></label><label>Position <select data-filter="position"><option value="">Long + Short</option>${selectOptions("#detective-position")}</select></label><button type="button" class="clear-filters">Clear filters</button></div>`;
+  $(".trade-panel").insertBefore(filterBar, $(".trade-panel .table-wrap"));
+  filterBar.addEventListener("change", (event) => {
+    if (!event.target.matches("[data-filter]")) return;
+    activeFilters[event.target.dataset.filter] = event.target.value;
+    applyFilters();
+  });
+  const setupFilter = filterBar.querySelector('[data-filter="setup"]');
+  setupFilter.multiple = true;
+  setupFilter.style.display = "none";
+  const setupFilterMenu = document.createElement("details");
+  setupFilterMenu.className = "setup-multi-select";
+  setupFilterMenu.style.width = "100%";
+  setupFilterMenu.innerHTML = `<summary>All setups</summary><div class="setup-options">${Array.from(setupFilter.options).filter((option) => option.value).map((option, index) => `<label><input type="checkbox" data-filter-setup-index="${index}" value="${escapeHtml(option.value)}" /> ${escapeHtml(option.text)}</label>`).join("")}</div>`;
+  setupFilter.insertAdjacentElement("afterend", setupFilterMenu);
+  const setupFilterSummary = setupFilterMenu.querySelector("summary");
+  const syncSetupFilter = () => {
+    const selected = Array.isArray(activeFilters.setup) ? activeFilters.setup : [];
+    setupFilterMenu.querySelectorAll("input").forEach((checkbox) => { checkbox.checked = selected.includes(checkbox.value); });
+    setupFilterSummary.textContent = selected.length ? selected.join(" + ") : "All setups";
+  };
+  setupFilterMenu.addEventListener("change", (event) => {
+    if (!event.target.matches("[data-filter-setup-index]")) return;
+    activeFilters.setup = Array.from(setupFilterMenu.querySelectorAll("input:checked")).map((checkbox) => checkbox.value);
+    syncSetupFilter();
+    applyFilters();
+  });
+  filterBar.querySelector(".clear-filters").addEventListener("click", () => {
+    activeFilters = {};
+    filterBar.querySelectorAll("select").forEach((select) => { select.value = ""; });
+    syncSetupFilter();
+    applyFilters();
+  });
 }
 
 function clearForm() {
@@ -225,6 +290,7 @@ function init() {
   outcome.insertAdjacentHTML("afterbegin", '<option value="Open">Open</option>');
   const header = $("#trade-log").closest("table").querySelector("thead tr");
   header.insertAdjacentHTML("beforeend", "<th>ACTION</th>");
+  buildFilters();
   const pnlMetric = $("#detective-violations").closest(".metric");
   pnlMetric.querySelector("p").textContent = "TOTAL PNL";
   pnlMetric.querySelector("small").textContent = "Sum across logged trades";
