@@ -7,6 +7,7 @@ const escape = value => { const el = document.createElement("span"); el.textCont
 let client = null;
 let session = null;
 let missions = [];
+const eisenhowerOptions = '<option value="Do now">DO NOW — important + urgent</option><option value="Schedule">SCHEDULE — important + not urgent</option><option value="Delegate">DELEGATE — urgent + not important</option><option value="Eliminate">ELIMINATE — not urgent + not important</option>';
 
 function renderMissions() {
   const target = $("#mission-cards");
@@ -40,7 +41,7 @@ async function loadData() {
   if (missionError) { console.error(missionError); return; }
   if (missionData.length) missions = missionData;
   else {
-    const seeds = [{ title: "Restore ACL capacity", category: "Recovery", priority: "Non-negotiable", progress: 72 }, { title: "Execute trading process", category: "Trading", priority: "Non-negotiable", progress: 86 }, { title: "Build Clarified Chaos FX foundation", category: "Business", priority: "Strategic", progress: 41 }];
+    const seeds = [{ title: "Restore ACL capacity", category: "Recovery", priority: "Do now", progress: 72 }, { title: "Execute trading process", category: "Trading", priority: "Do now", progress: 86 }, { title: "Build Clarified Chaos FX foundation", category: "Business", priority: "Schedule", progress: 41 }];
     const { data, error } = await client.from("missions").insert(seeds).select();
     if (error) { console.error(error); return; }
     missions = data;
@@ -55,15 +56,15 @@ function closeButtons() { document.querySelectorAll("#mission-dialog .dialog-clo
 function buildMissionEditor() {
   const dialog = document.createElement("dialog");
   dialog.id = "mission-editor-dialog";
-  dialog.innerHTML = '<form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Update the objective.</h2><label>Mission <input id="edit-mission-title" required /></label><label>Progress <input id="edit-mission-progress" type="number" min="0" max="100" required /></label><button class="primary" value="default">Save mission</button></form>';
+  dialog.innerHTML = `<form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Update the objective.</h2><label>Mission <input id="edit-mission-title" required /></label><label>Priority <select id="edit-mission-priority">${eisenhowerOptions}</select></label><label>Progress <input id="edit-mission-progress" type="number" min="0" max="100" required /></label><button class="primary" value="default">Save mission</button></form>`;
   document.body.appendChild(dialog);
   dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
   dialog.querySelector("form").addEventListener("submit", async event => {
     event.preventDefault();
     const mission = missions.find(item => item.id === dialog.dataset.missionId);
-    const title = $("#edit-mission-title").value.trim(), progress = Number($("#edit-mission-progress").value);
+    const title = $("#edit-mission-title").value.trim(), progress = Number($("#edit-mission-progress").value), priority = $("#edit-mission-priority").value;
     if (!mission || !title || progress < 0 || progress > 100) return;
-    const { data, error } = await client.from("missions").update({ title, progress }).eq("id", mission.id).select().single();
+    const { data, error } = await client.from("missions").update({ title, progress, priority }).eq("id", mission.id).select().single();
     if (error) return alert(`Mission could not be updated: ${error.message}`);
     missions = missions.map(item => item.id === data.id ? data : item);
     dialog.close();
@@ -74,6 +75,7 @@ function buildMissionEditor() {
 }
 function bindDialogs() {
   const missionDialog = $("#mission-dialog"), recoveryDialog = $("#recovery-dialog");
+  $("#mission-priority").innerHTML = eisenhowerOptions;
   const editor = buildMissionEditor();
   document.addEventListener("click", event => {
     const button = event.target.closest(".mission-open");
@@ -82,6 +84,7 @@ function bindDialogs() {
     if (!mission) return;
     editor.dataset.missionId = mission.id;
     $("#edit-mission-title").value = mission.title;
+    $("#edit-mission-priority").value = ["Do now", "Schedule", "Delegate", "Eliminate"].includes(mission.priority) ? mission.priority : "Schedule";
     $("#edit-mission-progress").value = mission.progress;
     editor.showModal();
   });
