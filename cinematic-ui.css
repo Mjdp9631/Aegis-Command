@@ -1,0 +1,191 @@
+/* AEGIS COMMAND — cinematic interface layer. Kept separate from the functional styles. */
+:root {
+  --lab-ink: #050a11;
+  --lab-panel: rgba(9, 18, 31, .84);
+  --lab-panel-strong: rgba(11, 23, 39, .94);
+  --lab-line: rgba(110, 152, 206, .19);
+  --lab-blue: #61b4ff;
+  --lab-amber: #f3b753;
+  --lab-green: #66e0a8;
+}
+
+body {
+  background:
+    linear-gradient(90deg, rgba(3, 8, 14, .93) 0%, rgba(3, 8, 14, .72) 21%, rgba(3, 8, 14, .55) 58%, rgba(3, 8, 14, .87) 100%),
+    linear-gradient(180deg, rgba(3, 8, 14, .20), rgba(3, 8, 14, .88)),
+    url("assets/aegis-lab-background.png") center / cover fixed,
+    var(--lab-ink) !important;
+  min-height: 100vh;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: .28;
+  background-image:
+    linear-gradient(rgba(103, 178, 255, .08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(103, 178, 255, .06) 1px, transparent 1px),
+    radial-gradient(circle at 74% 18%, rgba(53, 143, 247, .26), transparent 25%),
+    radial-gradient(circle at 47% 80%, rgba(243, 183, 83, .12), transparent 24%);
+  background-size: 42px 42px, 42px 42px, auto, auto;
+  animation: aegis-grid-drift 26s linear infinite;
+}
+
+.app-shell { position: relative; z-index: 1; grid-template-columns: 74px minmax(0, 1fr) !important; }
+
+/* Compact console rail that unfolds into the full navigation on hover. */
+.sidebar {
+  box-sizing: border-box;
+  width: 74px !important;
+  min-width: 74px !important;
+  overflow: hidden;
+  border-right: 1px solid rgba(117, 167, 225, .20) !important;
+  background: linear-gradient(180deg, rgba(4, 11, 19, .97), rgba(4, 10, 17, .92)) !important;
+  box-shadow: 16px 0 48px rgba(0, 0, 0, .20), inset -1px 0 rgba(103, 180, 255, .04);
+  transition: width .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease !important;
+  z-index: 25;
+}
+
+.sidebar:hover,
+.sidebar:focus-within {
+  width: 245px !important;
+  box-shadow: 20px 0 58px rgba(0,0,0,.43), 8px 0 26px rgba(51, 150, 255, .08), inset -1px 0 rgba(103, 180, 255, .14);
+}
+
+.brand { min-width: 215px; gap: 12px !important; }
+.brand > span:last-child,
+.system-label,
+.sidebar-foot span { opacity: 0; transform: translateX(-8px); transition: opacity .18s ease, transform .22s ease; white-space: nowrap; }
+.sidebar:hover .brand > span:last-child,
+.sidebar:focus-within .brand > span:last-child,
+.sidebar:hover .system-label,
+.sidebar:focus-within .system-label,
+.sidebar:hover .sidebar-foot span,
+.sidebar:focus-within .sidebar-foot span { opacity: 1; transform: translateX(0); }
+
+.sidebar nav { min-width: 225px; }
+.nav-link {
+  min-width: 216px;
+  display: flex !important;
+  align-items: center;
+  gap: 15px;
+  font-size: 0 !important;
+  letter-spacing: .02em;
+  border-left: 2px solid transparent;
+  transition: background .2s ease, border-color .2s ease, color .2s ease, font-size .2s ease !important;
+}
+.nav-link > span { display: inline-grid; place-items: center; width: 22px; flex: 0 0 22px; font-size: 15px !important; }
+.sidebar:hover .nav-link,
+.sidebar:focus-within .nav-link { font-size: 13px !important; }
+.nav-link:hover { background: linear-gradient(90deg, rgba(91, 170, 252, .14), transparent 88%) !important; border-left-color: var(--lab-blue); }
+.nav-link.active { background: linear-gradient(90deg, rgba(243, 183, 83, .17), rgba(91, 170, 252, .055) 72%, transparent) !important; border-left-color: var(--lab-amber) !important; }
+.secure-dot { flex: 0 0 auto; box-shadow: 0 0 12px var(--lab-green); animation: aegis-led 2.3s ease-in-out infinite; }
+
+main { background: linear-gradient(90deg, rgba(4, 10, 17, .43), rgba(4, 10, 17, .15)) !important; }
+.topbar { border-bottom: 1px solid rgba(104, 157, 221, .12) !important; background: rgba(4, 10, 17, .38); backdrop-filter: blur(10px); }
+.status-pill { border-color: rgba(99, 179, 255, .20) !important; background: rgba(4, 14, 24, .7); box-shadow: inset 0 0 12px rgba(70, 166, 255, .04); }
+.status-pill i { box-shadow: 0 0 11px var(--lab-green); animation: aegis-led 2s ease-in-out infinite; }
+.profile { box-shadow: 0 0 0 1px rgba(243,183,83,.25), 0 0 18px rgba(243,183,83,.10); }
+
+/* Glass modules over the cave/lab scene. */
+.panel, .metric, .command-summary > *, .stat-grid article, .mission-card, .mastery-type-card {
+  background: linear-gradient(135deg, rgba(13, 25, 42, .93), rgba(7, 15, 27, .78)) !important;
+  border: 1px solid var(--lab-line) !important;
+  box-shadow: 0 18px 48px rgba(0,0,0,.18), inset 0 1px rgba(156, 205, 255, .035) !important;
+  backdrop-filter: blur(14px);
+}
+.panel, .metric, .mission-card, .stat-grid article { position: relative; overflow: hidden; }
+.panel::before, .metric::before, .mission-card::before, .stat-grid article::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(100, 183, 255, .55), transparent);
+  opacity: .55;
+}
+.panel:hover, .metric:hover, .mission-card:hover, .stat-grid article:hover {
+  border-color: rgba(111, 182, 249, .36) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 23px 52px rgba(0,0,0,.28), 0 0 26px rgba(62, 145, 230, .08), inset 0 1px rgba(156,205,255,.08) !important;
+}
+.panel, .metric, .mission-card, .stat-grid article { transition: transform .24s ease, border-color .24s ease, box-shadow .24s ease; }
+
+.hero {
+  border: 1px solid rgba(105, 168, 237, .18) !important;
+  background: linear-gradient(100deg, rgba(8, 17, 30, .96), rgba(11, 24, 42, .74), rgba(7, 15, 26, .50)) !important;
+  box-shadow: 0 26px 75px rgba(0,0,0,.32), inset 0 1px rgba(138,197,255,.08), 0 0 48px rgba(61, 147, 244, .05) !important;
+  overflow: hidden;
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(120deg, transparent 38%, rgba(95,178,255,.11) 49%, transparent 56%);
+  transform: translateX(-140%);
+  animation: aegis-sweep 7s ease-in-out infinite;
+}
+.hero h2 em { text-shadow: 0 0 25px rgba(243,183,83,.19); }
+.signal-orb { filter: drop-shadow(0 0 28px rgba(242, 176, 72, .16)); animation: aegis-float 5s ease-in-out infinite; }
+.signal-orb span { animation: aegis-orbit 12s linear infinite; }
+.signal-orb span:nth-child(2) { animation-duration: 17s; animation-direction: reverse; }
+.signal-orb span:nth-child(3) { animation-duration: 22s; }
+
+.primary, .primary.compact { box-shadow: 0 8px 20px rgba(243, 161, 52, .22), inset 0 1px rgba(255,255,255,.23) !important; }
+.primary:hover { box-shadow: 0 10px 28px rgba(243, 161, 52, .35), 0 0 22px rgba(243,183,83,.18) !important; }
+.meter { background: rgba(132, 167, 210, .16) !important; overflow: visible !important; }
+.meter i { box-shadow: 0 0 11px rgba(243, 183, 83, .58); }
+.meter.blue i { box-shadow: 0 0 11px rgba(84, 177, 255, .62); }
+.meter.green i { box-shadow: 0 0 11px rgba(90, 223, 163, .58); }
+
+/* Page-specific systems: each screen gets its own environment without changing its data. */
+#detective .section-intro { position: relative; overflow: hidden; isolation: isolate; }
+#detective .section-intro::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  right: 0; top: -18px; width: min(44vw, 540px); height: 190px;
+  opacity: .72;
+  border: 1px solid rgba(92, 182, 255, .17);
+  background:
+    linear-gradient(160deg, transparent 0 17%, rgba(86,185,255,.92) 17.4% 18.2%, transparent 18.7% 38%, rgba(86,185,255,.8) 38.5% 39.2%, transparent 39.7% 54%, rgba(101,224,168,.92) 54.5% 55.3%, transparent 55.8%),
+    repeating-linear-gradient(90deg, transparent 0 33px, rgba(88,156,225,.13) 34px),
+    repeating-linear-gradient(0deg, transparent 0 32px, rgba(88,156,225,.11) 33px),
+    linear-gradient(135deg, rgba(7,31,51,.70), transparent);
+  box-shadow: inset 0 0 25px rgba(62,155,255,.07), 0 0 24px rgba(58,148,242,.07);
+}
+#detective .trade-panel { border-color: rgba(80, 170, 255, .23) !important; }
+#detective th { background: rgba(23, 66, 107, .12); }
+
+#missions .section-intro { border-left: 2px solid var(--lab-amber); padding-left: 18px; }
+#missions .mission-card { background: linear-gradient(135deg, rgba(29, 25, 25, .89), rgba(10, 19, 31, .84)) !important; }
+#recovery .section-intro { border-left: 2px solid var(--lab-green); padding-left: 18px; }
+#recovery .panel { border-color: rgba(89, 224, 164, .22) !important; }
+#enterprise { background-image: linear-gradient(rgba(99,177,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(99,177,255,.035) 1px, transparent 1px); background-size: 28px 28px; }
+#enterprise .section-intro { border-left: 2px solid var(--lab-blue); padding-left: 18px; }
+#mastery .section-intro { border-left: 2px solid rgba(121, 169, 255, .88); padding-left: 18px; }
+#character .section-intro { border-left: 2px solid rgba(210, 126, 247, .8); padding-left: 18px; }
+#character .stat-grid article { background: radial-gradient(circle at 82% 25%, rgba(113, 75, 204, .15), transparent 26%), linear-gradient(135deg, rgba(16, 22, 42, .92), rgba(8,15,28,.82)) !important; }
+
+.intel-strip { background: linear-gradient(90deg, rgba(15, 29, 48, .94), rgba(10, 17, 29, .78)) !important; }
+dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); }
+.dialog-card { border: 1px solid rgba(111, 183, 254, .30) !important; box-shadow: 0 28px 95px rgba(0,0,0,.65), 0 0 42px rgba(57,145,240,.13) !important; }
+
+@keyframes aegis-led { 0%,100% { opacity:.65; } 50% { opacity:1; box-shadow:0 0 18px var(--lab-green); } }
+@keyframes aegis-grid-drift { from { background-position: 0 0, 0 0, center, center; } to { background-position: 42px 42px, 42px 42px, center, center; } }
+@keyframes aegis-sweep { 0%,22% { transform:translateX(-140%); } 50%,100% { transform:translateX(140%); } }
+@keyframes aegis-float { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-7px); } }
+@keyframes aegis-orbit { to { transform:rotate(360deg); } }
+
+@media (max-width: 760px) {
+  .app-shell { grid-template-columns: 58px minmax(0, 1fr) !important; }
+  .sidebar { width: 58px !important; min-width:58px !important; }
+  .sidebar:hover, .sidebar:focus-within { width: 222px !important; }
+  .hero { background: linear-gradient(135deg, rgba(8,17,30,.95), rgba(11,24,42,.82)) !important; }
+  #detective .section-intro::after { opacity:.34; width:100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
