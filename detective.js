@@ -22,8 +22,11 @@ function escapeHtml(value = "") {
 }
 
 function resolvedOutcome(trade) {
-  if (trade.trade_status === "Open") return "Open";
-  if (trade.outcome) return trade.outcome;
+  if (String(trade.trade_status || "").trim().toLowerCase() === "open") return "Open";
+  const supplied = String(trade.outcome || "").trim().toLowerCase();
+  if (supplied === "win" || supplied === "small win") return "Win";
+  if (supplied === "loss" || supplied === "small loss") return "Loss";
+  if (supplied === "b/e" || supplied === "be" || supplied === "break even" || supplied === "breakeven") return "B/E";
   if (Number(trade.r_multiple) > 0) return "Win";
   if (Number(trade.r_multiple) < 0) return "Loss";
   return "B/E";
@@ -66,10 +69,10 @@ function applyFilters() {
 }
 
 function renderMetrics(trades) {
-  const closedTrades = trades.filter((trade) => trade.trade_status !== "Open");
+  const closedTrades = trades.filter((trade) => resolvedOutcome(trade) !== "Open");
   const outcomes = closedTrades.map(resolvedOutcome);
-  const wins = outcomes.filter((outcome) => outcome === "Win" || outcome === "Small win").length;
-  const losses = outcomes.filter((outcome) => outcome === "Loss" || outcome === "Small loss").length;
+  const wins = outcomes.filter((outcome) => outcome === "Win").length;
+  const losses = outcomes.filter((outcome) => outcome === "Loss").length;
   const decisiveTrades = wins + losses;
   const average = (items) => items.length ? items.reduce((total, value) => total + Number(value), 0) / items.length : null;
   const averageR = average(closedTrades.filter((trade) => trade.r_multiple != null).map((trade) => trade.r_multiple));

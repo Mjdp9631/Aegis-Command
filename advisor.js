@@ -16,8 +16,11 @@ function ensurePanel(id, className, anchor, position) {
 }
 
 function outcomeOf(trade) {
-  if (trade.trade_status === "Open") return "Open";
-  if (trade.outcome) return trade.outcome;
+  if (String(trade.trade_status || "").trim().toLowerCase() === "open") return "Open";
+  const supplied = String(trade.outcome || "").trim().toLowerCase();
+  if (supplied === "win" || supplied === "small win") return "Win";
+  if (supplied === "loss" || supplied === "small loss") return "Loss";
+  if (supplied === "b/e" || supplied === "be" || supplied === "break even" || supplied === "breakeven") return "B/E";
   if (Number(trade.r_multiple) > 0) return "Win";
   if (Number(trade.r_multiple) < 0) return "Loss";
   return "B/E";
@@ -34,9 +37,9 @@ function render({ operations, missions, trades }) {
   const completed = operations.length - remaining.length;
   const nextOperation = remaining[0]?.title || "Close the day deliberately and protect recovery.";
   const activeMission = [...missions].filter((mission) => missionProgress(mission) < 100).sort((a, b) => missionProgress(b) - missionProgress(a))[0];
-  const closedTrades = trades.filter((trade) => trade.trade_status !== "Open");
-  const wins = closedTrades.filter((trade) => ["Win", "Small win"].includes(outcomeOf(trade))).length;
-  const losses = closedTrades.filter((trade) => ["Loss", "Small loss"].includes(outcomeOf(trade))).length;
+  const closedTrades = trades.filter((trade) => outcomeOf(trade) !== "Open");
+  const wins = closedTrades.filter((trade) => outcomeOf(trade) === "Win").length;
+  const losses = closedTrades.filter((trade) => outcomeOf(trade) === "Loss").length;
   const decisive = wins + losses;
   const winRate = decisive ? `${Math.round((wins / decisive) * 100)}%` : "awaiting data";
 

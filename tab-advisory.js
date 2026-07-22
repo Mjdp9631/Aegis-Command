@@ -15,6 +15,8 @@ function advisoryMarkup([jarvis, alfred], label = "JARVIS / ALFRED PROTOCOL") {
 
 function renderFooters() {
   Object.entries(messages).forEach(([view, message]) => {
+    // Character Systems owns its evidence-note protocol; adding a second footer duplicates it.
+    if (view === "character") return;
     const target = $(`#${view}`);
     if (target && !target.querySelector(":scope > .tab-advisory")) target.insertAdjacentHTML("beforeend", advisoryMarkup(message));
   });

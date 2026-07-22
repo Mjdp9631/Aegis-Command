@@ -6,8 +6,11 @@ const $ = (selector) => document.querySelector(selector);
 const today = new Date().toLocaleDateString("en-CA");
 
 function outcome(trade) {
-  if (trade.trade_status === "Open") return "Open";
-  if (trade.outcome) return trade.outcome;
+  if (String(trade.trade_status || "").trim().toLowerCase() === "open") return "Open";
+  const supplied = String(trade.outcome || "").trim().toLowerCase();
+  if (supplied === "win" || supplied === "small win") return "Win";
+  if (supplied === "loss" || supplied === "small loss") return "Loss";
+  if (supplied === "b/e" || supplied === "be" || supplied === "break even" || supplied === "breakeven") return "B/E";
   if (Number(trade.r_multiple) > 0) return "Win";
   if (Number(trade.r_multiple) < 0) return "Loss";
   return "B/E";
@@ -26,9 +29,9 @@ function render({ missions, trades, projects, content, recoveryLogs, operations,
   if (!target) return;
   const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
   const priority = activeMissions.find((mission) => mission.priority === "Do now") || activeMissions[0];
-  const closed = trades.filter((trade) => trade.trade_status !== "Open");
-  const wins = closed.filter((trade) => ["Win", "Small win"].includes(outcome(trade))).length;
-  const losses = closed.filter((trade) => ["Loss", "Small loss"].includes(outcome(trade))).length;
+  const closed = trades.filter((trade) => outcome(trade) !== "Open");
+  const wins = closed.filter((trade) => outcome(trade) === "Win").length;
+  const losses = closed.filter((trade) => outcome(trade) === "Loss").length;
   const winRate = wins + losses ? `${Math.round((wins / (wins + losses)) * 100)}%` : "--";
   const activeProjects = projects.filter((project) => project.status === "Active").length;
   const published = content.filter((item) => item.status === "Published").length;
