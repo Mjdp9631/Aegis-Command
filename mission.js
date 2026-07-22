@@ -15,6 +15,10 @@ function renderMissions() {
   target.innerHTML = missions.length ? missions.map(mission => `<button class="mission-card mission-open" data-mission-id="${mission.id}"><span class="eyebrow amber">${escape(mission.priority)}</span><h3>${escape(mission.title)}</h3><p>${escape(mission.category)} mission · ${mission.progress}% complete</p><div class="meter"><i style="width:${mission.progress}%"></i></div><small>Click to update</small></button>`).join("") : '<article class="mission-card"><span class="eyebrow amber">MISSION CONTROL</span><h3>No active missions yet.</h3><p>Open the few objectives that matter now.</p></article>';
 }
 
+function publishMissionChange() {
+  window.dispatchEvent(new Event("aegis:missions-changed"));
+}
+
 function syncRecoveryVisibility() {
   const recoveryNav = document.querySelector("[data-recovery-nav]");
   if (!recoveryNav) return;
@@ -47,6 +51,7 @@ async function loadData() {
     missions = data;
   }
   renderMissions();
+  publishMissionChange();
   syncRecoveryVisibility();
   const { data: logs } = await client.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1);
   renderRecovery(logs?.[0]);
@@ -69,6 +74,7 @@ function buildMissionEditor() {
     missions = missions.map(item => item.id === data.id ? data : item);
     dialog.close();
     renderMissions();
+    publishMissionChange();
     syncRecoveryVisibility();
   });
   return dialog;
@@ -89,7 +95,7 @@ function bindDialogs() {
     editor.showModal();
   });
   document.querySelectorAll('[data-action="add-mission"]').forEach(button => button.addEventListener("click", () => { if (!session) return alert("Sign in before opening a mission."); missionDialog.showModal(); }));
-  $("#save-mission").addEventListener("click", async event => { const title = $("#mission-title").value.trim(); if (!title) return event.preventDefault(); const { data, error } = await client.from("missions").insert({ title, category: $("#mission-category").value, priority: $("#mission-priority").value, progress: Number($("#mission-progress").value || 0) }).select().single(); if (error) { event.preventDefault(); return console.error(error); } missions.unshift(data); renderMissions(); $("#mission-title").value = ""; });
+  $("#save-mission").addEventListener("click", async event => { const title = $("#mission-title").value.trim(); if (!title) return event.preventDefault(); const { data, error } = await client.from("missions").insert({ title, category: $("#mission-category").value, priority: $("#mission-priority").value, progress: Number($("#mission-progress").value || 0) }).select().single(); if (error) { event.preventDefault(); return console.error(error); } missions.unshift(data); renderMissions(); publishMissionChange(); $("#mission-title").value = ""; });
   document.querySelectorAll('[data-action="log-recovery"]').forEach(button => button.addEventListener("click", () => { if (!session) return alert("Sign in before logging recovery."); recoveryDialog.showModal(); }));
   $("#save-recovery").addEventListener("click", async event => { const pain = Number($("#recovery-pain").value), swelling = Number($("#recovery-swelling").value); if (!Number.isInteger(pain) || !Number.isInteger(swelling) || pain < 0 || pain > 10 || swelling < 0 || swelling > 10) return event.preventDefault(); const { data, error } = await client.from("recovery_logs").insert({ pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single(); if (error) { event.preventDefault(); return console.error(error); } renderRecovery(data); $("#recovery-notes").value = ""; });
 }

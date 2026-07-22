@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="enterprise.css" />
     <link rel="stylesheet" href="character.css" />
     <link rel="stylesheet" href="character-rpg.css" />
+    <link rel="stylesheet" href="tab-advisory.css" />
   </head>
   <body>
     <div class="app-shell">
@@ -74,7 +75,7 @@
             </section>
             <section class="panel mission-panel">
               <div class="panel-head"><div><p class="eyebrow">02 — PRIORITY</p><h3>Active Missions</h3></div><button class="text-button" data-view-target="missions">View all</button></div>
-              <div class="mission-list">
+              <div class="mission-list" id="command-missions">
                 <article><div class="mission-icon recovery-icon">＋</div><div><strong>Restore ACL Capacity</strong><small>Recovery · High priority</small></div><span>72%</span></article>
                 <article><div class="mission-icon trade-icon">◈</div><div><strong>Execute Trading Process</strong><small>Trading · Non-negotiable</small></div><span>86%</span></article>
                 <article><div class="mission-icon business-icon">▦</div><div><strong>Build CCFX Foundation</strong><small>Enterprise · Strategic</small></div><span>41%</span></article>
@@ -117,5 +118,7 @@
     <script type="module" src="notion-importer.js"></script>
     <script type="module" src="enterprise.js"></script>
     <script type="module" src="character.js"></script>
+    <script type="module" src="command-center.js"></script>
+    <script type="module" src="tab-advisory.js"></script>
   </body>
 </html>
