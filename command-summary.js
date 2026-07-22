@@ -5,12 +5,20 @@ const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(con
 const $ = (selector) => document.querySelector(selector);
 const today = new Date().toLocaleDateString("en-CA");
 
-function outcome(trade) {
-  if (String(trade.trade_status || "").trim().toLowerCase() === "open") return "Open";
-  const supplied = String(trade.outcome || "").trim().toLowerCase();
+function normalizedOutcome(value) {
+  const supplied = String(value || "").trim().toLowerCase();
   if (supplied === "win" || supplied === "small win") return "Win";
   if (supplied === "loss" || supplied === "small loss") return "Loss";
   if (supplied === "b/e" || supplied === "be" || supplied === "break even" || supplied === "breakeven") return "B/E";
+  return null;
+}
+
+function outcome(trade) {
+  if (String(trade.trade_status || "").trim().toLowerCase() === "open") return "Open";
+  const explicit = [trade.outcome, trade.win_loss, trade.result, trade.market_condition]
+    .map(normalizedOutcome)
+    .find(Boolean);
+  if (explicit) return explicit;
   if (Number(trade.r_multiple) > 0) return "Win";
   if (Number(trade.r_multiple) < 0) return "Loss";
   return "B/E";

@@ -15,12 +15,18 @@ function ensurePanel(id, className, anchor, position) {
   return panel;
 }
 
-function outcomeOf(trade) {
-  if (String(trade.trade_status || "").trim().toLowerCase() === "open") return "Open";
-  const supplied = String(trade.outcome || "").trim().toLowerCase();
+function normalizedOutcome(value) {
+  const supplied = String(value || "").trim().toLowerCase();
   if (supplied === "win" || supplied === "small win") return "Win";
   if (supplied === "loss" || supplied === "small loss") return "Loss";
   if (supplied === "b/e" || supplied === "be" || supplied === "break even" || supplied === "breakeven") return "B/E";
+  return null;
+}
+
+function outcomeOf(trade) {
+  if (String(trade.trade_status || "").trim().toLowerCase() === "open") return "Open";
+  const explicit = [trade.outcome, trade.win_loss, trade.result, trade.market_condition].map(normalizedOutcome).find(Boolean);
+  if (explicit) return explicit;
   if (Number(trade.r_multiple) > 0) return "Win";
   if (Number(trade.r_multiple) < 0) return "Loss";
   return "B/E";
@@ -45,7 +51,7 @@ function render({ operations, missions, trades }) {
 
   morning.innerHTML = `<div class="adviser-head"><p class="eyebrow amber">MORNING DIRECTIVE</p><h3>GOOD MORNING</h3></div><div class="adviser-grid"><article><span class="adviser-name jarvis">JARVIS / TODAY'S PLAN</span><p>Today’s priority is <strong>${nextOperation}</strong>${activeMission ? `. It supports <strong>${activeMission.title}</strong>.` : ""}</p></article><article><span class="adviser-name alfred">ALFRED / STANDARD</span><p>${remaining.length ? `There are ${remaining.length} commitments on the board. Begin with the first; do not spend energy negotiating with the plan.` : "The day’s commitments are complete. Preserve the standard and recover deliberately."}</p></article></div>`;
 
-  panel.innerHTML = `<div class="adviser-head"><p class="eyebrow blue-text">EVENING DEBRIEF</p><h3>EXAMINATION / RE-EVALUATION</h3></div><div class="adviser-grid"><article><span class="adviser-name jarvis">JARVIS / EXAMINATION</span><p>Operations: <strong>${completed}/${operations.length || 0}</strong> complete. Closed trade win rate: <strong>${winRate}</strong>. Current data indicates ${remaining.length ? `${remaining.length} unfinished commitment${remaining.length === 1 ? "" : "s"}` : "the plan is complete"}.</p></article><article><span class="adviser-name alfred">ALFRED / RE-EVALUATION</span><p>${operations.length && completed === operations.length ? "A disciplined day. Record the lesson, then leave the result alone." : completed ? "Progress is real. Finish the remaining commitments before judging the day." : "The day has not been lost; it has simply not been executed yet."}</p></article></div>`;
+  panel.innerHTML = `<div class="adviser-head"><p class="eyebrow blue-text">EVENING DEBRIEF</p><h3>EXAMINATION / RE-EVALUATION</h3></div><div class="adviser-grid"><article><span class="adviser-name jarvis">JARVIS / EXAMINATION</span><p>Operations: <strong>${completed}/${operations.length || 0}</strong> complete. Closed trade win rate: <strong>${winRate}</strong> (${wins} wins / ${losses} losses; B/E excluded). Current data indicates ${remaining.length ? `${remaining.length} unfinished commitment${remaining.length === 1 ? "" : "s"}` : "the plan is complete"}.</p></article><article><span class="adviser-name alfred">ALFRED / RE-EVALUATION</span><p>${operations.length && completed === operations.length ? "A disciplined day. Record the lesson, then leave the result alone." : completed ? "Progress is real. Finish the remaining commitments before judging the day." : "The day has not been lost; it has simply not been executed yet."}</p></article></div>`;
 }
 
 async function loadAdvisory() {
