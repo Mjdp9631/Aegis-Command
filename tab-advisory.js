@@ -27,7 +27,7 @@ function styleCommandBriefing() {
   const copy = briefing.querySelector("div");
   if (!copy) return;
   briefing.classList.add("tab-advisory", "command-briefing");
-  copy.innerHTML = `<p class="eyebrow">JARVIS / ALFRED BRIEFING</p><div class="protocol-line"><p id="briefing-text">${original}</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;Close the day with the same discipline you brought to its beginning, sir.&rdquo;</p><span>- ALFRED</span></div>`;
+  copy.innerHTML = `<p class="eyebrow">COMMAND DAILY SIGNAL</p><div class="protocol-line"><p id="briefing-text">${original}</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;Close the day with the same discipline you brought to its beginning, sir.&rdquo;</p><span>- ALFRED</span></div>`;
   briefing.dataset.dualFormat = "true";
 }
 
