@@ -34,6 +34,27 @@ body::before {
   animation: aegis-grid-drift 26s linear infinite;
 }
 
+/* Practical room lighting — deliberately visible so the environment is part of the interface. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: .92;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(ellipse 38% 9% at 50% 1%, rgba(74, 174, 255, .35), transparent 72%),
+    radial-gradient(circle at 8% 25%, rgba(50, 154, 255, .28) 0 1px, rgba(50, 154, 255, .13) 2px, transparent 12%),
+    radial-gradient(circle at 93% 20%, rgba(243, 181, 75, .30) 0 1px, rgba(243, 181, 75, .13) 2px, transparent 13%),
+    radial-gradient(ellipse 25% 48% at 2% 63%, rgba(34, 119, 216, .17), transparent 72%),
+    radial-gradient(ellipse 28% 54% at 98% 69%, rgba(243, 164, 58, .13), transparent 70%),
+    linear-gradient(90deg, transparent 0 10%, rgba(72, 170, 255, .22) 10.1%, rgba(72, 170, 255, .06) 10.45%, transparent 10.8% 89%, rgba(243, 181, 75, .16) 89.2%, rgba(243, 181, 75, .04) 89.5%, transparent 90%),
+    linear-gradient(180deg, rgba(80, 183, 255, .20), transparent 2px, transparent 7%, rgba(243, 181, 75, .10) 7.1%, transparent 7.3%);
+  box-shadow: inset 0 1px 42px rgba(65, 169, 255, .21), inset 0 -1px 48px rgba(243, 180, 75, .13);
+  animation: aegis-room-lights 5.5s ease-in-out infinite;
+}
+
 /* Each system opens into its own physical room. The active app tab selects the room. */
 body:has(#detective.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.59), rgba(3,8,14,.17) 52%, rgba(3,8,14,.48)), linear-gradient(180deg, rgba(3,8,14,.02), rgba(3,8,14,.37)), url("assets/detective-desk.png") !important; }
 body:has(#missions.active) { background-image: linear-gradient(90deg, rgba(3,8,14,.61), rgba(3,8,14,.20) 52%, rgba(3,8,14,.49)), linear-gradient(180deg, rgba(3,8,14,.02), rgba(3,8,14,.39)), url("assets/missions-bay.png") !important; }
@@ -311,6 +332,7 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
 @keyframes aegis-sweep { 0%,22% { transform:translateX(-140%); } 50%,100% { transform:translateX(140%); } }
 @keyframes aegis-float { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-7px); } }
 @keyframes aegis-orbit { to { transform:rotate(360deg); } }
+@keyframes aegis-room-lights { 0%,100% { opacity:.76; } 50% { opacity:1; } }
 
 @media (max-width: 760px) {
   .view.active:not(#command) { padding: 20px 16px; }
