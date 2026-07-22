@@ -9,6 +9,7 @@ let lane = "mind";
 let activeType = "Book";
 let entries = [];
 let recoveryReady = false;
+let cleanRendering = false;
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]));
 const isLocked = type => ["Sports", "Performance"].includes(type) && !recoveryReady;
@@ -24,12 +25,14 @@ function tabs(types, current, attribute) {
 
 function render() {
   if (!root) return;
+  cleanRendering = true;
   const types = lane === "mind" ? mindTypes : bodyTypes;
   const visible = entries.filter(entry => entry.category === activeType);
   const isCurrentLocked = isLocked(activeType);
   const categoryCards = `<div class="mastery-category-grid">${types.map(type => `<button class="mastery-category ${type === activeType ? "active" : ""} ${isLocked(type) ? "locked" : ""}" data-mastery-clean-type="${type}"><small>${type.toUpperCase()}${isLocked(type) ? " · LOCKED" : ""}</small><strong>${entries.filter(entry => entry.category === type).length}</strong><small>${type === "Book" ? "books and reading notes" : isLocked(type) ? "complete Recovery to unlock" : "entries captured"}</small></button>`).join("")}</div>`;
   const content = isCurrentLocked ? `<div class="mastery-lock"><h3>${activeType} locked</h3><p>Unlocks after Recovery is completed and you confirm archiving the Recovery section.</p></div>` : (visible.map(entryCard).join("") || `<div class="mastery-empty">Nothing logged here yet. Capture the first useful item.</div>`);
   root.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Capture knowledge worth using and train what your current foundation supports.</p></div><div class="mastery-tabs"><button class="mastery-tab ${lane === "mind" ? "active" : ""}" data-mastery-clean-lane="mind">Mind</button><button class="mastery-tab ${lane === "body" ? "active" : ""}" data-mastery-clean-lane="body">Body</button></div>${categoryCards}<div class="mastery-toolbar"><h3>${typeLabel(activeType)}</h3>${isCurrentLocked ? "" : `<button class="primary compact" data-mastery-clean-add>+ Add entry</button>`}</div><div class="mastery-list">${content}</div>`;
+  setTimeout(() => { cleanRendering = false; }, 0);
 }
 
 function fieldsFor(type) {
@@ -107,6 +110,7 @@ document.addEventListener("click", event => {
 function startMastery() {
   if (window.__aegisMasteryCleanStarted) return;
   window.__aegisMasteryCleanStarted = true;
+  new MutationObserver(() => { if (!cleanRendering) render(); }).observe(root, { childList: true });
   buildDialog();
   load();
 }
