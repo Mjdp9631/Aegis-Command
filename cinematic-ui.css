@@ -912,6 +912,13 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   #command > .command-stage > .hero { background:linear-gradient(100deg,rgba(5,14,24,.48),rgba(5,14,24,.22) 48%,rgba(4,12,20,.10)) !important; }
   #command > .command-stage .hero-copy { padding-top:8px; }
   #command > .command-stage .hero-copy h2 { font-family:"Rajdhani",sans-serif; font-weight:700; }
+  #command > .command-stage .hero-copy h2 em { color:inherit; }
+  #command > .command-stage .hero-copy p:not(.eyebrow) { margin:17px 0 27px; color:rgba(214,225,237,.72); font-size:17px; }
+  .command-status { width:min(100%,285px); padding:13px 15px; border:1px solid rgba(131,183,228,.28); border-radius:5px; background:linear-gradient(135deg,rgba(4,13,22,.72),rgba(8,20,31,.36)); }
+  .command-status > p { margin:0 0 11px !important; color:#efb54f !important; font:700 11px/1 "Rajdhani",sans-serif !important; letter-spacing:.09em !important; }
+  .command-status > div { display:flex; align-items:center; gap:13px; }
+  .command-status span { display:grid; place-items:center; width:25px; height:29px; flex:0 0 25px; color:#e9eff7; border:1px solid rgba(199,218,235,.72); border-radius:50% 50% 44% 44%; font-size:15px; }
+  .command-status strong { color:rgba(226,235,245,.83); font:600 13px/1.42 "Rajdhani",sans-serif; letter-spacing:.025em; }
   #command > .command-stage .hero-console { width:52%; right:24px; }
   #command > .command-stage .terminal-chart { background:rgba(3,11,19,.70) !important; }
   .terminal-screen { overflow:hidden; }
