@@ -8,6 +8,24 @@ let activeRange = "all";
 let activeChart = null;
 let activeChartMode = "pnl";
 
+function matchCharacterPanelToMorningDirective() {
+  const morning = $("#morning-briefing");
+  const character = $(".command-side-rail .readiness-dial");
+  const instruments = $(".command-side-rail .terminal-instruments");
+  if (!morning || !character || !instruments) return;
+
+  if (window.innerWidth < 761) {
+    character.style.removeProperty("height");
+    instruments.style.removeProperty("grid-template-rows");
+    return;
+  }
+
+  const morningHeight = Math.ceil(morning.getBoundingClientRect().height);
+  if (!morningHeight) return;
+  character.style.height = `${morningHeight}px`;
+  instruments.style.gridTemplateRows = `${morningHeight}px 108px`;
+}
+
 function normalOutcome(value) {
   const item = String(value || "").trim().toLowerCase();
   if (item === "win" || item === "small win") return "win";
@@ -257,3 +275,7 @@ if (supabase) {
 
 loadMarkets();
 setInterval(loadMarkets, 60000);
+
+window.addEventListener("resize", matchCharacterPanelToMorningDirective);
+requestAnimationFrame(matchCharacterPanelToMorningDirective);
+setTimeout(matchCharacterPanelToMorningDirective, 300);
