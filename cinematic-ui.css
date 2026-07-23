@@ -723,6 +723,14 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
 .terminal-instruments button { color: inherit; text-align: inherit; font: inherit; }
 .readiness-dial { appearance: none; border: 1px solid rgba(103,177,245,.21); width: 100%; }
 .readiness-dial strong { font-size: 25px; }
+.readiness-dial { isolation:isolate; }
+.readiness-dial::before,.readiness-dial::after { display:none; }
+.character-radar { position:absolute; z-index:1; inset:50% auto auto 50%; width:min(82%,132px); aspect-ratio:1; overflow:visible; transform:translate(-50%,-48%); filter:drop-shadow(0 0 10px rgba(73,171,249,.18)); pointer-events:none; }
+.character-radar .radar-grid { fill:rgba(24,94,151,.04); stroke:rgba(94,180,250,.28); stroke-width:1; }
+.character-radar .radar-grid-inner { fill:none; stroke:rgba(243,183,83,.18); stroke-width:.75; }
+.character-radar .radar-axis { fill:none; stroke:rgba(117,187,243,.19); stroke-width:.6; }
+.character-radar .radar-data { fill:rgba(83,180,255,.26); stroke:#59b7ff; stroke-width:1.5; stroke-linejoin:round; filter:drop-shadow(0 0 4px rgba(89,183,255,.7)); transition:points .35s ease; }
+.readiness-dial span,.readiness-dial strong,.readiness-dial small { z-index:2; }
 .radar-dial { appearance: none; border: 1px solid rgba(103,177,245,.21); width: 100%; }
 .radar-dial i { transform: scale(var(--mission-scale, .42)); transition: transform .3s ease; }
 .market-tickers { appearance: none; width: 100%; color: inherit; text-align: left; font: inherit; border: 1px solid rgba(103,177,245,.21); }

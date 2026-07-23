@@ -66,6 +66,25 @@ function calculateXp({ trades, operations, projects, content }) {
   return discipline + trading + projectXp + contentXp;
 }
 
+function ratio(value, ceiling) {
+  return Math.max(0, Math.min(1, Number(value || 0) / ceiling));
+}
+
+function radarPoints({ trades, operations, missions, projects, mastery }) {
+  const closedTrades = trades.filter(isClosed).length;
+  const operationRate = operations.length ? operations.filter((item) => item.completed).length / operations.length : 0;
+  const recoveryMissions = missions.filter((item) => String(item.category || "").toLowerCase() === "recovery");
+  const recovery = recoveryMissions.length ? recoveryMissions.reduce((sum, item) => sum + missionProgress(item), 0) / recoveryMissions.length / 100 : 0;
+  const projectProgress = projects.length ? projects.filter((item) => String(item.status || "").toLowerCase() === "complete").length / projects.length : 0;
+  const missionCompletion = missions.length ? missions.filter((item) => missionProgress(item) >= 100).length / missions.length : 0;
+  const values = [ratio(closedTrades, 100), operationRate, recovery, projectProgress, ratio(mastery.length, 50), missionCompletion];
+  const axes = [[50,7],[87,28],[87,72],[50,93],[13,72],[13,28]];
+  return values.map((value, index) => {
+    const [x, y] = axes[index];
+    return `${50 + (x - 50) * value},${50 + (y - 50) * value}`;
+  }).join(" ");
+}
+
 function rangeCutoff(trades) {
   const latestTrade = trades.at(-1);
   const latest = latestTrade ? new Date(latestTrade.traded_at || latestTrade.created_at) : new Date();
@@ -159,6 +178,7 @@ function render() {
   const level = levelFromXp(xp);
   $("#hero-character-level").textContent = `LV ${level.level}`;
   $("#hero-character-xp").textContent = `${Math.round(level.current)} / ${level.required} XP`;
+  $("#hero-character-radar")?.setAttribute("points", radarPoints({ trades, operations, missions, projects, mastery }));
 
   const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
   $("#hero-mission-count").textContent = `${activeMissions.length} ACTIVE`;
