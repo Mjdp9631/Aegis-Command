@@ -69,7 +69,7 @@
             </div>
             <div class="hero-console">
               <section class="terminal-chart dashboard-link" data-dashboard-view="detective" role="button" tabindex="0" aria-label="Open Detective trade intelligence">
-                <div class="terminal-toolbar"><i></i><i></i><span>TRADE INTELLIGENCE // CUMULATIVE PNL</span><div class="chart-ranges"><button data-chart-range="week">1W</button><button data-chart-range="month">1M</button><button class="active" data-chart-range="all">ALL</button></div></div>
+                <div class="terminal-toolbar"><i></i><i></i><span id="hero-chart-title">TRADE INTELLIGENCE // CUMULATIVE PNL</span><div class="chart-modes" aria-label="Chart measure"><button class="active" data-chart-mode="pnl">PNL</button><button data-chart-mode="balance">BAL</button></div><div class="chart-ranges"><button data-chart-range="week">1W</button><button data-chart-range="month">1M</button><button class="active" data-chart-range="all">ALL</button></div></div>
                 <div class="terminal-screen" id="hero-trade-chart"></div>
                 <div class="terminal-footer"><span id="hero-trade-caption">AWAITING TRADE DATA</span><span class="positive" id="hero-trade-pnl">—</span></div>
               </section>
@@ -117,10 +117,18 @@
 
         <section class="view" id="detective">
           <div class="section-intro"><p class="eyebrow blue-text">DETECTIVE / TRADING INTELLIGENCE</p><h2>Trade with evidence, not impulse.</h2><p>Every decision has a record. Every record leaves a lesson.</p></div>
+          <div class="detective-tabs" role="tablist" aria-label="Detective sections"><button class="detective-tab active" type="button" data-detective-tab="journal">Trade Journal</button><button class="detective-tab" type="button" data-detective-tab="accounts">Accounts</button></div>
+          <div id="detective-journal">
           <div class="metric-grid detective-metrics"><article class="metric"><p>WIN RATE</p><strong id="detective-win-rate">—</strong><small id="detective-win-rate-note">Log closed trades to calculate</small></article><article class="metric"><p>AVERAGE R</p><strong id="detective-average-r">—</strong><small>Outcome follows process</small></article><article class="metric"><p>AVERAGE MAE / MFE</p><strong id="detective-excursion">—</strong><small>30-minute adverse / favorable</small></article><article class="metric"><p>PLAN VIOLATIONS</p><strong id="detective-violations">0</strong><small>Keep this at zero</small></article></div>
           <section class="panel trade-panel"><div class="panel-head"><div><p class="eyebrow">01 — TRADE LOG</p><h3>Mission Debriefs</h3></div><button class="primary compact" data-action="add-trade-v2">+ Log trade</button></div><div class="table-wrap"><table><thead><tr><th>TIME</th><th>PAIR</th><th>TYPE</th><th>SETUP</th><th>MARKET CONDITION</th><th>CB HOUR</th><th>MAE</th><th>MFE</th><th>R</th><th>PNL</th><th>WIN / B/E / LOSS</th><th>POSITION</th><th>ACCOUNT</th><th>DAY</th><th>MONTH</th><th>SESSION TIME</th><th>ENTRY TF</th><th>WICK</th></tr></thead><tbody id="trade-log"><tr class="empty-row"><td colspan="18">No trade debriefs yet. Preserve data; log the next execution.</td></tr></tbody></table></div></section>
+          </div>
+          <section class="panel detective-accounts" id="detective-accounts" hidden>
+            <div class="panel-head"><div><p class="eyebrow blue-text">02 — ACCOUNT INTELLIGENCE</p><h3>Account Balances</h3></div></div>
+            <p class="body-copy">Set each account’s starting balance once. Closed trade PnL percentages compound into its current balance automatically.</p>
+            <form id="account-balance-form" class="account-balance-form"><label>Account name <input id="account-balance-name" required maxlength="80" placeholder="e.g. Master" /></label><label>Starting balance <input id="account-starting-balance" required min="0.01" step="0.01" type="number" placeholder="10000" /></label><label class="account-primary"><input id="account-primary" type="checkbox" /> Use as Command Center balance</label><button class="primary compact" type="submit">Save account</button></form>
+            <div class="account-balance-list" id="account-balance-list"><p class="empty-account-state">No account balance is configured yet.</p></div>
+          </section>
         </section>
-
         <section class="view" id="missions"><div class="section-intro"><p class="eyebrow amber">MISSION CONTROL</p><h2>Five missions. No noise.</h2><p>The system surfaces the few objectives that matter now.</p><button class="primary compact" data-action="add-mission">+ Open a mission</button></div><div class="mission-cards" id="mission-cards"></div></section>
 
         <section class="view" id="recovery"><div class="section-intro"><p class="eyebrow green-text">RECOVERY WING</p><h2>Rebuild the foundation.</h2><p>Health is the prerequisite—not the interruption.</p></div><div class="content-grid"><section class="panel"><div class="panel-head"><h3>Latest Recovery Report</h3><span class="large-number" id="recovery-state">—</span></div><div class="readiness" id="recovery-summary"><div><span>No recovery reports logged yet.</span><b>Awaiting data</b></div></div></section><section class="panel"><div class="panel-head"><h3>Next Milestone</h3></div><p class="body-copy">Complete your prescribed rehab protocol and log response. Progress only when your clinician clears the next stage.</p><button class="primary compact" data-action="log-recovery">Log recovery</button></section></div></section>

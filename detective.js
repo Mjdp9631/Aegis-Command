@@ -8,6 +8,8 @@ let syncSetupUi = () => {};
 let currentTradeId = null;
 let loadedTrades = [];
 let activeFilters = {};
+let accountBalances = [];
+let activeDetectiveTab = "journal";
 
 function numberOrNull(value) {
   return value === "" || value == null ? null : Number(value);
@@ -53,6 +55,81 @@ function displaySetup(value) {
 function setupValues(value) {
   try { const choices = JSON.parse(value || "[]"); return Array.isArray(choices) ? choices : [value]; }
   catch { return value ? [value] : []; }
+}
+
+function money(value) {
+  return Number(value).toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
+
+function accountTrades(accountName) {
+  return loadedTrades
+    .filter((trade) => String(trade.account || "").trim() === accountName && resolvedOutcome(trade) !== "Open")
+    .sort((a, b) => new Date(a.traded_at || a.created_at) - new Date(b.traded_at || b.created_at));
+}
+
+function calculatedBalance(account) {
+  return accountTrades(account.account_name).reduce(
+    (balance, trade) => balance * (1 + (Number(trade.pnl_percent) || 0) / 100),
+    Number(account.starting_balance)
+  );
+}
+
+function updateAccountSelect() {
+  const control = $("#detective-account");
+  if (!control || !accountBalances.length) return;
+  const selected = control.value;
+  const names = [...new Set([...Array.from(control.options).map((option) => option.value), ...accountBalances.map((account) => account.account_name)])];
+  control.innerHTML = names.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+  if (names.includes(selected)) control.value = selected;
+}
+
+function renderAccountBalances() {
+  const list = $("#account-balance-list");
+  if (!list) return;
+  if (!accountBalances.length) {
+    list.innerHTML = '<p class="empty-account-state">No account balance is configured yet. Add the account you want the Command Center to track.</p>';
+    updateAccountSelect();
+    return;
+  }
+  list.innerHTML = accountBalances.map((account) => {
+    const current = calculatedBalance(account);
+    const delta = current - Number(account.starting_balance);
+    const tradeCount = accountTrades(account.account_name).length;
+    return `<article class="account-balance-card"><div><p>${escapeHtml(account.account_name)} ${account.is_primary ? '<span>COMMAND CENTER</span>' : ""}</p><strong>${money(current)}</strong><small>Started at ${money(account.starting_balance)} · ${tradeCount} closed trade${tradeCount === 1 ? "" : "s"}</small></div><b class="${delta >= 0 ? "result-positive" : "result-negative"}">${delta >= 0 ? "+" : ""}${money(delta)}</b></article>`;
+  }).join("");
+  updateAccountSelect();
+}
+
+function setDetectiveTab(tab) {
+  activeDetectiveTab = tab;
+  $("#detective-journal").hidden = tab !== "journal";
+  $("#detective-accounts").hidden = tab !== "accounts";
+  document.querySelectorAll("[data-detective-tab]").forEach((button) => button.classList.toggle("active", button.dataset.detectiveTab === tab));
+}
+
+async function loadAccountBalances() {
+  if (!supabase) return;
+  const { data, error } = await supabase.from("account_balances").select("*").order("is_primary", { ascending: false }).order("created_at", { ascending: true });
+  if (error) { console.error(error); return; }
+  accountBalances = data || [];
+  renderAccountBalances();
+}
+
+async function saveAccountBalance(event) {
+  event.preventDefault();
+  if (!supabase) return;
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) return alert("Please sign in before saving an account.");
+  const accountName = $("#account-balance-name").value.trim();
+  const startingBalance = numberOrNull($("#account-starting-balance").value);
+  const primary = $("#account-primary").checked;
+  if (!accountName || !startingBalance || startingBalance <= 0) return;
+  if (primary) await supabase.from("account_balances").update({ is_primary: false }).eq("user_id", sessionData.session.user.id);
+  const { error } = await supabase.from("account_balances").upsert({ user_id: sessionData.session.user.id, account_name: accountName, starting_balance: startingBalance, is_primary: primary }, { onConflict: "user_id,account_name" });
+  if (error) return alert(`The account could not be saved: ${error.message}`);
+  event.target.reset();
+  await loadAccountBalances();
+  window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
 }
 
 function filteredTrades() {
@@ -141,6 +218,7 @@ async function loadTrades() {
   }
   loadedTrades = data || [];
   applyFilters();
+  renderAccountBalances();
 }
 
 function buildFilters() {
@@ -306,6 +384,9 @@ function init() {
   pnlMetric.querySelector("p").textContent = "TOTAL PNL";
   pnlMetric.querySelector("small").textContent = "Sum across logged trades";
   $("#detective-excursion").closest(".metric").querySelector("p").textContent = "AVG MAE / MFE";
+  document.querySelectorAll("[data-detective-tab]").forEach((button) => button.addEventListener("click", () => setDetectiveTab(button.dataset.detectiveTab)));
+  $("#account-balance-form")?.addEventListener("submit", saveAccountBalance);
+  setDetectiveTab(activeDetectiveTab);
   document.addEventListener("click", (event) => {
     if (event.target.closest('[data-action="add-trade-v2"]')) {
       if (!supabase) {
@@ -325,6 +406,7 @@ function init() {
   dialog.querySelector("form").addEventListener("submit", saveTrade);
   if (supabase) {
     loadTrades();
+    loadAccountBalances();
     supabase.auth.onAuthStateChange(() => setTimeout(loadTrades, 50));
   }
 }

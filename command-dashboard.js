@@ -6,6 +6,7 @@ const $ = (selector) => document.querySelector(selector);
 let dashboardData = null;
 let activeRange = "all";
 let activeChart = null;
+let activeChartMode = "pnl";
 
 function normalOutcome(value) {
   const item = String(value || "").trim().toLowerCase();
@@ -65,12 +66,30 @@ function calculateXp({ trades, operations, projects, content }) {
   return discipline + trading + projectXp + contentXp;
 }
 
-function valueSeries(trades) {
-  const completed = trades.filter(isClosed).sort((a, b) => new Date(a.traded_at || a.created_at) - new Date(b.traded_at || b.created_at));
-  const latest = completed.at(-1) ? new Date(completed.at(-1).traded_at || completed.at(-1).created_at) : new Date();
+function rangeCutoff(trades) {
+  const latestTrade = trades.at(-1);
+  const latest = latestTrade ? new Date(latestTrade.traded_at || latestTrade.created_at) : new Date();
   const cutoff = new Date(latest);
   if (activeRange === "week") cutoff.setDate(cutoff.getDate() - 7);
   if (activeRange === "month") cutoff.setMonth(cutoff.getMonth() - 1);
+  return cutoff;
+}
+
+function valueSeries(trades, accounts) {
+  const completed = trades.filter(isClosed).sort((a, b) => new Date(a.traded_at || a.created_at) - new Date(b.traded_at || b.created_at));
+  const cutoff = rangeCutoff(completed);
+  if (activeChartMode === "balance") {
+    const account = (accounts || []).find((item) => item.is_primary) || (accounts || [])[0];
+    if (!account) return { entries: [], total: 0, unit: "$", count: 0, accountName: null };
+    let total = Number(account.starting_balance);
+    const allEntries = completed.filter((trade) => String(trade.account || "").trim() === account.account_name).map((trade) => {
+      const prior = total;
+      total *= 1 + (Number(trade.pnl_percent) || 0) / 100;
+      return { total, delta: total - prior, date: new Date(trade.traded_at || trade.created_at) };
+    });
+    const entries = activeRange === "all" ? allEntries : allEntries.filter((entry) => entry.date >= cutoff);
+    return { entries, total: entries.at(-1)?.total ?? Number(account.starting_balance), unit: "$", count: entries.length, accountName: account.account_name };
+  }
   const filtered = activeRange === "all" ? completed : completed.filter((trade) => new Date(trade.traded_at || trade.created_at) >= cutoff);
   const usablePnl = filtered.some((trade) => trade.pnl_percent != null && Number.isFinite(Number(trade.pnl_percent)));
   let total = 0;
@@ -78,10 +97,16 @@ function valueSeries(trades) {
     total += usablePnl ? Number(trade.pnl_percent || 0) : Number(trade.r_multiple || 0);
     return { total, delta: usablePnl ? Number(trade.pnl_percent || 0) : Number(trade.r_multiple || 0), date: new Date(trade.traded_at || trade.created_at) };
   });
-  return { entries, total, unit: usablePnl ? "%" : "R", count: filtered.length };
+  return { entries, total, unit: usablePnl ? "%" : "R", count: filtered.length, accountName: null };
 }
 
-function chartSvg(entries, unit) {
+function formatChartValue(value, unit, withSign = true) {
+  const number = Number(value) || 0;
+  const sign = withSign && number > 0 ? "+" : "";
+  return unit === "$" ? `${sign}$${number.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : `${sign}${number.toFixed(2)}${unit}`;
+}
+
+function chartSvg(entries, unit, total) {
   if (!entries.length) return '<div class="chart-empty">LOG CLOSED TRADE DATA TO ACTIVATE THIS DISPLAY</div>';
   const width = 620, height = 255, padLeft = 52, padRight = 16, padTop = 18, padBottom = 28;
   const values = [0, ...entries.map((entry) => entry.total)];
@@ -91,9 +116,10 @@ function chartSvg(entries, unit) {
   const yAt = (value) => height - padBottom - ((value - min) / span) * (height - padTop - padBottom);
   const points = entries.map((entry, index) => `${xAt(index)},${yAt(entry.total)}`).join(" ");
   const area = `${padLeft},${height - padBottom} ${points} ${width - padRight},${height - padBottom}`;
-  const horizontal = Array.from({ length: 5 }, (_, index) => { const value=min+(span*(4-index)/4);const y=yAt(value);return `<path d="M ${padLeft} ${y} H ${width-padRight}"/><text class="chart-axis-y" x="4" y="${y+3}">${value.toFixed(1)}${unit}</text>`; }).join("");
+  const horizontal = Array.from({ length: 5 }, (_, index) => { const value=min+(span*(4-index)/4);const y=yAt(value);return `<path d="M ${padLeft} ${y} H ${width-padRight}"/><text class="chart-axis-y" x="4" y="${y+3}">${formatChartValue(value, unit, false)}</text>`; }).join("");
   const vertical = Array.from({ length: 6 }, (_, index) => { const item=entries[Math.round((entries.length-1)*(index/5))];const x=padLeft+((width-padLeft-padRight)*(index/5));const label=item?.date?.toLocaleDateString(undefined,{month:"short",day:"numeric"})||"";return `<path d="M ${x} ${padTop} V ${height-padBottom}"/><text class="chart-axis-x" x="${x}" y="${height-7}" text-anchor="middle">${label}</text>`; }).join("");
-  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><g class="chart-grid">${horizontal}${vertical}</g><defs><linearGradient id="pnl-fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#58b4ff" stop-opacity=".34"/><stop offset="1" stop-color="#58b4ff" stop-opacity="0"/></linearGradient></defs><polygon points="${area}" fill="url(#pnl-fill)"/><polyline points="${points}" class="chart-line"/></svg><div class="chart-crosshair" aria-hidden="true"></div><div class="chart-tooltip" aria-hidden="true"></div>`;
+  const formattedTotal = formatChartValue(total, unit);
+  return `<div class="chart-summary-readout"><span>CUMULATIVE PNL</span><small>FROM LOGGED TRADES</small><b class="${total < 0 ? "negative" : ""}">${formattedTotal}</b></div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><g class="chart-grid">${horizontal}${vertical}</g><defs><linearGradient id="pnl-fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#58b4ff" stop-opacity=".34"/><stop offset="1" stop-color="#58b4ff" stop-opacity="0"/></linearGradient></defs><polygon points="${area}" fill="url(#pnl-fill)"/><polyline points="${points}" class="chart-line"/></svg><div class="chart-crosshair" aria-hidden="true"></div><div class="chart-tooltip" aria-hidden="true"></div>`;
 }
 
 function attachCrosshair(chart) {
@@ -118,13 +144,14 @@ function attachCrosshair(chart) {
 
 function render() {
   if (!dashboardData) return;
-  const { trades, operations, missions, projects, content, mastery } = dashboardData;
-  const chart = valueSeries(trades);
-  $("#hero-trade-chart").innerHTML = chartSvg(chart.entries, chart.unit);
+  const { trades, operations, missions, projects, content, mastery, accounts } = dashboardData;
+  const chart = valueSeries(trades, accounts);
+  $("#hero-trade-chart").innerHTML = chartSvg(chart.entries, chart.unit, chart.total);
   activeChart = chart;
   attachCrosshair(chart);
-  $("#hero-trade-caption").textContent = chart.count ? `${chart.count} CLOSED TRADES // ${activeRange.toUpperCase()}` : "AWAITING TRADE DATA";
-  const pnl = `${chart.total >= 0 ? "+" : ""}${chart.total.toFixed(2)}${chart.unit}`;
+  $("#hero-chart-title").textContent = activeChartMode === "balance" ? `ACCOUNT BALANCE // ${chart.accountName || "SETUP REQUIRED"}` : "TRADE INTELLIGENCE // CUMULATIVE PNL";
+  $("#hero-trade-caption").textContent = chart.count ? `${chart.count} CLOSED TRADES // ${activeRange.toUpperCase()}` : activeChartMode === "balance" ? "SET A STARTING BALANCE IN DETECTIVE" : "AWAITING TRADE DATA";
+  const pnl = formatChartValue(chart.total, chart.unit);
   $("#hero-trade-pnl").textContent = chart.count ? pnl : "—";
   $("#hero-trade-pnl").classList.toggle("negative", chart.total < 0);
 
@@ -176,21 +203,24 @@ async function load() {
   if (!supabase) return;
   const { data: session } = await supabase.auth.getSession();
   if (!session.session) return;
-  const [tradesResult, operationsResult, missionsResult, projectsResult, contentResult, masteryResult] = await Promise.all([
+  const [tradesResult, operationsResult, missionsResult, projectsResult, contentResult, masteryResult, accountsResult] = await Promise.all([
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }),
     supabase.from("operations").select("scheduled_date, completed"),
     supabase.from("missions").select("*"),
     supabase.from("business_projects").select("status"),
     supabase.from("content_items").select("status"),
-    supabase.from("mastery_entries").select("id")
+    supabase.from("mastery_entries").select("id"),
+    supabase.from("account_balances").select("*").order("is_primary", { ascending: false }).order("created_at", { ascending: true })
   ]);
-  dashboardData = { trades: tradesResult.data || [], operations: operationsResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], content: contentResult.data || [], mastery: masteryResult.data || [] };
+  dashboardData = { trades: tradesResult.data || [], operations: operationsResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], content: contentResult.data || [], mastery: masteryResult.data || [], accounts: accountsResult.data || [] };
   render();
 }
 
 document.addEventListener("click", (event) => {
   const range = event.target.closest("[data-chart-range]");
   if (range) { event.stopPropagation(); activeRange = range.dataset.chartRange; document.querySelectorAll("[data-chart-range]").forEach((button) => button.classList.toggle("active", button === range)); render(); return; }
+  const mode = event.target.closest("[data-chart-mode]");
+  if (mode) { event.stopPropagation(); activeChartMode = mode.dataset.chartMode; document.querySelectorAll("[data-chart-mode]").forEach((button) => button.classList.toggle("active", button === mode)); render(); return; }
   const target = event.target.closest("[data-dashboard-view]");
   if (target) document.querySelector(`.nav-link[data-view="${target.dataset.dashboardView}"]`)?.click();
 });
@@ -201,6 +231,7 @@ if (supabase) {
   supabase.auth.onAuthStateChange(() => setTimeout(load, 100));
   window.addEventListener("aegis:missions-changed", () => setTimeout(load, 120));
   window.addEventListener("aegis:mastery-changed", () => setTimeout(load, 120));
+  window.addEventListener("aegis:accounts-changed", () => setTimeout(load, 120));
   document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(load, 700); });
 }
 
