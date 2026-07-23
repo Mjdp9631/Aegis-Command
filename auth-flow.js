@@ -4,40 +4,49 @@ const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey
   ? createClient(config.supabaseUrl, config.supabaseAnonKey)
   : null;
+const username = String(config.loginUsername || "matin").trim();
+const loginEmail = String(config.loginEmail || "").trim();
 
 const dialog = () => document.querySelector("#auth-dialog");
 const form = () => dialog()?.querySelector("form");
 
-function message(text) {
-  const target = document.querySelector("#auth-message");
-  if (target) target.textContent = text;
+function message(target, text) {
+  const element = document.querySelector(target);
+  if (element) element.textContent = text;
+}
+
+function ensureGate() {
+  if (document.querySelector("#aegis-auth-gate")) return;
+  document.body.insertAdjacentHTML("beforeend", `
+    <section id="aegis-auth-gate" aria-label="AEGIS Command sign in">
+      <form class="auth-gate-card" novalidate>
+        <p class="auth-gate-eyebrow">AEGIS COMMAND // SECURE ACCESS</p>
+        <h1>Welcome, sir.</h1>
+        <p>Input credentials to enter the command center.</p>
+        <label>Username <input id="gate-username" required autocomplete="username" value="${username}" /></label>
+        <label>Password <input id="gate-password" required type="password" minlength="8" autocomplete="current-password" placeholder="••••••••" /></label>
+        <p id="gate-message" class="auth-gate-message" role="status"></p>
+        <button class="primary" id="gate-sign-in" type="submit">Enter command center</button>
+      </form>
+    </section>`);
+}
+
+function syncGate(session) {
+  ensureGate();
+  document.body.classList.toggle("requires-auth", !session);
 }
 
 function renderAccessForm(session) {
   const target = form();
   if (!target) return;
-
-  if (session) {
-    target.innerHTML = `
-      <button class="dialog-close" type="button" aria-label="Close">×</button>
-      <p class="eyebrow blue-text">ACCOUNT ACCESS</p>
-      <h2>Set your password.</h2>
-      <p class="auth-copy">You are signed in as ${session.user.email}. Create a password once; every future login is direct.</p>
-      <label>Password <input id="auth-password" required type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" /></label>
-      <p id="auth-message" class="auth-message"></p>
-      <button class="primary" id="save-password" type="button">Save password</button>`;
-    return;
-  }
-
   target.innerHTML = `
     <button class="dialog-close" type="button" aria-label="Close">×</button>
     <p class="eyebrow blue-text">ACCOUNT ACCESS</p>
-    <h2>Sign in to AEGIS.</h2>
-    <p class="auth-copy">Use your email as your username and the password you set. No magic links.</p>
-    <label>Username / email <input id="auth-email" required type="email" autocomplete="username" placeholder="you@example.com" /></label>
-    <label>Password <input id="auth-password" required type="password" autocomplete="current-password" placeholder="Your password" /></label>
+    <h2>Set your password.</h2>
+    <p class="auth-copy">Your direct login name is <strong>${username}</strong>. Set this once while you are signed in; future access will require only your username and password.</p>
+    <label>New password <input id="auth-password" required type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" /></label>
     <p id="auth-message" class="auth-message"></p>
-    <button class="primary" id="sign-in-password" type="button">Sign in</button>`;
+    <button class="primary" id="save-password" type="button">Save password</button>`;
 }
 
 async function getSession() {
@@ -48,23 +57,42 @@ async function getSession() {
 
 async function openAccountAccess() {
   if (!supabase) return alert("Secure access will activate after the Supabase connection is added.");
-  renderAccessForm(await getSession());
+  const session = await getSession();
+  if (!session) return;
+  renderAccessForm(session);
   dialog()?.showModal();
 }
 
 async function signOut() {
   const session = await getSession();
-  if (!session || !window.confirm(`Sign out of AEGIS Command for ${session.user.email}?`)) return;
+  if (!session || !window.confirm("Sign out of AEGIS Command?")) return;
   const { error } = await supabase.auth.signOut();
   if (error) return alert(error.message);
-  window.location.reload();
 }
+
+async function signIn(submittedUsername, password) {
+  if (!loginEmail) return "Login email is not configured yet.";
+  if (submittedUsername.trim().toLowerCase() !== username.toLowerCase()) return "Credentials not recognized.";
+  const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
+  return error?.message || "";
+}
+
+document.addEventListener("submit", async (event) => {
+  if (!event.target.matches(".auth-gate-card")) return;
+  event.preventDefault();
+  const submittedUsername = document.querySelector("#gate-username")?.value || "";
+  const password = document.querySelector("#gate-password")?.value || "";
+  if (!submittedUsername || password.length < 8) return message("#gate-message", "Enter your username and password.");
+  message("#gate-message", "Verifying credentials…");
+  const error = await signIn(submittedUsername, password);
+  if (error) return message("#gate-message", error);
+  message("#gate-message", "Access granted.");
+}, { capture: true });
 
 document.addEventListener("click", async (event) => {
   const authButton = event.target.closest("#auth-button");
   const signOutButton = event.target.closest("#auth-signout");
   const close = event.target.closest("#auth-dialog .dialog-close");
-  const signIn = event.target.closest("#sign-in-password");
   const savePassword = event.target.closest("#save-password");
 
   if (authButton) {
@@ -82,28 +110,21 @@ document.addEventListener("click", async (event) => {
     event.stopImmediatePropagation();
     return dialog()?.close();
   }
-  if (!signIn && !savePassword) return;
+  if (!savePassword) return;
 
   event.preventDefault();
   event.stopImmediatePropagation();
-  if (!supabase) return message("Supabase is not connected yet.");
-
   const password = document.querySelector("#auth-password")?.value || "";
-  if (password.length < 8) return message("Use a password with at least 8 characters.");
-
-  if (savePassword) {
-    message("Saving password…");
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) return message(error.message);
-    message("Password saved. You can now sign in directly.");
-    return;
-  }
-
-  const email = document.querySelector("#auth-email")?.value.trim();
-  if (!email) return message("Enter your email address first.");
-  message("Signing in…");
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return message(error.message);
-  dialog()?.close();
-  window.location.reload();
+  if (password.length < 8) return message("#auth-message", "Use a password with at least 8 characters.");
+  message("#auth-message", "Saving password…");
+  const { error } = await supabase.auth.updateUser({ password });
+  message("#auth-message", error ? error.message : "Password saved. Direct login is now active.");
 }, { capture: true });
+
+ensureGate();
+if (supabase) {
+  getSession().then(syncGate);
+  supabase.auth.onAuthStateChange((_event, session) => syncGate(session));
+} else {
+  syncGate(null);
+}

@@ -1,0 +1,13 @@
+body.requires-auth .app-shell { visibility: hidden; pointer-events: none; }
+#aegis-auth-gate { display: none; position: fixed; z-index: 100; inset: 0; place-items: center; padding: 28px; background: linear-gradient(90deg, rgba(2, 8, 14, .16), rgba(2, 8, 14, .04) 50%, rgba(2, 8, 14, .22)); }
+body.requires-auth #aegis-auth-gate { display: grid; }
+.auth-gate-card { width: min(100%, 420px); padding: 34px; border: 1px solid rgba(104, 180, 245, .36); border-radius: 6px; background: linear-gradient(135deg, rgba(4, 15, 27, .86), rgba(5, 19, 32, .58)); box-shadow: 0 22px 80px rgba(0, 0, 0, .48), inset 0 1px 0 rgba(130, 198, 255, .12); backdrop-filter: blur(10px); }
+.auth-gate-eyebrow { margin: 0 0 14px; color: #69baff; font: 700 9px/1.2 "Space Mono", ui-monospace, monospace; letter-spacing: .16em; }
+.auth-gate-card h1 { margin: 0; color: #f0f6ff; font: 600 clamp(35px, 5vw, 54px)/.95 "Rajdhani", sans-serif; letter-spacing: -.04em; }
+.auth-gate-card > p:not(.auth-gate-eyebrow):not(.auth-gate-message) { margin: 13px 0 25px; color: rgba(205, 225, 244, .7); font-size: 17px; }
+.auth-gate-card label { display: grid; gap: 7px; margin-top: 15px; color: #8eb2d6; font: 700 10px/1 "Space Mono", ui-monospace, monospace; letter-spacing: .13em; text-transform: uppercase; }
+.auth-gate-card input { min-height: 47px; padding: 0 13px; border: 1px solid rgba(115, 180, 234, .26); border-radius: 3px; outline: 0; background: rgba(1, 9, 17, .7); color: #f0f6ff; font: 600 17px "Rajdhani", sans-serif; }
+.auth-gate-card input:focus { border-color: #f0af45; box-shadow: 0 0 0 3px rgba(240, 175, 69, .12); }
+.auth-gate-card .primary { width: 100%; min-height: 47px; margin-top: 19px; }
+.auth-gate-message { min-height: 18px; margin: 12px 0 -4px; color: #76bfff; font-size: 14px; }
+@media (max-width: 600px) { .auth-gate-card { padding: 26px 22px; } }
