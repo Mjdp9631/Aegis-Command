@@ -903,7 +903,7 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   /* The legacy four-card status row is not part of the rebuilt Command Center. */
   #command > .metric-grid,
   #command > .command-stage > .metric-grid { display:none !important; }
-  #command > .content-grid { grid-column:1 / 3; grid-row:2; display:grid; grid-template-columns:minmax(0,1.68fr) minmax(260px,.32fr); gap:14px; margin:0; }
+  #command > .content-grid { grid-column:1 / 3; grid-row:2; display:grid; grid-template-columns:minmax(680px,1.95fr) minmax(250px,.45fr); gap:14px; margin:0; }
   #command > .content-grid .panel { min-height:292px; padding:17px 20px; border-radius:5px; background:linear-gradient(135deg,rgba(5,14,24,.67),rgba(5,14,24,.42)) !important; }
   #command > .content-grid .panel-head { margin-bottom:12px; padding-bottom:11px; }
   #command > .content-grid .panel-head h3 { font-size:19px; letter-spacing:-.025em; }
@@ -954,11 +954,11 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   #operations-list { min-height:0; overflow-x:hidden; overflow-y:auto; padding-right:4px; scrollbar-width:thin; scrollbar-color:rgba(89,180,255,.45) transparent; }
   #operations-list::-webkit-scrollbar { width:5px; }
   #operations-list::-webkit-scrollbar-thumb { background:rgba(89,180,255,.45); border-radius:99px; }
-  .operation-table-head,.operation-table-row { display:grid; grid-template-columns:100px minmax(0,1fr) 82px 68px; align-items:center; column-gap:10px; }
+  .operation-table-head.operation-table-v2,.operation-table-row.operation-table-v2 { display:grid; grid-template-columns:112px minmax(280px,1fr) 105px 88px; align-items:center; column-gap:12px; }
   .operation-table-head { position:sticky; top:0; z-index:2; height:28px; padding:0 2px; border-bottom:1px solid rgba(126,185,239,.16); background:rgba(4,13,22,.92); color:rgba(157,197,228,.62); font:700 7px/1 "Space Mono",ui-monospace,monospace; letter-spacing:.09em; }
   .operation-table-row { min-height:40px !important; padding:6px 2px !important; border-bottom:1px solid rgba(126,185,239,.12); cursor:pointer; }
   .operation-table-row .operation-title { min-width:0; }
-  .operation-table-row .operation-title strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:600 12px/1.15 "Rajdhani",sans-serif; }
+  .operation-table-row.operation-table-v2 .operation-title strong { display:block; overflow:visible; text-overflow:clip; white-space:normal; font:600 13px/1.15 "Rajdhani",sans-serif; }
   .operation-status,.operation-category,.operation-priority,.operation-eta { white-space:nowrap; font:700 8px/1 "Space Mono",ui-monospace,monospace; letter-spacing:.05em; }
   .operation-category,.operation-priority { display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; }
   .operation-status { min-width:0; padding:6px 7px; border:1px solid rgba(113,179,234,.24); border-radius:3px; background:rgba(3,12,21,.7); color:rgba(183,210,234,.82); font:700 8px/1 "Space Mono",ui-monospace,monospace; letter-spacing:.03em; text-align:left; cursor:pointer; }
