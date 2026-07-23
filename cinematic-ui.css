@@ -736,7 +736,7 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
 .market-tickers { appearance: none; width: 100%; color: inherit; text-align: left; font: inherit; border: 1px solid rgba(103,177,245,.21); }
 .market-tickers > span { display: block; margin-bottom: 7px; }
 .market-tickers > div { display:grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 8px; padding: 5px 0; border-top: 1px solid rgba(97,165,228,.13); }
-.market-tickers b { color: rgba(154, 195, 230, .88); font: 700 11px/1 ui-monospace,monospace; letter-spacing:.1em; }
+.market-tickers b { color: rgba(181, 216, 245, .96); font: 700 14px/1 ui-monospace,monospace; letter-spacing:.07em; }
 .market-tickers strong { color: #edf5ff; text-align:right; font: 700 13px/1 ui-monospace,monospace; letter-spacing:-.04em; }
 .market-tickers small { grid-column: 1 / -1; color: rgba(117, 217, 166, .72); font: 700 6px/1 ui-monospace,monospace; letter-spacing:.12em; }
 .market-tickers small.negative { color: #ff9b9b; }
