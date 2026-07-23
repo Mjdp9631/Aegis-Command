@@ -7,7 +7,7 @@
     <title>AEGIS COMMAND</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Rajdhani:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="detective.css" />
     <link rel="stylesheet" href="advisor.css" />
@@ -21,6 +21,7 @@
     <link rel="stylesheet" href="command-summary.css" />
     <link rel="stylesheet" href="mastery.css" />
     <link rel="stylesheet" href="cinematic-ui.css" />
+    <link rel="stylesheet" href="sidebar-replica.css" />
   </head>
   <body>
     <div class="app-shell">
@@ -37,9 +38,10 @@
           <a class="nav-link" href="#character" data-view="character"><span>&#9817;</span> Character Systems</a>
         </nav>
         <div class="sidebar-foot">
-          <div class="secure-dot"></div>
-          <span>USER: DIRECTOR<br /><small>CLEARANCE: OMEGA-7</small></span>
+          <div class="secure-dot" aria-hidden="true"></div>
+          <span>USER: DIRECTOR<br /><small>CLEARANCE: OMEGA-7</small><br /><small>ID: AC-7F8X-22</small></span>
         </div>
+        <button class="sidebar-signout" type="button" onclick="document.getElementById('auth-button')?.click()">SIGN OUT <span>&#8680;</span></button>
       </aside>
 
       <main>

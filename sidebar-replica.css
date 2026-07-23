@@ -1,0 +1,64 @@
+/* Exact command-rail structure. This sheet is loaded after every legacy style. */
+@media (min-width: 761px) {
+  :root { --rail-width: 244px; }
+  .app-shell { grid-template-columns: var(--rail-width) minmax(0, 1fr) !important; }
+
+  .sidebar, .sidebar:hover, .sidebar:focus-within {
+    position: fixed !important; inset: 0 auto 0 0 !important; z-index: 30 !important;
+    display: flex !important; flex-direction: column !important;
+    width: var(--rail-width) !important; min-width: var(--rail-width) !important; height: 100vh !important;
+    padding: 0 16px 36px !important; box-sizing: border-box !important; overflow: hidden !important;
+    border: 1px solid rgba(118,170,214,.32) !important; border-left: 0 !important; border-radius: 0 5px 5px 0 !important;
+    background: linear-gradient(180deg,rgba(3,11,19,.99),rgba(2,10,17,.975)) !important;
+    box-shadow: inset -1px 0 rgba(73,144,201,.16), 14px 0 38px rgba(0,0,0,.22) !important; transition: none !important;
+  }
+  .sidebar::before {
+    content: "SYSTEM STATUS   ●  ●  ●  ●" !important; display: flex !important; align-items: center !important;
+    height: 39px !important; margin: 0 -16px 11px !important; padding: 0 17px !important; box-sizing: border-box !important;
+    color: rgba(209,216,223,.78) !important; border-bottom: 1px solid rgba(113,166,213,.20) !important;
+    font: 700 8px/1 "Rajdhani",sans-serif !important; letter-spacing: .055em !important;
+  }
+
+  .brand, .sidebar:hover .brand { display:block !important; min-width:0 !important; margin:0 4px !important; padding:0 2px 9px !important; border:0 !important; }
+  .brand-wordmark { color:#f2ba55 !important; font:600 18px/1 "Orbitron",sans-serif !important; letter-spacing:.14em !important; white-space:nowrap !important; }
+  .system-label, .sidebar:hover .system-label {
+    display:block !important; margin:0 5px 20px !important; color:rgba(224,225,225,.86) !important; opacity:1 !important; transform:none !important;
+    font:600 13px/1 "Rajdhani",sans-serif !important; letter-spacing:.06em !important; white-space:nowrap !important;
+  }
+
+  .sidebar nav { display:grid !important; gap:0 !important; min-width:0 !important; margin:0 !important; }
+  .nav-link, .sidebar:hover .nav-link {
+    display:flex !important; align-items:center !important; min-width:0 !important; height:65px !important; margin:0 !important; padding:0 16px !important; gap:18px !important;
+    box-sizing:border-box !important; color:rgba(226,231,237,.87) !important; border:0 !important; border-bottom:1px solid rgba(120,174,220,.14) !important; border-radius:0 !important;
+    background:transparent !important; box-shadow:none !important; font:600 14px/1 "Orbitron",sans-serif !important; letter-spacing:.035em !important; text-decoration:none !important;
+  }
+  .nav-link > span { display:inline-flex !important; align-items:center !important; justify-content:center !important; width:32px !important; flex:0 0 32px !important; color:#dbe1e7 !important; font:0/1 Arial,sans-serif !important; }
+  .nav-link.active {
+    color:#f4bb5f !important; border:1px solid rgba(244,180,69,.82) !important;
+    background:linear-gradient(90deg,rgba(236,169,61,.30),rgba(236,169,61,.08) 78%,transparent) !important;
+    box-shadow:inset 3px 0 #ecae45,0 0 16px rgba(231,164,54,.10) !important;
+  }
+  .nav-link.active > span { color:#f3ba58 !important; filter:drop-shadow(0 0 7px rgba(241,178,70,.42)); }
+  .nav-link:hover { color:#fff !important; background:linear-gradient(90deg,rgba(85,169,240,.12),transparent 82%) !important; }
+  .nav-link[data-view="mastery"] { margin-top:0 !important; border-top:0 !important; }
+
+  /* Large outlined tactical icon system. Character uses a person insignia, never a gear. */
+  .nav-link[data-view="command"] > span::after { content:"✪"; font-size:31px; }
+  .nav-link[data-view="missions"] > span::after { content:"⌖"; font-size:35px; }
+  .nav-link[data-view="detective"] > span::after { content:"⌕"; font-size:38px; }
+  .nav-link[data-view="enterprise"] > span::after { content:"✾"; font-size:31px; }
+  .nav-link[data-view="recovery"] > span::after { content:"♢"; font-size:38px; }
+  .nav-link[data-view="mastery"] > span::after { content:"☆"; font-size:38px; }
+  .nav-link[data-view="character"] > span::after { content:"♙"; font-size:36px; }
+
+  .sidebar-foot {
+    position:static !important; display:flex !important; align-items:center !important; gap:13px !important; min-width:0 !important;
+    margin:auto 0 18px !important; padding:17px 13px !important; border:1px solid rgba(239,178,70,.88) !important; border-radius:4px !important;
+    background:linear-gradient(130deg,rgba(232,163,49,.12),rgba(5,14,23,.30)) !important;
+  }
+  .sidebar-foot .secure-dot { width:28px !important; height:34px !important; border:2px solid #efb54f !important; border-radius:45% 45% 50% 50% !important; background:transparent !important; box-shadow:inset 0 0 0 5px rgba(239,181,79,.06) !important; }
+  .sidebar-foot span, .sidebar:hover .sidebar-foot span { display:block !important; min-width:0 !important; color:#eabe70 !important; opacity:1 !important; transform:none !important; font:600 9px/1.6 "Orbitron",sans-serif !important; letter-spacing:.05em !important; white-space:nowrap !important; }
+  .sidebar-foot small { color:rgba(214,224,234,.80) !important; font-size:9px !important; }
+  .sidebar-signout { display:flex !important; align-items:center !important; justify-content:center !important; gap:9px !important; width:100% !important; min-height:49px !important; padding:0 !important; color:rgba(219,228,239,.86) !important; border:1px solid rgba(120,174,220,.42) !important; border-radius:4px !important; background:rgba(3,12,20,.66) !important; font:600 11px/1 "Orbitron",sans-serif !important; letter-spacing:.08em !important; }
+  .sidebar-signout span { color:#efb54f; font-size:18px; }
+}
