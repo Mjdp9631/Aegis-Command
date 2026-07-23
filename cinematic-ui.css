@@ -903,7 +903,7 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   /* The legacy four-card status row is not part of the rebuilt Command Center. */
   #command > .metric-grid,
   #command > .command-stage > .metric-grid { display:none !important; }
-  #command > .content-grid { grid-column:1 / 3; grid-row:2; display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:0; }
+  #command > .content-grid { grid-column:1 / 3; grid-row:2; display:grid; grid-template-columns:minmax(0,1.68fr) minmax(260px,.32fr); gap:14px; margin:0; }
   #command > .content-grid .panel { min-height:292px; padding:17px 20px; border-radius:5px; background:linear-gradient(135deg,rgba(5,14,24,.67),rgba(5,14,24,.42)) !important; }
   #command > .content-grid .panel-head { margin-bottom:12px; padding-bottom:11px; }
   #command > .content-grid .panel-head h3 { font-size:19px; letter-spacing:-.025em; }
@@ -951,19 +951,19 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   #command > .content-grid .panel { overflow:hidden; }
   #command > .content-grid .panel-head { height:39px; display:flex; align-items:flex-start; }
   #command > .content-grid .operations-panel { display:grid; grid-template-rows:auto minmax(0,1fr); }
-  #operations-list { min-height:0; overflow-y:auto; padding-right:4px; scrollbar-width:thin; scrollbar-color:rgba(89,180,255,.45) transparent; }
+  #operations-list { min-height:0; overflow-x:hidden; overflow-y:auto; padding-right:4px; scrollbar-width:thin; scrollbar-color:rgba(89,180,255,.45) transparent; }
   #operations-list::-webkit-scrollbar { width:5px; }
   #operations-list::-webkit-scrollbar-thumb { background:rgba(89,180,255,.45); border-radius:99px; }
-  .operation-table-head,.operation-table-row { display:grid; grid-template-columns:20px 92px minmax(0,1fr) 76px 62px 42px; align-items:center; column-gap:8px; }
+  .operation-table-head,.operation-table-row { display:grid; grid-template-columns:100px minmax(0,1fr) 82px 68px; align-items:center; column-gap:10px; }
   .operation-table-head { position:sticky; top:0; z-index:2; height:28px; padding:0 2px; border-bottom:1px solid rgba(126,185,239,.16); background:rgba(4,13,22,.92); color:rgba(157,197,228,.62); font:700 7px/1 "Space Mono",ui-monospace,monospace; letter-spacing:.09em; }
   .operation-table-row { min-height:40px !important; padding:6px 2px !important; border-bottom:1px solid rgba(126,185,239,.12); cursor:pointer; }
-  .operation-table-row input { width:14px; height:14px; margin:0; accent-color:#efb54f; }
   .operation-table-row .operation-title { min-width:0; }
   .operation-table-row .operation-title strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:600 12px/1.15 "Rajdhani",sans-serif; }
   .operation-status,.operation-category,.operation-priority,.operation-eta { white-space:nowrap; font:700 8px/1 "Space Mono",ui-monospace,monospace; letter-spacing:.05em; }
-  .operation-status { color:#63bbff; display:flex; align-items:center; gap:5px; }
-  .operation-status i { width:8px; height:8px; border-radius:50%; background:#4eacf6; box-shadow:0 0 8px rgba(78,172,246,.6); }
-  .operation-status.complete { color:#74d9a8; }.operation-status.complete i { background:#74d9a8; box-shadow:0 0 8px rgba(116,217,168,.6); }
+  .operation-category,.operation-priority { display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  .operation-status { min-width:0; padding:6px 7px; border:1px solid rgba(113,179,234,.24); border-radius:3px; background:rgba(3,12,21,.7); color:rgba(183,210,234,.82); font:700 8px/1 "Space Mono",ui-monospace,monospace; letter-spacing:.03em; text-align:left; cursor:pointer; }
+  .operation-status i { display:inline-block; width:6px; height:6px; margin-right:5px; border-radius:50%; background:currentColor; box-shadow:0 0 8px currentColor; }
+  .operation-status.queued { color:rgba(183,210,234,.82); }.operation-status.scheduled { color:#efb54f; }.operation-status.ongoing { color:#63bbff; }.operation-status.complete { color:#74d9a8; }
   .operation-category,.operation-eta { color:rgba(183,208,231,.7); }
   .operation-priority.high { color:#ff8f73; }.operation-priority.medium { color:#efb54f; }.operation-priority.standard { color:#63bbff; }
   #command > .content-grid .mission-panel { display:grid; grid-template-rows:auto minmax(0,1fr); }
