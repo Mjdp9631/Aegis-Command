@@ -66,3 +66,34 @@
   .sidebar-signout { display:flex !important; align-items:center !important; justify-content:center !important; gap:9px !important; width:100% !important; min-height:49px !important; padding:0 !important; color:rgba(219,228,239,.86) !important; border:1px solid rgba(120,174,220,.42) !important; border-radius:4px !important; background:rgba(3,12,20,.66) !important; font:600 11px/1 "Orbitron",sans-serif !important; letter-spacing:.08em !important; }
   .sidebar-signout span { color:#efb54f; font-size:18px; }
 }
+
+/* Compact rail: icons at rest, full command rail only on hover/focus. */
+@media (min-width: 761px) {
+  :root { --rail-width: 74px; }
+  .app-shell { grid-template-columns: 74px minmax(0, 1fr) !important; }
+  .sidebar {
+    width: 74px !important; min-width: 74px !important; padding: 0 10px 20px !important;
+    transition: width .2s ease, box-shadow .2s ease !important;
+  }
+  .sidebar:hover,.sidebar:focus-within { width: 244px !important; min-width: 244px !important; }
+  .sidebar::before { justify-content:center !important; padding:0 !important; font-size:0 !important; }
+  .sidebar::before::after { content:"• • • •"; color:rgba(167,205,238,.85); font:700 8px/1 "Space Mono",monospace; letter-spacing:.18em; }
+  .brand { display:flex !important; justify-content:center; margin:0 !important; padding:0 0 13px !important; }
+  .brand-wordmark { display:none !important; }
+  .brand::before { content:"A"; display:grid; place-items:center; width:30px; height:30px; color:#f2ba55; clip-path:polygon(25% 0,75% 0,100% 25%,100% 75%,75% 100%,25% 100%,0 75%,0 25%); background:rgba(239,181,79,.16); font:700 15px/1 "Orbitron",sans-serif; }
+  .system-label { display:none !important; }
+  .nav-link { justify-content:center !important; height:55px !important; padding:0 !important; gap:0 !important; font-size:0 !important; }
+  .nav-link > span { width:36px !important; flex-basis:36px !important; }
+  .sidebar-foot { justify-content:center !important; margin-bottom:14px !important; padding:12px 0 !important; }
+  .sidebar-foot span { display:none !important; }
+  .sidebar-signout { min-height:44px !important; font-size:0 !important; }
+  .sidebar-signout span { font-size:19px !important; }
+  .sidebar:hover .brand,.sidebar:focus-within .brand { display:block !important; margin:0 4px !important; padding:0 2px 9px !important; }
+  .sidebar:hover .brand::before,.sidebar:focus-within .brand::before { display:none; }
+  .sidebar:hover .brand-wordmark,.sidebar:focus-within .brand-wordmark { display:block !important; }
+  .sidebar:hover .system-label,.sidebar:focus-within .system-label { display:block !important; }
+  .sidebar:hover .nav-link,.sidebar:focus-within .nav-link { justify-content:flex-start !important; height:65px !important; padding:0 16px !important; gap:18px !important; font-size:14px !important; }
+  .sidebar:hover .sidebar-foot,.sidebar:focus-within .sidebar-foot { justify-content:flex-start !important; padding:17px 13px !important; }
+  .sidebar:hover .sidebar-foot span,.sidebar:focus-within .sidebar-foot span { display:block !important; }
+  .sidebar:hover .sidebar-signout,.sidebar:focus-within .sidebar-signout { font-size:11px !important; }
+}
