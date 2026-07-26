@@ -1073,6 +1073,24 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   }
 }
 
+/* Two advisers, separated cleanly inside every debrief category. */
+@media (min-width: 761px) {
+  #command .intel-strip .signal-primary { display:grid; gap:7px; }
+  #command .intel-strip .signal-primary .protocol-line { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:start; }
+  #command .intel-strip .signal-primary .protocol-line p { margin:0; }
+  #command .intel-strip .signal-primary .protocol-line span { white-space:nowrap; }
+  #command .intel-strip .alfred-signal { padding-top:7px; border-top:1px solid rgba(128,184,235,.16); }
+  #command .intel-strip .alfred-signal span { color:#efb54f; }
+
+  #adviser-panel { min-height:170px !important; }
+  #adviser-panel .evening-columns { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  #adviser-panel .evening-columns article { display:grid; grid-template-rows:auto auto auto; align-content:start; gap:9px; }
+  #adviser-panel .evening-columns article > span { margin:0; }
+  #adviser-panel .evening-columns p { display:grid; grid-template-columns:49px minmax(0,1fr); gap:7px; align-items:start; margin:0; line-height:1.28; }
+  #adviser-panel .evening-columns p b { color:#67bfff; font:700 8px/1.35 "Space Mono",ui-monospace,monospace; letter-spacing:.06em; }
+  #adviser-panel .evening-columns p:nth-of-type(2) b { color:#efb54f; }
+}
+
 /* Live lower deck: clear the hero, then remain a fixed-height scrolling console. */
 @media (min-width: 761px) {
   #command > .command-stage > .content-grid {

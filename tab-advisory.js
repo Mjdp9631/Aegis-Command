@@ -30,7 +30,7 @@ function styleCommandBriefing() {
   const copy = briefing.querySelector("div");
   if (!copy) return;
   briefing.classList.add("tab-advisory", "command-briefing");
-  copy.innerHTML = `<div class="signal-primary"><p class="eyebrow">COMMAND DAILY SIGNAL</p><div class="protocol-line"><p id="briefing-text">${original}</p><span>- JARVIS</span></div></div><div class="signal-columns"><article><span>MARKET TONE</span><b id="signal-market-tone">AWAITING DATA</b></article><article><span>OPPORTUNITY WINDOW</span><b id="signal-window">AWAITING PLAN</b></article><article><span>FOCUS AREAS</span><b id="signal-focus">AWAITING MISSION</b></article><article><span>RISK POSTURE</span><b id="signal-risk">AWAITING REVIEW</b></article></div>`;
+  copy.innerHTML = `<div class="signal-primary"><p class="eyebrow">COMMAND DAILY SIGNAL</p><div class="protocol-line"><p id="briefing-text">${original}</p><span>- JARVIS</span></div><div class="protocol-line alfred-signal"><p>Keep the standard simple, sir: complete the next clear action before entertaining the next one.</p><span>- ALFRED</span></div></div><div class="signal-columns"><article><span>MARKET TONE</span><b id="signal-market-tone">AWAITING DATA</b></article><article><span>OPPORTUNITY WINDOW</span><b id="signal-window">AWAITING PLAN</b></article><article><span>FOCUS AREAS</span><b id="signal-focus">AWAITING MISSION</b></article><article><span>RISK POSTURE</span><b id="signal-risk">AWAITING REVIEW</b></article></div>`;
   briefing.dataset.dualFormat = "true";
 }
 
