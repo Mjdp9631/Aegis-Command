@@ -1089,6 +1089,18 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   #adviser-panel .evening-columns p { display:grid; grid-template-columns:49px minmax(0,1fr); gap:7px; align-items:start; margin:0; line-height:1.28; }
   #adviser-panel .evening-columns p b { color:#67bfff; font:700 8px/1.35 "Space Mono",ui-monospace,monospace; letter-spacing:.06em; }
   #adviser-panel .evening-columns p:nth-of-type(2) b { color:#efb54f; }
+
+  /* Give the command and debrief headings enough presence to scan at a glance. */
+  #command > .intel-strip .eyebrow,
+  #adviser-panel .adviser-head .eyebrow {
+    font-size: 11px;
+    letter-spacing: .14em;
+  }
+  #command > .intel-strip .signal-columns span,
+  #adviser-panel .evening-columns > article > span {
+    font-size: 10px;
+    letter-spacing: .12em;
+  }
 }
 
 /* Live lower deck: clear the hero, then remain a fixed-height scrolling console. */
