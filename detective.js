@@ -42,6 +42,42 @@ function resolvedOutcome(trade) {
   return "B/E";
 }
 
+function tradeTime(trade) {
+  const value = new Date(trade.traded_at || trade.created_at || 0).getTime();
+  return Number.isNaN(value) ? 0 : value;
+}
+
+function streakMetrics(trades) {
+  // Break-even trades are neutral: they do not create or break a decisive W/L streak.
+  const decisive = [...trades].sort((left, right) => tradeTime(left) - tradeTime(right)).map(resolvedOutcome).filter((item) => item === "Win" || item === "Loss");
+  let runType = null;
+  let runLength = 0;
+  let longestWin = 0;
+  let longestLoss = 0;
+  for (const result of decisive) {
+    runLength = result === runType ? runLength + 1 : 1;
+    runType = result;
+    if (result === "Win") longestWin = Math.max(longestWin, runLength);
+    else longestLoss = Math.max(longestLoss, runLength);
+  }
+  return { currentType: runType, currentLength: runLength, longestWin, longestLoss };
+}
+
+function setTone(element, tone) {
+  if (!element) return;
+  element.classList.remove("metric-tone-green", "metric-tone-lime", "metric-tone-yellow", "metric-tone-orange", "metric-tone-red", "streak-win", "streak-loss");
+  if (tone) element.classList.add(tone);
+}
+
+function winRateTone(rate) {
+  if (rate == null) return null;
+  if (rate < 30) return "metric-tone-red";
+  if (rate < 40) return "metric-tone-orange";
+  if (rate < 50) return "metric-tone-yellow";
+  if (rate < 60) return "metric-tone-lime";
+  return "metric-tone-green";
+}
+
 function displaySetup(value) {
   if (!value) return "—";
   try {
@@ -164,9 +200,24 @@ function renderMetrics(trades) {
   const averageMae = average(closedTrades.filter((trade) => trade.mae_30m != null).map((trade) => trade.mae_30m));
   const averageMfe = average(closedTrades.filter((trade) => trade.mfe_30m != null).map((trade) => trade.mfe_30m));
   const totalPnl = closedTrades.reduce((total, trade) => total + (Number(trade.pnl_percent) || 0), 0);
+  const winRate = decisiveTrades ? Math.round((wins / decisiveTrades) * 100) : null;
+  const streaks = streakMetrics(closedTrades);
+  const winRateElement = $("#detective-win-rate");
+  const currentStreakElement = $("#detective-current-streak");
+  const currentStreakNote = $("#detective-current-streak-note");
+  const longestWinElement = $("#detective-longest-win");
+  const longestLossElement = $("#detective-longest-loss");
 
-  $("#detective-win-rate").textContent = decisiveTrades ? `${Math.round((wins / decisiveTrades) * 100)}%` : "—";
+  winRateElement.textContent = winRate == null ? "—" : `${winRate}%`;
+  setTone(winRateElement, winRateTone(winRate));
   $("#detective-win-rate-note").textContent = decisiveTrades ? `${wins} win${wins === 1 ? "" : "s"} / ${decisiveTrades} closed trade${decisiveTrades === 1 ? "" : "s"}` : "Log closed trades to calculate";
+  currentStreakElement.textContent = streaks.currentLength ? `${streaks.currentLength}${streaks.currentType === "Win" ? "W" : "L"}` : "—";
+  setTone(currentStreakElement, streaks.currentType === "Win" ? "streak-win" : streaks.currentType === "Loss" ? "streak-loss" : null);
+  currentStreakNote.textContent = streaks.currentLength ? `Current ${streaks.currentType.toLowerCase()} streak` : "Awaiting decisive trades";
+  longestWinElement.textContent = streaks.longestWin ? `${streaks.longestWin}W` : "—";
+  longestLossElement.textContent = streaks.longestLoss ? `${streaks.longestLoss}L` : "—";
+  setTone(longestWinElement, "streak-win");
+  setTone(longestLossElement, "streak-loss");
   $("#detective-average-r").textContent = displayNumber(averageR, "R");
   $("#detective-excursion").textContent = averageMae == null && averageMfe == null ? "—" : `${displayNumber(averageMae)} / ${displayNumber(averageMfe)}`;
   $("#detective-violations").textContent = displayNumber(totalPnl, "%");

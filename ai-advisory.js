@@ -47,6 +47,21 @@ function outcome(trade) {
   return "be";
 }
 
+function tradeStreaks(trades) {
+  const decisive = [...trades]
+    .sort((left, right) => new Date(left.traded_at || left.created_at || 0) - new Date(right.traded_at || right.created_at || 0))
+    .map(outcome)
+    .filter((item) => item === "win" || item === "loss");
+  let current_type = null, current_length = 0, longest_win = 0, longest_loss = 0;
+  for (const result of decisive) {
+    current_length = result === current_type ? current_length + 1 : 1;
+    current_type = result;
+    if (result === "win") longest_win = Math.max(longest_win, current_length);
+    else longest_loss = Math.max(longest_loss, current_length);
+  }
+  return { current_type, current_length, longest_win, longest_loss };
+}
+
 function missionProgress(mission) {
   if (mission.completion_type === "units" && Number(mission.target_count) > 0) return Math.round(Math.min(100, (Number(mission.completed_count || 0) / Number(mission.target_count)) * 100));
   return mission.completed ? 100 : 0;
@@ -59,6 +74,7 @@ function buildContext({ operations, missions, trades, recovery, mastery, project
   const violations = trades.filter((trade) => trade.plan_violation).length;
   const currentMonth = new Date().getMonth();
   const monthPnl = closed.filter((trade) => new Date(trade.traded_at || trade.created_at).getMonth() === currentMonth).reduce((sum, trade) => sum + Number(trade.pnl_percent || 0), 0);
+  const tradeStreak = tradeStreaks(closed);
   const today = new Date().toLocaleDateString("en-CA");
   const todayOps = operations.filter((operation) => operation.scheduled_date === today);
   const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
@@ -71,7 +87,7 @@ function buildContext({ operations, missions, trades, recovery, mastery, project
     streaks: { execution: operationStreak, trading_journal: tradingStreak, mastery: masteryStreak },
     operations: { today_total: todayOps.length, today_complete: todayOps.filter((operation) => operation.completed || operation.status === "Complete").length, open_total: operations.filter((operation) => !operation.completed && operation.status !== "Complete").length, next: operations.filter((operation) => !operation.completed && operation.status !== "Complete").slice(0, 8).map((operation) => ({ title: operation.title, category: operation.category, status: operation.status || "Queued" })) },
     missions: activeMissions.slice(0, 8).map((mission) => ({ title: mission.title, category: mission.category, priority: mission.priority, progress: missionProgress(mission), definition: mission.completion_definition || null })),
-    trading: { closed_trades: closed.length, wins, losses, breakeven: closed.length - wins - losses, win_rate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : null, plan_violations: violations, month_pnl_percent: Number(monthPnl.toFixed(2)), recent: closed.slice(-12).map((trade) => ({ date: dateKey(trade.traded_at || trade.created_at), pair: trade.pair, outcome: outcome(trade), r: Number(trade.r_multiple || 0), pnl_percent: trade.pnl_percent == null ? null : Number(trade.pnl_percent), violation: Boolean(trade.plan_violation), setup: trade.setup || null })) },
+    trading: { closed_trades: closed.length, wins, losses, breakeven: closed.length - wins - losses, win_rate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : null, plan_violations: violations, month_pnl_percent: Number(monthPnl.toFixed(2)), streaks: tradeStreak, recent: closed.slice(-12).map((trade) => ({ date: dateKey(trade.traded_at || trade.created_at), pair: trade.pair, outcome: outcome(trade), r: Number(trade.r_multiple || 0), pnl_percent: trade.pnl_percent == null ? null : Number(trade.pnl_percent), violation: Boolean(trade.plan_violation), setup: trade.setup || null })) },
     recovery: recovery.slice(0, 5).map((item) => ({ date: item.logged_on, pain: item.pain, swelling: item.swelling, rehab_completed: item.rehab_completed })),
     mastery: { total_entries: mastery.length, recent: mastery.slice(0, 8).map((entry) => ({ category: entry.category, title: entry.title, date: dateKey(entry.created_at) })) },
     special_projects: projects.map((project) => ({ title: project.title, status: project.status, priority: project.priority })).slice(0, 8)

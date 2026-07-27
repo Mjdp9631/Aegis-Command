@@ -28,7 +28,7 @@ const prompt = `You are the automated Jarvis/Alfred advisory system for a privat
 
 const sectionInstructions = `Every scan must refresh EVERY area, not only the Command Center. In sections: detective is strictly trade-log/process/risk-discipline advice; missions is prioritization and follow-through; enterprise is Special Projects / CCFX execution; recovery is clinician-safe recovery and logging; mastery is Mind/Body learning, training, and personal development; character is earned levels, evidence, streaks, and phase readiness. Jarvis and Alfred must give distinct advice in every section. Do not repeat the same message across sections.
 
-For trading statistics, use ONLY the exact supplied values for closed trades, wins, losses, breakeven, win rate, month PnL, and plan violations. Never calculate a new statistic. Never call trades consecutive wins or losses unless an explicit streak value is supplied; closed-trade count is not a streak. If evidence is insufficient, say so plainly.
+For trading statistics, use ONLY the exact supplied values for closed trades, wins, losses, breakeven, win rate, month PnL, plan violations, current streak, longest win streak, and longest loss streak. Never calculate a new statistic. Never call trades consecutive wins or losses unless an explicit streak value is supplied; closed-trade count is not a streak. If evidence is insufficient, say so plainly.
 
 For mode "morning", direct the morning section toward today's plan, signal toward current attention/risk, and evening toward what should be evaluated later without claiming results that have not happened. For mode "evening", make the evening section a true review of today's evidence and make the morning section the first priority for the next operating day.`;
 
@@ -67,6 +67,21 @@ function tradeOutcome(trade) {
   return "be";
 }
 
+function tradeStreaks(trades) {
+  const decisive = [...trades]
+    .sort((left, right) => new Date(left.traded_at || left.created_at || 0) - new Date(right.traded_at || right.created_at || 0))
+    .map(tradeOutcome)
+    .filter((item) => item === "win" || item === "loss");
+  let current_type = null, current_length = 0, longest_win = 0, longest_loss = 0;
+  for (const result of decisive) {
+    current_length = result === current_type ? current_length + 1 : 1;
+    current_type = result;
+    if (result === "win") longest_win = Math.max(longest_win, current_length);
+    else longest_loss = Math.max(longest_loss, current_length);
+  }
+  return { current_type, current_length, longest_win, longest_loss };
+}
+
 async function buildContext(serviceKey, userId) {
   const query = (table, order, limit) => rest(serviceKey, `${table}?user_id=eq.${encodeURIComponent(userId)}&select=*&order=${order}&limit=${limit}`).then((response) => response.ok ? response.json() : []);
   const [operations, missions, trades, recovery, mastery, projects, phase] = await Promise.all([
@@ -75,12 +90,13 @@ async function buildContext(serviceKey, userId) {
   const closed = trades.filter((trade) => String(trade.trade_status || "").toLowerCase() !== "open");
   const wins = closed.filter((trade) => tradeOutcome(trade) === "win").length;
   const losses = closed.filter((trade) => tradeOutcome(trade) === "loss").length;
+  const streaks = tradeStreaks(closed);
   const openOperations = operations.filter((item) => !item.completed && item.status !== "Complete");
   return {
     active_phase: `Phase ${phase[0]?.active_phase ?? 0}`,
     operations: { open_total: openOperations.length, completed_total: operations.length - openOperations.length, next: openOperations.slice(0, 8).map(({ title, category, status }) => ({ title, category, status: status || "Queued" })) },
     missions: missions.filter((item) => !item.completed).slice(0, 8).map(({ title, category, priority, completion_definition }) => ({ title, category, priority, definition: completion_definition || null })),
-    trading: { closed_trades: closed.length, wins, losses, breakeven: closed.length - wins - losses, win_rate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : null, plan_violations: trades.filter((trade) => trade.plan_violation).length },
+    trading: { closed_trades: closed.length, wins, losses, breakeven: closed.length - wins - losses, win_rate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : null, plan_violations: trades.filter((trade) => trade.plan_violation).length, streaks },
     recovery: recovery.slice(0, 5), mastery: { total_entries: mastery.length, recent: mastery.slice(0, 8) }, special_projects: projects.slice(0, 8)
   };
 }
