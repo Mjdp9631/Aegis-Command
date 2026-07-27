@@ -1,0 +1,24 @@
+name: AEGIS scheduled intelligence
+
+on:
+  schedule:
+    # 04:00/05:00 UTC covers midnight America/New_York through DST.
+    # 09:00/10:00 UTC covers 05:00 America/New_York through DST.
+    - cron: "0 4,5,9,10 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Test a particular scan now
+        required: true
+        default: morning
+        type: choice
+        options:
+          - morning
+          - evening
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run the AEGIS local-time check
+        run: curl --fail --silent --show-error -H "Authorization: Bearer ${{ secrets.AEGIS_CRON_SECRET }}" "${{ secrets.AEGIS_APP_URL }}/api/scheduled-advisory?mode=${{ inputs.mode }}"
