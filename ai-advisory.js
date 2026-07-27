@@ -79,7 +79,10 @@ function setFocusStreak(streak) {
 function renderMorning(morning) {
   const target = $("#morning-briefing");
   if (!target || !morning) return;
-  target.querySelector(".adviser-grid").innerHTML = `<article><span class="adviser-name jarvis">JARVIS / TODAY'S PLAN</span><p>${escape(morning.jarvis)}</p></article><article><span class="adviser-name alfred">ALFRED / STANDARD</span><p>${escape(morning.alfred)}</p></article>`;
+  const grid = target.querySelector(".adviser-grid");
+  if (!grid) return;
+  const markup = `<article><span class="adviser-name jarvis">JARVIS / TODAY'S PLAN</span><p>${escape(morning.jarvis)}</p></article><article><span class="adviser-name alfred">ALFRED / STANDARD</span><p>${escape(morning.alfred)}</p></article>`;
+  if (grid.innerHTML !== markup) grid.innerHTML = markup;
 }
 
 function renderSignal(signal) {
@@ -98,7 +101,8 @@ function paired(advice) { return `<p><b>JARVIS</b>${escape(advice.jarvis)}</p><p
 function renderEvening(evening) {
   const target = $("#adviser-panel .evening-columns");
   if (!target || !evening) return;
-  target.innerHTML = `<article><span>KEY TAKEAWAYS</span>${paired(evening.key_takeaways)}</article><article><span>WHAT WORKED</span>${paired(evening.what_worked)}</article><article><span>WHAT TO IMPROVE</span>${paired(evening.what_to_improve)}</article><article><span>TOMORROW'S FOCUS</span>${paired(evening.tomorrow_focus)}</article>`;
+  const markup = `<article><span>KEY TAKEAWAYS</span>${paired(evening.key_takeaways)}</article><article><span>WHAT WORKED</span>${paired(evening.what_worked)}</article><article><span>WHAT TO IMPROVE</span>${paired(evening.what_to_improve)}</article><article><span>TOMORROW'S FOCUS</span>${paired(evening.tomorrow_focus)}</article>`;
+  if (target.innerHTML !== markup) target.innerHTML = markup;
 }
 
 function proposalMarkup(item) {
@@ -112,6 +116,21 @@ async function loadSuggestions() {
   const { data } = await supabase.from("ai_mission_suggestions").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(8);
   const target = $("#ai-suggestion-list");
   if (target) target.innerHTML = data?.length ? data.map(proposalMarkup).join("") : '<p class="ai-status">No pending transmissions. Run an intelligence scan when you want a fresh assessment.</p>';
+}
+
+async function loadLatestAdvisory() {
+  if (!supabase) return;
+  const { data } = await supabase.from("ai_advisories").select("payload").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!data?.payload) return;
+  latestAdvisory = data.payload;
+  paintLatestAdvisory();
+}
+
+function paintLatestAdvisory() {
+  if (!latestAdvisory) return;
+  renderMorning(latestAdvisory.morning);
+  renderSignal(latestAdvisory.signal);
+  renderEvening(latestAdvisory.evening);
 }
 
 async function persist(advisory, type) {
@@ -187,7 +206,7 @@ async function run(mode = "scan") {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "The advisory engine is unavailable.");
     latestAdvisory = payload.advisory;
-    renderMorning(latestAdvisory.morning); renderSignal(latestAdvisory.signal); renderEvening(latestAdvisory.evening);
+    paintLatestAdvisory();
     const savedSuggestions = await persist(latestAdvisory, mode === "morning" || mode === "signal" || mode === "evening" ? mode : "scan");
     const correctives = savedSuggestions.filter((item) => item.mission_kind === "corrective");
     for (const corrective of correctives) await issueCorrective(corrective);
@@ -215,11 +234,24 @@ async function resolveSuggestion(id, action) {
   showTransmissionQueue();
 }
 
-function addControls() {
-  const morning = $("#morning-briefing .adviser-head");
-  if (morning && !morning.querySelector("[data-ai-run]")) morning.insertAdjacentHTML("beforeend", '<div class="ai-control"><button data-ai-run="morning">REFRESH PLAN</button><button data-ai-test>TEST TRANSMISSION</button></div>');
-  const evening = $("#adviser-panel .adviser-head");
-  if (evening && !evening.querySelector("[data-ai-run]")) evening.insertAdjacentHTML("beforeend", '<div class="ai-control"><button data-ai-run="evening">RUN DEBRIEF</button></div>');
+function ensureActionDock() {
+  const anchor = $("#morning-briefing");
+  if (!anchor || $("#ai-action-dock")) return;
+  const dock = document.createElement("section");
+  dock.id = "ai-action-dock";
+  dock.className = "ai-action-dock";
+  dock.innerHTML = '<span>JARVIS / ALFRED CONTROL</span><div><button data-ai-run="morning">REFRESH PLAN</button><button data-ai-run="evening">RUN DEBRIEF</button><button data-ai-test>TEST TRANSMISSION</button></div>';
+  anchor.insertAdjacentElement("afterend", dock);
+}
+
+function ensureManualScan() {
+  const anchor = $("#adviser-panel");
+  if (!anchor || $("#ai-manual-scan")) return;
+  const panel = document.createElement("section");
+  panel.id = "ai-manual-scan";
+  panel.className = "panel ai-manual-scan";
+  panel.innerHTML = '<div><p class="eyebrow blue-text">ON-DEMAND INTELLIGENCE</p><h3>Midday command scan</h3><p>Ask Jarvis and Alfred to reassess the current data whenever the day changes.</p></div><button class="primary compact" data-ai-run="scan">Run manual scan</button>';
+  anchor.insertAdjacentElement("afterend", panel);
 }
 
 function mount() {
@@ -231,7 +263,7 @@ function mount() {
     panel.innerHTML = '<div class="panel-head"><div><p class="eyebrow blue-text">JARVIS / ALFRED INTELLIGENCE</p><h3>Mission transmissions</h3><p class="body-copy">Corrective directives address evidence gaps. Challenge transmissions appear when your data says you are ready to raise the standard.</p></div><button class="primary compact" data-ai-run="scan">Run intelligence scan</button></div><div class="ai-suggestion-list" id="ai-suggestion-list"><p class="ai-status">Run an intelligence scan to generate evidence-based missions.</p></div>';
     $("#phase-protocol")?.insertAdjacentElement("afterend", panel);
   }
-  addControls();
+  ensureActionDock(); ensureManualScan();
 }
 
 document.addEventListener("click", (event) => {
@@ -253,6 +285,11 @@ document.addEventListener("click", (event) => {
 });
 
 if (supabase) {
-  supabase.auth.getSession().then(async ({ data: { session } }) => { if (!session) return; mount(); await loadSuggestions(); try { latestContext = await gather(); setFocusStreak(latestContext.streaks.execution); } catch {} });
-  supabase.auth.onAuthStateChange((_event, session) => { if (session) setTimeout(async () => { mount(); await loadSuggestions(); }, 150); });
+  supabase.auth.getSession().then(async ({ data: { session } }) => { if (!session) return; mount(); await loadLatestAdvisory(); await loadSuggestions(); try { latestContext = await gather(); setFocusStreak(latestContext.streaks.execution); } catch {} });
+  supabase.auth.onAuthStateChange((_event, session) => { if (session) setTimeout(async () => { mount(); await loadLatestAdvisory(); await loadSuggestions(); }, 150); });
+  let remountTimer;
+  new MutationObserver(() => {
+    clearTimeout(remountTimer);
+    remountTimer = setTimeout(() => { mount(); paintLatestAdvisory(); }, 140);
+  }).observe(document.body, { childList: true, subtree: true });
 }
