@@ -6,6 +6,7 @@ const $ = (selector) => document.querySelector(selector);
 const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 let latestContext = null;
 let latestAdvisory = null;
+let scanStageTimer = null;
 
 function dateKey(value) { const date = new Date(value); return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString("en-CA"); }
 function daysBetween(newer, older) { return Math.round((new Date(`${newer}T00:00:00`) - new Date(`${older}T00:00:00`)) / 86400000); }
@@ -131,6 +132,7 @@ function paintLatestAdvisory() {
   renderMorning(latestAdvisory.morning);
   renderSignal(latestAdvisory.signal);
   renderEvening(latestAdvisory.evening);
+  window.dispatchEvent(new CustomEvent("aegis:advisory-updated", { detail: latestAdvisory }));
 }
 
 async function persist(advisory, type) {
@@ -190,7 +192,31 @@ async function gather() {
   return buildContext({ operations: operations.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], phase: phase.data });
 }
 
+function ensureScanOverlay() {
+  if ($("#ai-scan-overlay")) return $("#ai-scan-overlay");
+  const overlay = document.createElement("div");
+  overlay.id = "ai-scan-overlay";
+  overlay.setAttribute("aria-hidden", "true");
+  overlay.innerHTML = '<div class="ai-scan-frame"><div class="ai-scan-kicker"><span class="ai-scan-led"></span>AEGIS INTELLIGENCE / LIVE SCAN</div><div class="ai-scan-core"><div class="ai-scan-rings"><i></i><i></i><i></i><b></b></div><div class="ai-scan-grid"></div></div><h2>Analyzing the evidence.</h2><p id="ai-scan-stage">SECURING COMMAND DATA</p><div class="ai-scan-progress"><span></span></div><div class="ai-scan-readout"><span>JARVIS / ANALYTICS ONLINE</span><span>ALFRED / REVIEWING STANDARD</span></div></div>';
+  document.body.append(overlay);
+  return overlay;
+}
+
+function setScanOverlay(active) {
+  const overlay = ensureScanOverlay();
+  const stage = $("#ai-scan-stage");
+  clearInterval(scanStageTimer);
+  if (!active) { overlay.classList.remove("is-active"); overlay.setAttribute("aria-hidden", "true"); return; }
+  const stages = ["SECURING COMMAND DATA", "MAPPING EXECUTION PATTERNS", "AUDITING TRADING PROCESS", "CALIBRATING NEXT DIRECTIVE", "SYNTHESIZING DUAL ADVISORY"];
+  let index = 0;
+  stage.textContent = stages[index];
+  overlay.setAttribute("aria-hidden", "false");
+  overlay.classList.add("is-active");
+  scanStageTimer = setInterval(() => { index = (index + 1) % stages.length; stage.textContent = stages[index]; }, 900);
+}
+
 function setBusy(busy, label = "") {
+  setScanOverlay(busy);
   document.querySelectorAll("[data-ai-run]").forEach((button) => { button.disabled = busy; if (busy) button.dataset.original = button.textContent; button.textContent = busy ? label || "ANALYZING…" : button.dataset.original || button.textContent; });
 }
 
