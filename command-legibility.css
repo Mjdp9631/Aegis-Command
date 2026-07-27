@@ -20,9 +20,9 @@
   /* The two live work panels share one deliberate, taller baseline. */
   #command > .command-stage > .content-grid .operations-panel,
   #command > .command-stage > .content-grid .mission-panel {
-    height: 330px;
-    min-height: 330px;
-    max-height: 330px;
+    height: 380px;
+    min-height: 380px;
+    max-height: 380px;
   }
   #command > .command-stage > .content-grid .panel-head { margin-bottom: 15px; }
   #command > .command-stage > .content-grid .panel-head .eyebrow { font-size: 11px; }
