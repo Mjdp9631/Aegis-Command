@@ -22,6 +22,6 @@ jobs:
     steps:
       - name: Run the AEGIS local-time check
         run: |
-          curl --fail --silent --show-error \
+          curl --fail-with-body --silent --show-error \
             -H "Authorization: Bearer ${{ secrets.AEGIS_CRON_SECRET }}" \
             "${{ secrets.AEGIS_APP_URL }}/api/scheduled-advisory?mode=${{ inputs.mode }}"
