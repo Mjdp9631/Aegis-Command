@@ -234,16 +234,6 @@ async function resolveSuggestion(id, action) {
   showTransmissionQueue();
 }
 
-function ensureActionDock() {
-  const anchor = $("#morning-briefing");
-  if (!anchor || $("#ai-action-dock")) return;
-  const dock = document.createElement("section");
-  dock.id = "ai-action-dock";
-  dock.className = "ai-action-dock";
-  dock.innerHTML = '<span>JARVIS / ALFRED CONTROL</span><div><button data-ai-run="morning">REFRESH PLAN</button><button data-ai-run="evening">RUN DEBRIEF</button></div>';
-  anchor.insertAdjacentElement("afterend", dock);
-}
-
 function ensureManualScan() {
   const anchor = $("#adviser-panel");
   if (!anchor || $("#ai-manual-scan")) return;
@@ -263,7 +253,7 @@ function mount() {
     panel.innerHTML = '<div class="panel-head"><div><p class="eyebrow blue-text">JARVIS / ALFRED INTELLIGENCE</p><h3>Mission transmissions</h3><p class="body-copy">Corrective directives address evidence gaps. Challenge transmissions appear when your data says you are ready to raise the standard.</p></div><button class="primary compact" data-ai-run="scan">Run intelligence scan</button></div><div class="ai-suggestion-list" id="ai-suggestion-list"><p class="ai-status">Run an intelligence scan to generate evidence-based missions.</p></div>';
     $("#phase-protocol")?.insertAdjacentElement("afterend", panel);
   }
-  ensureActionDock(); ensureManualScan();
+  ensureManualScan();
 }
 
 document.addEventListener("click", (event) => {
