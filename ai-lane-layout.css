@@ -1,0 +1,14 @@
+/* AI transmission hierarchy and Command Center signal alignment. */
+.ai-suggestion{padding:19px 16px;gap:22px}
+.ai-suggestion .eyebrow{display:block;margin-bottom:10px;font-size:12px;letter-spacing:.14em}
+.ai-suggestion strong{display:block;font-size:16px;line-height:1.3}
+.ai-suggestion p{margin-top:10px}
+
+@media (min-width:761px){
+  #command > .intel-strip .signal-columns article{position:relative;display:grid;grid-template-rows:auto 1fr;align-content:start;padding-top:21px}
+  #command > .intel-strip .signal-columns article span{justify-self:center;text-align:center}
+  #command > .intel-strip .signal-columns article b{align-self:center;justify-self:center;max-width:100%;text-align:center;white-space:normal;line-height:1.2}
+  #adviser-panel .evening-columns article{position:relative;display:grid;grid-template-rows:auto 1fr 1fr;align-content:start;padding-top:21px}
+  #adviser-panel .evening-columns article > span{justify-self:center;text-align:center}
+  #adviser-panel .evening-columns p{align-self:center}
+}
