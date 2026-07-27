@@ -9,11 +9,12 @@ const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => 
 function levelFromXp(xp) {
   let level = 0;
   let remaining = Math.max(0, xp);
-  let required = 100;
+  // A long-game curve: early levels establish habits, while LV 50 remains an elite five-year target.
+  let required = 40;
   while (remaining >= required) {
     remaining -= required;
     level += 1;
-    required = Math.round(required * 1.16);
+    required = Math.round(required * 1.09);
   }
   return { level, current: remaining, required, progress: (remaining / required) * 100 };
 }
@@ -74,6 +75,22 @@ function ccfxXp(projects, contentItems) {
   return { xp: ledger.reduce((total, entry) => total + entry.change, 0), ledger: ledger.sort((a, b) => b.label.localeCompare(a.label)) };
 }
 
+function masteryXp(entries) {
+  const mindAwards = { "Book": 50, "Quote": 5, "Trading Note": 20, "Psychology": 15, "Space": 10, "Business": 15, "Stoicism": 12 };
+  const bodyAwards = { "Health": 15, "Gym": 25, "Sports": 35, "Performance": 20 };
+  const ledgerFor = (awards) => entries.filter((entry) => awards[entry.category]).map((entry) => ({
+    label: new Date(entry.created_at || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    detail: `${entry.category}: ${escape(entry.title || "entry")}`,
+    change: awards[entry.category]
+  })).sort((a, b) => b.label.localeCompare(a.label));
+  const mindLedger = ledgerFor(mindAwards);
+  const bodyLedger = ledgerFor(bodyAwards);
+  return {
+    mind: { xp: mindLedger.reduce((total, entry) => total + entry.change, 0), ledger: mindLedger },
+    body: { xp: bodyLedger.reduce((total, entry) => total + entry.change, 0), ledger: bodyLedger }
+  };
+}
+
 function xpLedger(entries, cadence) {
   const rows = entries.length ? entries.map((entry) => `<li><span><b>${entry.label}</b>${entry.detail}</span><strong class="${entry.change < 0 ? "negative" : ""}">${entry.change >= 0 ? "+" : ""}${entry.change} XP</strong></li>`).join("") : `<li class="ledger-empty">No ${cadence} XP evidence yet.</li>`;
   return `<details class="xp-ledger"><summary>View XP ledger</summary><ul>${rows}</ul></details>`;
@@ -88,30 +105,36 @@ function metricCard(label, value, detail, progress, accent = "blue") {
   return `<article class="evidence-card ${accent}"><span>${label}</span><strong>${value}</strong><div class="stat-meter"><i style="width:${Math.max(0, Math.min(100, progress))}%"></i></div><small>${detail}</small></article>`;
 }
 
-function render({ operations, trades, missions, projects, contentItems }) {
+function render({ operations, trades, missions, projects, contentItems, masteryEntries }) {
   const discipline = disciplineXp(operations);
   const trading = tradingXp(trades);
   const ccfx = ccfxXp(projects, contentItems);
+  const mastery = masteryXp(masteryEntries);
   const recovery = missions.find((mission) => mission.category === "Recovery");
-  $("#character").innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>Real execution earns XP. Levels require sustained proof.</p></div><section class="evidence-grid">${xpStat("DISCIPLINE", discipline.xp, discipline.ledger, "daily", "amber")}${xpStat("TRADING INTEL", trading.xp, trading.ledger, "monthly", "blue")}${xpStat("CCFX QUESTS", ccfx.xp, ccfx.ledger, "CCFX", "amber")}${metricCard("RECOVERY QUEST", recovery ? missionLabel(recovery) : "LOCKED", recovery ? escape(recovery.title) : "Awaiting a Recovery mission", missionProgress(recovery), "green")}</section><section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
+  const levels = { discipline: levelFromXp(discipline.xp).level, trading: levelFromXp(trading.xp).level, ccfx: levelFromXp(ccfx.xp).level, mind: levelFromXp(mastery.mind.xp).level, body: levelFromXp(mastery.body.xp).level };
+  localStorage.setItem("aegis-character-levels", JSON.stringify(levels));
+  window.dispatchEvent(new CustomEvent("aegis:character-levels-changed", { detail: levels }));
+  $("#character").innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>Real execution earns XP. Levels require sustained proof.</p></div><section class="evidence-grid">${xpStat("DISCIPLINE", discipline.xp, discipline.ledger, "daily", "amber")}${xpStat("TRADING INTEL", trading.xp, trading.ledger, "monthly", "blue")}${xpStat("MIND MASTERY", mastery.mind.xp, mastery.mind.ledger, "Mind", "blue")}${xpStat("BODY MASTERY", mastery.body.xp, mastery.body.ledger, "Body", "green")}${xpStat("CCFX QUESTS", ccfx.xp, ccfx.ledger, "CCFX", "amber")}${metricCard("RECOVERY QUEST", recovery ? missionLabel(recovery) : "LOCKED", recovery ? escape(recovery.title) : "Awaiting a Recovery mission", missionProgress(recovery), "green")}</section><section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
 }
 
 async function load() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [operationsResult, tradesResult, missionsResult, projectsResult, contentResult] = await Promise.all([
+  const [operationsResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult] = await Promise.all([
     supabase.from("operations").select("scheduled_date, completed"),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }),
     supabase.from("missions").select("*").order("created_at", { ascending: false }),
     supabase.from("business_projects").select("*"),
-    supabase.from("content_items").select("*")
+    supabase.from("content_items").select("*"),
+    supabase.from("mastery_entries").select("*").order("created_at", { ascending: false })
   ]);
-  render({ operations: operationsResult.data || [], trades: tradesResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [] });
+  render({ operations: operationsResult.data || [], trades: tradesResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [] });
 }
 
 if (supabase) {
   load();
   supabase.auth.onAuthStateChange(() => setTimeout(load, 80));
   document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(load, 700); });
+  window.addEventListener("aegis:mastery-changed", () => setTimeout(load, 120));
 }
