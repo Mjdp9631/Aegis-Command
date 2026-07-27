@@ -11,7 +11,14 @@ const phases = [
     focus: "ACL recovery evidence, clinician guidance, calm trading process, and daily consistency.",
     unlock: "Sports and Performance remain locked. Recovery stays visible.",
     evidence: ["Orthopedic assessment or clinician-directed return plan is in place.", "Recovery mission has a clear evidence-based finish line—not an arbitrary percentage.", "You can follow the prescribed plan without unresolved warning signs."],
-    gate: null
+    gate: null,
+    missions: [
+      ["Define orthopedic recovery plan", "Recovery", "Do now", "Clinician guidance and your recovery criteria are recorded."],
+      ["Restore ACL capacity", "Recovery", "Do now", "Recovery completion is defined by evidence, not a percentage."],
+      ["Execute trading process", "Trading", "Schedule", "A written pre-market, risk, and review process is followed."],
+    ],
+    operations: [["Complete prescribed ACL rehab", "Recovery"], ["Schedule or attend orthopedic appointment", "Recovery"], ["Log pain, swelling, and rehab response", "Recovery"], ["Pre-market analysis", "Trading"], ["Review charts and document one lesson", "Trading"]],
+    systems: ["Recovery reports", "Rehab-safe Gym", "Trading process log"]
   },
   {
     id: 1, code: "PHASE I", title: "Recruit", label: "NEXT PROTOCOL",
@@ -19,7 +26,14 @@ const phases = [
     focus: "Recovery-safe training, disciplined trading execution, useful study, and durable daily systems.",
     unlock: "Sports and Performance can be considered after Recovery is complete and you approve archiving it.",
     evidence: ["Recovery completion has been confirmed with the appropriate clinician guidance.", "A consistent training and recovery rhythm is sustainable.", "Trading and operations are being logged honestly and reviewed weekly."],
-    gate: { discipline: 7, trading: 4, mind: 9, body: 5 }
+    gate: { discipline: 7, trading: 4, mind: 9, body: 5 },
+    missions: [
+      ["Build a 12-week consistency standard", "Mind", "Do now", "Daily operations and weekly reviews are completed with evidence."],
+      ["Establish trading playbook", "Trading", "Do now", "Your setups, risk limits, and review rules are documented."],
+      ["Build strength foundation", "Recovery", "Schedule", "Training progresses only within cleared capacity."],
+    ],
+    operations: [["Complete weekly trading review", "Trading"], ["Backtest one setup and record the result", "Trading"], ["Read one chapter", "Mind"], ["Log a recovery-safe gym session", "Recovery"], ["Plan the week and reset the system", "Mind"]],
+    systems: ["Weekly planning", "Strength foundations", "Consistency ledger"]
   },
   {
     id: 2, code: "PHASE II", title: "Apprentice", label: "FUTURE PROTOCOL",
@@ -27,7 +41,14 @@ const phases = [
     focus: "Verified trading process, stronger physical capacity, Special Projects execution, and deliberate skill-building.",
     unlock: "Higher-intensity performance goals and structured business growth become available.",
     evidence: ["Your core routines remain stable under normal life pressure.", "Trading decisions are supported by enough logged evidence to review objectively.", "You have a clear project system and ship consistently."],
-    gate: { discipline: 15, trading: 11, mind: 18, body: 12 }
+    gate: { discipline: 15, trading: 11, mind: 18, body: 12 },
+    missions: [
+      ["Validate high-quality trade setups", "Trading", "Do now", "A sufficient sample size identifies your strongest execution conditions."],
+      ["Build funded-account readiness", "Trading", "Schedule", "Risk limits and a challenge plan are defined before scale."],
+      ["Ship the CCFX content system", "Business", "Schedule", "A repeatable idea-to-published-content process exists."],
+    ],
+    operations: [["Filter trade journal by setup and session", "Trading"], ["Complete a backtest block", "Trading"], ["Log a cleared sports or performance session", "Recovery"], ["Script or publish one piece of content", "Business"], ["Complete Special Projects deep work", "Business"]],
+    systems: ["Detective filters", "Account intelligence", "Sports / Performance access"]
   },
   {
     id: 3, code: "PHASE III", title: "Vigilante", label: "FUTURE PROTOCOL",
@@ -35,7 +56,14 @@ const phases = [
     focus: "Trading maturity, durable athletic capacity, Special Projects systems, and leadership under pressure.",
     unlock: "The system emphasizes scale through proof: more responsibility, never more chaos.",
     evidence: ["Your core routines stay intact through high-demand periods.", "Your trading review identifies repeatable strengths and mistakes with enough sample size.", "Projects, health, and capital are progressing without one area consuming the others."],
-    gate: { discipline: 24, trading: 18, mind: 29, body: 23 }
+    gate: { discipline: 24, trading: 18, mind: 29, body: 23 },
+    missions: [
+      ["Scale only validated trading risk", "Trading", "Do now", "Scale decisions are supported by documented performance evidence."],
+      ["Build high-performance capacity", "Recovery", "Schedule", "Training and recovery remain sustainable under real pressure."],
+      ["Systemize Special Projects", "Business", "Schedule", "Recurring work has clear process, ownership, and review."],
+    ],
+    operations: [["Review monthly trading performance", "Trading"], ["Run a performance training block", "Recovery"], ["Practice a pressure-tested skill", "Mind"], ["Document one Special Projects system", "Business"], ["Complete leadership or communication practice", "Mind"]],
+    systems: ["Performance dashboard", "Advanced risk review", "Leadership missions"]
   },
   {
     id: 4, code: "PHASE IV", title: "Legend", label: "LONG-TERM PROTOCOL",
@@ -43,7 +71,14 @@ const phases = [
     focus: "Long-term health, financial resilience, leadership, contribution, and continuous refinement.",
     unlock: "The system shifts from unlocking basics to protecting and improving high standards.",
     evidence: ["This phase is ongoing: review annually, refine deliberately, and avoid needless escalation."],
-    gate: { discipline: 34, trading: 26, mind: 40, body: 34 }
+    gate: { discipline: 34, trading: 26, mind: 40, body: 34 },
+    missions: [
+      ["Complete annual strategy review", "Mind", "Schedule", "Health, capital, relationships, and long-term projects are reviewed together."],
+      ["Protect long-term capital", "Trading", "Do now", "Capital allocation follows a written risk and wealth plan."],
+      ["Build a contribution project", "Business", "Schedule", "Teach, mentor, or build something that outlasts the current goal."],
+    ],
+    operations: [["Run annual strategic review", "Mind"], ["Review capital allocation and risk", "Trading"], ["Mentor or teach one useful lesson", "Business"], ["Perform maintenance health review", "Recovery"], ["Define the next Mastery Cycle", "Mind"]],
+    systems: ["Annual strategy", "Capital protection", "Mastery Cycles"]
   }
 ];
 
@@ -77,6 +112,12 @@ function render() {
   if (!target) return;
   const active = phases[currentPhase];
   const next = phases[currentPhase + 1];
+  const mandate = $("#phase-mandate");
+  if (mandate) mandate.textContent = `${active.code} — ${active.mandate}`;
+  const suggestion = $("#operation-suggestion");
+  if (suggestion) {
+    suggestion.innerHTML = `<option value="">${active.code} recommendations — or create your own</option>${active.operations.map(([title, category]) => `<option value="${title}|${category}">${title}</option>`).join("")}`;
+  }
   target.innerHTML = `
     <div class="phase-protocol-head">
       <div><p class="eyebrow amber">PHASE PROTOCOL</p><h3>${active.code} — ${active.title}</h3></div>
@@ -88,6 +129,7 @@ function render() {
     </div>
     <div class="phase-track" aria-label="Campaign phases">${phases.map((phase) => `<button type="button" class="phase-node ${phase.id === currentPhase ? "active" : ""} ${phase.id < currentPhase ? "complete" : ""}" data-phase-info="${phase.id}"><small>${phase.code}</small><strong>${phase.title}</strong></button>`).join("")}</div>
     ${next ? `<div class="phase-level-gate"><span>LEVEL GATE FOR ${next.code}</span><div>${gateRows(next)}</div></div>` : ""}
+    <div class="phase-unlocks"><article><span>MISSION TEMPLATES</span>${active.missions.map(([title, category, priority, definition]) => `<button type="button" data-phase-mission="${active.id}" data-phase-mission-title="${title}" data-phase-mission-category="${category}" data-phase-mission-priority="${priority}" data-phase-mission-definition="${definition}">+ ${title}</button>`).join("")}</article><article><span>ACTIVE SYSTEMS</span>${active.systems.map((system) => `<p>◇ ${system}</p>`).join("")}</article></div>
     <div class="phase-actions"><button class="text-button" type="button" data-phase-info="${currentPhase}">View current evidence</button>${next ? `<button class="primary compact" type="button" data-phase-review>Review for ${next.code}</button>` : `<span class="phase-complete">Long-term protocol active</span>`}</div>`;
 }
 
@@ -141,6 +183,11 @@ document.addEventListener("click", (event) => {
   if (review) return openReview(currentPhase + 1);
   const info = event.target.closest("[data-phase-info]");
   if (info) return openReview(Number(info.dataset.phaseInfo));
+  const template = event.target.closest("[data-phase-mission]");
+  if (template) {
+    window.dispatchEvent(new CustomEvent("aegis:phase-mission-template", { detail: { title: template.dataset.phaseMissionTitle, category: template.dataset.phaseMissionCategory, priority: template.dataset.phaseMissionPriority, definition: template.dataset.phaseMissionDefinition } }));
+    return;
+  }
   const confirm = event.target.closest("#confirm-phase-advance");
   if (confirm) {
     const dialog = $("#phase-review-dialog");

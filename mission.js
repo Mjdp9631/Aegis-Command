@@ -146,6 +146,19 @@ function bindDialogs() {
   $("#save-recovery").addEventListener("click", async (event) => { const pain = Number($("#recovery-pain").value), swelling = Number($("#recovery-swelling").value); if (!Number.isInteger(pain) || !Number.isInteger(swelling) || pain < 0 || pain > 10 || swelling < 0 || swelling > 10) return event.preventDefault(); const { data, error } = await client.from("recovery_logs").insert({ pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single(); if (error) { event.preventDefault(); return console.error(error); } renderRecovery(data); $("#recovery-notes").value = ""; });
 }
 
+window.addEventListener("aegis:phase-mission-template", (event) => {
+  const detail = event.detail || {};
+  const dialog = $("#mission-dialog");
+  if (!dialog || !$("#new-mission-title")) return;
+  $("#new-mission-title").value = detail.title || "";
+  $("#new-mission-category").value = detail.category || "Mind";
+  $("#new-mission-priority").value = detail.priority || "Schedule";
+  $("#new-mission-definition").value = detail.definition || "";
+  $("#new-mission-method").value = "binary";
+  updateTrackingFields($("#mission-create-form"), "new-mission");
+  dialog.showModal();
+});
+
 if (cloudReady) {
   client = createClient(config.supabaseUrl, config.supabaseAnonKey);
   ({ data: { session } } = await client.auth.getSession());
