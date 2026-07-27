@@ -29,11 +29,21 @@ function streakFor(dates) {
   return { current, best, last: unique[0] };
 }
 
+function normalizedOutcome(value) {
+  const supplied = String(value || "").trim().toLowerCase();
+  if (supplied === "win" || supplied === "small win") return "win";
+  if (supplied === "loss" || supplied === "small loss") return "loss";
+  if (supplied === "b/e" || supplied === "be" || supplied === "break even" || supplied === "breakeven") return "be";
+  return null;
+}
+
+// This must match Detective exactly. The AI is not allowed to reinterpret a journal field.
 function outcome(trade) {
-  const raw = String(trade.outcome || trade.win_loss || trade.result || "").toLowerCase();
-  if (String(trade.trade_status || "").toLowerCase() === "open") return "open";
-  if (raw.includes("win") || Number(trade.r_multiple) > 0) return "win";
-  if (raw.includes("loss") || Number(trade.r_multiple) < 0) return "loss";
+  if (String(trade.trade_status || "").trim().toLowerCase() === "open") return "open";
+  const explicit = [trade.outcome, trade.win_loss, trade.result, trade.market_condition].map(normalizedOutcome).find(Boolean);
+  if (explicit) return explicit;
+  if (Number(trade.r_multiple) > 0) return "win";
+  if (Number(trade.r_multiple) < 0) return "loss";
   return "be";
 }
 
