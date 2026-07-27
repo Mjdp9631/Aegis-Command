@@ -1,0 +1,253 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const config = window.AEGIS_CONFIG || {};
+const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
+const $ = (selector) => document.querySelector(selector);
+const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
+let latestContext = null;
+let latestAdvisory = null;
+
+function dateKey(value) { const date = new Date(value); return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString("en-CA"); }
+function daysBetween(newer, older) { return Math.round((new Date(`${newer}T00:00:00`) - new Date(`${older}T00:00:00`)) / 86400000); }
+function streakFor(dates) {
+  const unique = [...new Set(dates.filter(Boolean))].sort().reverse();
+  if (!unique.length) return { current: 0, best: 0, last: null };
+  let current = 1, best = 1, run = 1;
+  for (let index = 1; index < unique.length; index += 1) {
+    if (daysBetween(unique[index - 1], unique[index]) === 1) run += 1;
+    else run = 1;
+    best = Math.max(best, run);
+  }
+  const today = new Date().toLocaleDateString("en-CA");
+  const yesterday = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
+  if (![today, yesterday].includes(unique[0])) current = 0;
+  else {
+    current = 1;
+    for (let index = 1; index < unique.length && daysBetween(unique[index - 1], unique[index]) === 1; index += 1) current += 1;
+  }
+  return { current, best, last: unique[0] };
+}
+
+function outcome(trade) {
+  const raw = String(trade.outcome || trade.win_loss || trade.result || "").toLowerCase();
+  if (String(trade.trade_status || "").toLowerCase() === "open") return "open";
+  if (raw.includes("win") || Number(trade.r_multiple) > 0) return "win";
+  if (raw.includes("loss") || Number(trade.r_multiple) < 0) return "loss";
+  return "be";
+}
+
+function missionProgress(mission) {
+  if (mission.completion_type === "units" && Number(mission.target_count) > 0) return Math.round(Math.min(100, (Number(mission.completed_count || 0) / Number(mission.target_count)) * 100));
+  return mission.completed ? 100 : 0;
+}
+
+function buildContext({ operations, missions, trades, recovery, mastery, projects, phase }) {
+  const closed = trades.filter((trade) => outcome(trade) !== "open");
+  const wins = closed.filter((trade) => outcome(trade) === "win").length;
+  const losses = closed.filter((trade) => outcome(trade) === "loss").length;
+  const violations = trades.filter((trade) => trade.plan_violation).length;
+  const currentMonth = new Date().getMonth();
+  const monthPnl = closed.filter((trade) => new Date(trade.traded_at || trade.created_at).getMonth() === currentMonth).reduce((sum, trade) => sum + Number(trade.pnl_percent || 0), 0);
+  const today = new Date().toLocaleDateString("en-CA");
+  const todayOps = operations.filter((operation) => operation.scheduled_date === today);
+  const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
+  const operationStreak = streakFor(operations.filter((operation) => operation.completed || operation.status === "Complete").map((operation) => operation.scheduled_date || operation.updated_at || operation.created_at));
+  const tradingStreak = streakFor(trades.map((trade) => trade.traded_at || trade.created_at));
+  const masteryStreak = streakFor(mastery.map((entry) => entry.created_at));
+  return {
+    generated_on: new Date().toISOString(),
+    active_phase: `Phase ${phase?.active_phase ?? 0}`,
+    streaks: { execution: operationStreak, trading_journal: tradingStreak, mastery: masteryStreak },
+    operations: { today_total: todayOps.length, today_complete: todayOps.filter((operation) => operation.completed || operation.status === "Complete").length, open_total: operations.filter((operation) => !operation.completed && operation.status !== "Complete").length, next: operations.filter((operation) => !operation.completed && operation.status !== "Complete").slice(0, 8).map((operation) => ({ title: operation.title, category: operation.category, status: operation.status || "Queued" })) },
+    missions: activeMissions.slice(0, 8).map((mission) => ({ title: mission.title, category: mission.category, priority: mission.priority, progress: missionProgress(mission), definition: mission.completion_definition || null })),
+    trading: { closed_trades: closed.length, wins, losses, breakeven: closed.length - wins - losses, win_rate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : null, plan_violations: violations, month_pnl_percent: Number(monthPnl.toFixed(2)), recent: closed.slice(-12).map((trade) => ({ date: dateKey(trade.traded_at || trade.created_at), pair: trade.pair, outcome: outcome(trade), r: Number(trade.r_multiple || 0), pnl_percent: trade.pnl_percent == null ? null : Number(trade.pnl_percent), violation: Boolean(trade.plan_violation), setup: trade.setup || null })) },
+    recovery: recovery.slice(0, 5).map((item) => ({ date: item.logged_on, pain: item.pain, swelling: item.swelling, rehab_completed: item.rehab_completed })),
+    mastery: { total_entries: mastery.length, recent: mastery.slice(0, 8).map((entry) => ({ category: entry.category, title: entry.title, date: dateKey(entry.created_at) })) },
+    special_projects: projects.map((project) => ({ title: project.title, status: project.status, priority: project.priority })).slice(0, 8)
+  };
+}
+
+function setFocusStreak(streak) {
+  const value = $("#focus-streak-value");
+  const caption = $("#focus-streak-caption");
+  const meter = $("#focus-streak-meter");
+  if (value) value.innerHTML = `${String(streak.current).padStart(2, "0")}<span>d</span>`;
+  if (caption) caption.textContent = streak.current ? `${streak.best} day best execution streak` : "Complete one operation today to restart";
+  if (meter) meter.style.width = `${Math.min(100, Math.max(8, streak.current * 10))}%`;
+}
+
+function renderMorning(morning) {
+  const target = $("#morning-briefing");
+  if (!target || !morning) return;
+  target.querySelector(".adviser-grid").innerHTML = `<article><span class="adviser-name jarvis">JARVIS / TODAY'S PLAN</span><p>${escape(morning.jarvis)}</p></article><article><span class="adviser-name alfred">ALFRED / STANDARD</span><p>${escape(morning.alfred)}</p></article>`;
+}
+
+function renderSignal(signal) {
+  if (!signal) return;
+  const briefing = $(".command-briefing");
+  if (!briefing) return;
+  const jarvis = briefing.querySelector("#briefing-text");
+  const alfred = briefing.querySelector(".alfred-signal p");
+  if (jarvis) jarvis.textContent = signal.jarvis;
+  if (alfred) alfred.textContent = signal.alfred;
+  const map = { "#signal-market-tone": signal.market_tone, "#signal-window": signal.opportunity_window, "#signal-focus": signal.focus_area, "#signal-risk": signal.risk_posture };
+  Object.entries(map).forEach(([selector, value]) => { const item = $(selector); if (item) item.textContent = value.toUpperCase(); });
+}
+
+function paired(advice) { return `<p><b>JARVIS</b>${escape(advice.jarvis)}</p><p><b>ALFRED</b>${escape(advice.alfred)}</p>`; }
+function renderEvening(evening) {
+  const target = $("#adviser-panel .evening-columns");
+  if (!target || !evening) return;
+  target.innerHTML = `<article><span>KEY TAKEAWAYS</span>${paired(evening.key_takeaways)}</article><article><span>WHAT WORKED</span>${paired(evening.what_worked)}</article><article><span>WHAT TO IMPROVE</span>${paired(evening.what_to_improve)}</article><article><span>TOMORROW'S FOCUS</span>${paired(evening.tomorrow_focus)}</article>`;
+}
+
+function proposalMarkup(item) {
+  const corrective = item.mission_kind === "corrective";
+  const action = corrective ? `<button data-ai-acknowledge="${item.id}">Acknowledge directive</button>` : `<button data-ai-accept="${item.id}">Accept mission</button><button class="decline" data-ai-decline="${item.id}">Decline</button>`;
+  return `<article class="ai-suggestion ${item.mission_kind}"><div><span class="eyebrow ${corrective ? "amber" : "blue-text"}">${corrective ? "SYSTEM DIRECTIVE" : "CHALLENGE TRANSMISSION"} / ${escape(item.advisor).toUpperCase()}</span><strong>${escape(item.title)}</strong><p>${escape(item.rationale)}</p><small>${(item.evidence || []).map(escape).join(" · ")}</small></div><div class="ai-actions">${action}</div></article>`;
+}
+
+async function loadSuggestions() {
+  if (!supabase) return;
+  const { data } = await supabase.from("ai_mission_suggestions").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(8);
+  const target = $("#ai-suggestion-list");
+  if (target) target.innerHTML = data?.length ? data.map(proposalMarkup).join("") : '<p class="ai-status">No pending transmissions. Run an intelligence scan when you want a fresh assessment.</p>';
+}
+
+async function persist(advisory, type) {
+  const { data: stored, error } = await supabase.from("ai_advisories").insert({ advisory_type: type, payload: advisory }).select().single();
+  if (error) throw error;
+  const proposals = advisory.proposals || [];
+  if (proposals.length) {
+    const rows = proposals.map((item) => ({ advisory_id: stored.id, advisor: item.advisor, mission_kind: item.mission_kind, title: item.title, category: item.category, priority: item.priority, rationale: item.rationale, evidence: item.evidence }));
+    const { error: proposalError } = await supabase.from("ai_mission_suggestions").insert(rows);
+    if (proposalError) throw proposalError;
+    const { data: savedSuggestions } = await supabase.from("ai_mission_suggestions").select("*").eq("advisory_id", stored.id).order("created_at");
+    return savedSuggestions || [];
+  }
+  return [];
+}
+
+async function issueCorrective(suggestion) {
+  const { data: existing } = await supabase.from("missions").select("id").eq("title", suggestion.title).eq("completed", false).limit(1);
+  if (existing?.length) {
+    await supabase.from("ai_mission_suggestions").update({ status: "acknowledged", resolved_at: new Date().toISOString() }).eq("id", suggestion.id);
+    return;
+  }
+  const mission = { title: suggestion.title, category: suggestion.category, priority: "Do now", completion_type: "binary", completion_definition: `System corrective from ${suggestion.advisor}: ${suggestion.rationale}`, completed: false, completed_count: 0, progress: 0 };
+  const { error } = await supabase.from("missions").insert(mission);
+  if (error) throw error;
+  await supabase.from("ai_mission_suggestions").update({ status: "acknowledged", resolved_at: new Date().toISOString() }).eq("id", suggestion.id);
+  window.dispatchEvent(new Event("aegis:missions-changed"));
+}
+
+let transmissionQueue = [];
+function showTransmissionQueue() {
+  const next = transmissionQueue.shift();
+  if (!next) return;
+  const dialog = $("#ai-transmission-dialog");
+  if (!dialog) return;
+  const challenge = next.mission_kind === "challenge";
+  $("#ai-transmission-label").textContent = challenge ? `CHALLENGE TRANSMISSION / ${next.advisor.toUpperCase()}` : `SYSTEM DIRECTIVE / ${next.advisor.toUpperCase()}`;
+  $("#ai-transmission-title").textContent = next.title;
+  $("#ai-transmission-copy").textContent = next.rationale;
+  $("#ai-transmission-evidence").innerHTML = (next.evidence || []).map((line) => `<li>${escape(line)}</li>`).join("");
+  $("#ai-transmission-actions").innerHTML = challenge ? `<button class="primary" type="button" data-ai-accept="${next.id}">Accept mission</button><button class="secondary" type="button" data-ai-decline="${next.id}">Decline</button>` : '<button class="primary" type="button" data-ai-close-directive>Acknowledge</button>';
+  dialog.showModal();
+}
+
+async function gather() {
+  const [operations, missions, trades, recovery, mastery, projects, phase] = await Promise.all([
+    supabase.from("operations").select("*").order("scheduled_date", { ascending: false }).limit(180),
+    supabase.from("missions").select("*").order("created_at", { ascending: false }),
+    supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }).limit(100),
+    supabase.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(10),
+    supabase.from("mastery_entries").select("*").order("created_at", { ascending: false }).limit(100),
+    supabase.from("business_projects").select("*").order("created_at", { ascending: false }).limit(20),
+    supabase.from("phase_protocols").select("*").limit(1).maybeSingle()
+  ]);
+  const values = [operations, missions, trades, recovery, mastery, projects, phase];
+  if (values.some((result) => result.error)) throw new Error(values.find((result) => result.error)?.error.message || "Could not load command data.");
+  return buildContext({ operations: operations.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], phase: phase.data });
+}
+
+function setBusy(busy, label = "") {
+  document.querySelectorAll("[data-ai-run]").forEach((button) => { button.disabled = busy; if (busy) button.dataset.original = button.textContent; button.textContent = busy ? label || "ANALYZING…" : button.dataset.original || button.textContent; });
+}
+
+async function run(mode = "scan") {
+  if (!supabase) return alert("AI requires the secure AEGIS connection.");
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return alert("Sign in before opening the intelligence layer.");
+  try {
+    setBusy(true);
+    latestContext = await gather();
+    setFocusStreak(latestContext.streaks.execution);
+    const response = await fetch("/api/advisory", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ mode, context: latestContext }) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "The advisory engine is unavailable.");
+    latestAdvisory = payload.advisory;
+    renderMorning(latestAdvisory.morning); renderSignal(latestAdvisory.signal); renderEvening(latestAdvisory.evening);
+    const savedSuggestions = await persist(latestAdvisory, mode === "morning" || mode === "signal" || mode === "evening" ? mode : "scan");
+    const correctives = savedSuggestions.filter((item) => item.mission_kind === "corrective");
+    for (const corrective of correctives) await issueCorrective(corrective);
+    transmissionQueue = [...correctives, ...savedSuggestions.filter((item) => item.mission_kind === "challenge")];
+    await loadSuggestions();
+    showTransmissionQueue();
+  } catch (error) { alert(`Intelligence scan unavailable: ${error.message}`); }
+  finally { setBusy(false); }
+}
+
+async function resolveSuggestion(id, action) {
+  const { data: suggestion, error } = await supabase.from("ai_mission_suggestions").select("*").eq("id", id).single();
+  if (error || !suggestion) return alert("That transmission is no longer available.");
+  if (action === "declined") {
+    await supabase.from("ai_mission_suggestions").update({ status: "declined", resolved_at: new Date().toISOString() }).eq("id", id);
+  } else {
+    const mission = { title: suggestion.title, category: suggestion.category, priority: suggestion.priority, completion_type: "binary", completion_definition: `AI ${suggestion.mission_kind} from ${suggestion.advisor}: ${suggestion.rationale}`, completed: false, completed_count: 0, progress: 0 };
+    const { error: missionError } = await supabase.from("missions").insert(mission);
+    if (missionError) return alert(`Mission could not be added: ${missionError.message}`);
+    await supabase.from("ai_mission_suggestions").update({ status: action === "acknowledged" ? "acknowledged" : "accepted", resolved_at: new Date().toISOString() }).eq("id", id);
+    window.dispatchEvent(new Event("aegis:missions-changed"));
+  }
+  await loadSuggestions();
+  $("#ai-transmission-dialog")?.close();
+  showTransmissionQueue();
+}
+
+function addControls() {
+  const morning = $("#morning-briefing .adviser-head");
+  if (morning && !morning.querySelector("[data-ai-run]")) morning.insertAdjacentHTML("beforeend", '<div class="ai-control"><button data-ai-run="morning">REFRESH PLAN</button></div>');
+  const evening = $("#adviser-panel .adviser-head");
+  if (evening && !evening.querySelector("[data-ai-run]")) evening.insertAdjacentHTML("beforeend", '<div class="ai-control"><button data-ai-run="evening">RUN DEBRIEF</button></div>');
+}
+
+function mount() {
+  const missionView = $("#missions");
+  if (missionView && !$("#ai-mission-control")) {
+    const panel = document.createElement("section");
+    panel.id = "ai-mission-control";
+    panel.className = "panel ai-mission-control";
+    panel.innerHTML = '<div class="panel-head"><div><p class="eyebrow blue-text">JARVIS / ALFRED INTELLIGENCE</p><h3>Mission transmissions</h3><p class="body-copy">Corrective directives address evidence gaps. Challenge transmissions appear when your data says you are ready to raise the standard.</p></div><button class="primary compact" data-ai-run="scan">Run intelligence scan</button></div><div class="ai-suggestion-list" id="ai-suggestion-list"><p class="ai-status">Run an intelligence scan to generate evidence-based missions.</p></div>';
+    $("#phase-protocol")?.insertAdjacentElement("afterend", panel);
+  }
+  addControls();
+}
+
+document.addEventListener("click", (event) => {
+  const runButton = event.target.closest("[data-ai-run]");
+  if (runButton) return run(runButton.dataset.aiRun);
+  const accept = event.target.closest("[data-ai-accept]");
+  if (accept) return resolveSuggestion(accept.dataset.aiAccept, "accepted");
+  const acknowledge = event.target.closest("[data-ai-acknowledge]");
+  if (acknowledge) return resolveSuggestion(acknowledge.dataset.aiAcknowledge, "acknowledged");
+  const decline = event.target.closest("[data-ai-decline]");
+  if (decline) return resolveSuggestion(decline.dataset.aiDecline, "declined");
+  if (event.target.closest("[data-ai-close-directive]")) { $("#ai-transmission-dialog")?.close(); return showTransmissionQueue(); }
+  if (event.target.closest("#ai-transmission-dialog .dialog-close")) { $("#ai-transmission-dialog")?.close(); return showTransmissionQueue(); }
+});
+
+if (supabase) {
+  supabase.auth.getSession().then(async ({ data: { session } }) => { if (!session) return; mount(); await loadSuggestions(); try { latestContext = await gather(); setFocusStreak(latestContext.streaks.execution); } catch {} });
+  supabase.auth.onAuthStateChange((_event, session) => { if (session) setTimeout(async () => { mount(); await loadSuggestions(); }, 150); });
+}

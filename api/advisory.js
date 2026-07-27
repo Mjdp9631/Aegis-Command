@@ -1,0 +1,72 @@
+const SUPABASE_URL = "https://ifogfhaqozsyygbgwvzo.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_6knh69A_xVRQOPDotPrTcA_6_D_-RMa";
+const DIRECTOR_EMAIL = "mat.investments.95@gmail.com";
+
+const responseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["morning", "signal", "evening", "proposals"],
+  properties: {
+    morning: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
+    signal: { type: "object", additionalProperties: false, required: ["jarvis", "alfred", "market_tone", "opportunity_window", "focus_area", "risk_posture"], properties: { jarvis: { type: "string" }, alfred: { type: "string" }, market_tone: { type: "string" }, opportunity_window: { type: "string" }, focus_area: { type: "string" }, risk_posture: { type: "string" } } },
+    evening: { type: "object", additionalProperties: false, required: ["key_takeaways", "what_worked", "what_to_improve", "tomorrow_focus"], properties: {
+      key_takeaways: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
+      what_worked: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
+      what_to_improve: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
+      tomorrow_focus: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } }
+    } },
+    proposals: { type: "array", maxItems: 3, items: { type: "object", additionalProperties: false, required: ["advisor", "mission_kind", "title", "category", "priority", "rationale", "evidence"], properties: { advisor: { type: "string", enum: ["Jarvis", "Alfred"] }, mission_kind: { type: "string", enum: ["corrective", "challenge"] }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } } } } }
+  }
+};
+
+const systemPrompt = `You are the dual advisory intelligence for a private five-year personal operating system named AEGIS COMMAND. You produce two distinct, evidence-based perspectives from the provided data.
+
+JARVIS is analytical and exact: prioritization, systems, trading-process evidence, trend detection, bottlenecks, and leverage.
+ALFRED is grounded and demanding but humane: recovery, sustainable standards, character, balance, and follow-through.
+
+Never issue buy/sell/hold directions, price targets, position sizing, investment advice, diagnoses, treatment plans, or instructions that conflict with clinicians. Discuss trading only as process quality, data collection, rule adherence, risk discipline, and review. Do not invent data. Never call a single weak data point a pattern. Keep each field concise (normally 1–2 sentences). Corrective missions are for repeated or material evidence gaps; challenge missions are optional stretch assignments when consistency or evidence supports them. At most one corrective and two challenges. Use the exact JSON schema.`;
+
+async function verifyDirector(req) {
+  const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (!token) return false;
+  const result = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, authorization: `Bearer ${token}` } });
+  if (!result.ok) return false;
+  const user = await result.json();
+  return String(user.email || "").toLowerCase() === DIRECTOR_EMAIL;
+}
+
+function send(res, status, body) {
+  res.status(status).json(body);
+}
+
+module.exports = async (req, res) => {
+  if (req.method !== "POST") return send(res, 405, { error: "Method not allowed." });
+  if (!process.env.OPENAI_API_KEY) return send(res, 503, { error: "AI is not configured on this deployment yet." });
+  try {
+    if (!(await verifyDirector(req))) return send(res, 401, { error: "Secure AEGIS access is required." });
+    const context = req.body?.context;
+    if (!context || typeof context !== "object") return send(res, 400, { error: "No command data was provided." });
+    const openai = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        input: [
+          { role: "system", content: [{ type: "input_text", text: systemPrompt }] },
+          { role: "user", content: [{ type: "input_text", text: `Analyze this AEGIS data. Current request mode: ${String(req.body?.mode || "scan")}.\n\n${JSON.stringify(context)}` }] }
+        ],
+        text: { format: { type: "json_schema", name: "aegis_dual_advisory", strict: true, schema: responseSchema } }
+      })
+    });
+    if (!openai.ok) {
+      const detail = await openai.text();
+      return send(res, 502, { error: "The advisory engine could not respond.", detail: detail.slice(0, 240) });
+    }
+    const output = await openai.json();
+    const raw = output.output_text || output.output?.flatMap((item) => item.content || []).find((item) => item.type === "output_text")?.text;
+    if (!raw) return send(res, 502, { error: "The advisory engine returned no readable briefing." });
+    return send(res, 200, { advisory: JSON.parse(raw) });
+  } catch (error) {
+    return send(res, 500, { error: "Command intelligence encountered an error.", detail: String(error.message || error).slice(0, 180) });
+  }
+};
