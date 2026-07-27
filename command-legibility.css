@@ -1,11 +1,18 @@
 /* Command Center readability pass — intentionally excludes the hero objective panel. */
 @media (min-width: 761px) {
   /* Right rail: directive, markets, and the linked department summaries. */
-  #morning-briefing .adviser-head .eyebrow,
   .market-tickers > span,
   #command .command-summary-card p {
     font-size: 10px;
     letter-spacing: .14em;
+  }
+  /* Match the live-panel titles; counsel underneath remains deliberately smaller. */
+  #morning-briefing .adviser-head .eyebrow,
+  #command > .intel-strip .eyebrow,
+  #adviser-panel .adviser-head .eyebrow {
+    font-size: 22px;
+    letter-spacing: .08em;
+    line-height: 1;
   }
   #morning-briefing .adviser-head h3 { font-size: 15px; }
   #morning-briefing .adviser-name { font-size: 10px; }
@@ -40,8 +47,6 @@
 
   /* Command Daily Signal and Evening Debrief: labels first, then readable counsel. */
   #command > .intel-strip { min-height: 136px; }
-  #command > .intel-strip .eyebrow,
-  #adviser-panel .adviser-head .eyebrow { font-size: 12px; letter-spacing: .15em; }
   #command > .intel-strip .protocol-line p { font-size: 14px; line-height: 1.5; }
   #command > .intel-strip .protocol-line span { font-size: 10px; }
   #command > .intel-strip .signal-columns span,
