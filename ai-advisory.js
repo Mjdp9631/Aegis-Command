@@ -152,7 +152,7 @@ function showTransmissionQueue() {
   $("#ai-transmission-title").textContent = next.title;
   $("#ai-transmission-copy").textContent = next.rationale;
   $("#ai-transmission-evidence").innerHTML = (next.evidence || []).map((line) => `<li>${escape(line)}</li>`).join("");
-  $("#ai-transmission-actions").innerHTML = challenge ? `<button class="primary" type="button" data-ai-accept="${next.id}">Accept mission</button><button class="secondary" type="button" data-ai-decline="${next.id}">Decline</button>` : '<button class="primary" type="button" data-ai-close-directive>Acknowledge</button>';
+  $("#ai-transmission-actions").innerHTML = next.is_test ? '<button class="primary" type="button" data-ai-test-close>Accept test transmission</button><button class="secondary" type="button" data-ai-test-close>Decline test transmission</button>' : challenge ? `<button class="primary" type="button" data-ai-accept="${next.id}">Accept mission</button><button class="secondary" type="button" data-ai-decline="${next.id}">Decline</button>` : '<button class="primary" type="button" data-ai-close-directive>Acknowledge</button>';
   dialog.showModal();
 }
 
@@ -217,7 +217,7 @@ async function resolveSuggestion(id, action) {
 
 function addControls() {
   const morning = $("#morning-briefing .adviser-head");
-  if (morning && !morning.querySelector("[data-ai-run]")) morning.insertAdjacentHTML("beforeend", '<div class="ai-control"><button data-ai-run="morning">REFRESH PLAN</button></div>');
+  if (morning && !morning.querySelector("[data-ai-run]")) morning.insertAdjacentHTML("beforeend", '<div class="ai-control"><button data-ai-run="morning">REFRESH PLAN</button><button data-ai-test>TEST TRANSMISSION</button></div>');
   const evening = $("#adviser-panel .adviser-head");
   if (evening && !evening.querySelector("[data-ai-run]")) evening.insertAdjacentHTML("beforeend", '<div class="ai-control"><button data-ai-run="evening">RUN DEBRIEF</button></div>');
 }
@@ -243,6 +243,11 @@ document.addEventListener("click", (event) => {
   if (acknowledge) return resolveSuggestion(acknowledge.dataset.aiAcknowledge, "acknowledged");
   const decline = event.target.closest("[data-ai-decline]");
   if (decline) return resolveSuggestion(decline.dataset.aiDecline, "declined");
+  if (event.target.closest("[data-ai-test]")) {
+    transmissionQueue = [{ id: "test", is_test: true, advisor: "Jarvis", mission_kind: "challenge", title: "Test: document one high-quality trading lesson", category: "Trading", priority: "Schedule", rationale: "This is a test transmission only. In the live system, Jarvis or Alfred will explain the specific evidence from your data that makes the mission worth accepting.", evidence: ["No mission will be created from this test.", "Accept and Decline simply close the transmission."] }];
+    return showTransmissionQueue();
+  }
+  if (event.target.closest("[data-ai-test-close]")) { $("#ai-transmission-dialog")?.close(); return; }
   if (event.target.closest("[data-ai-close-directive]")) { $("#ai-transmission-dialog")?.close(); return showTransmissionQueue(); }
   if (event.target.closest("#ai-transmission-dialog .dialog-close")) { $("#ai-transmission-dialog")?.close(); return showTransmissionQueue(); }
 });
