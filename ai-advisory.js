@@ -67,7 +67,7 @@ function missionProgress(mission) {
   return mission.completed ? 100 : 0;
 }
 
-function buildContext({ operations, missions, trades, recovery, mastery, projects, phase }) {
+function buildContext({ operations, missions, trades, recovery, mastery, projects, phase, directives = [], roadmap = [] }) {
   const closed = trades.filter((trade) => outcome(trade) !== "open");
   const wins = closed.filter((trade) => outcome(trade) === "win").length;
   const losses = closed.filter((trade) => outcome(trade) === "loss").length;
@@ -90,7 +90,9 @@ function buildContext({ operations, missions, trades, recovery, mastery, project
     trading: { closed_trades: closed.length, wins, losses, breakeven: closed.length - wins - losses, win_rate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : null, plan_violations: violations, month_pnl_percent: Number(monthPnl.toFixed(2)), streaks: tradeStreak, recent: closed.slice(-12).map((trade) => ({ date: dateKey(trade.traded_at || trade.created_at), pair: trade.pair, outcome: outcome(trade), r: Number(trade.r_multiple || 0), pnl_percent: trade.pnl_percent == null ? null : Number(trade.pnl_percent), violation: Boolean(trade.plan_violation), setup: trade.setup || null })) },
     recovery: recovery.slice(0, 5).map((item) => ({ date: item.logged_on, pain: item.pain, swelling: item.swelling, rehab_completed: item.rehab_completed })),
     mastery: { total_entries: mastery.length, recent: mastery.slice(0, 8).map((entry) => ({ category: entry.category, title: entry.title, date: dateKey(entry.created_at) })) },
-    special_projects: projects.map((project) => ({ title: project.title, status: project.status, priority: project.priority })).slice(0, 8)
+    special_projects: projects.map((project) => ({ title: project.title, status: project.status, priority: project.priority })).slice(0, 8),
+    roadmap_state: { pending_or_active: roadmap.filter((item) => ["pending", "accepted"].includes(item.status)).map((item) => ({ title: item.title, phase: item.phase, category: item.category, status: item.status })), recent: roadmap.slice(0, 8).map((item) => ({ title: item.title, status: item.status, created_at: item.created_at })) },
+    directive_history: directives.slice(0, 18).map((item) => ({ kind: item.mission_kind, title: item.title, status: item.status, escalation_level: item.escalation_level || 1, cadence_key: item.cadence_key || null, created_at: item.created_at, resolved_at: item.resolved_at }))
   };
 }
 
@@ -138,11 +140,22 @@ function proposalMarkup(item) {
   return `<article class="ai-suggestion ${item.mission_kind}"><div><span class="eyebrow ${corrective ? "amber" : "blue-text"}">${corrective ? "SYSTEM DIRECTIVE" : "CHALLENGE TRANSMISSION"} / ${escape(item.advisor).toUpperCase()}</span><strong>${escape(item.title)}</strong><p>${escape(item.rationale)}</p><small>${(item.evidence || []).map(escape).join(" · ")}</small></div><div class="ai-actions">${action}</div></article>`;
 }
 
+function roadmapMarkup(item) {
+  return `<article class="ai-suggestion roadmap"><div><span class="eyebrow blue-text">ROADMAP NAVIGATOR / PHASE ${item.phase}</span><strong>${escape(item.title)}</strong><p>${escape(item.objective)}</p><small>${escape(item.rationale)}${item.evidence?.length ? ` Â· ${item.evidence.map(escape).join(" Â· ")}` : ""}</small></div><div class="ai-actions"><button data-ai-roadmap-accept="${item.id}">Activate mission</button><button class="decline" data-ai-roadmap-decline="${item.id}">Archive</button></div></article>`;
+}
+
 async function loadSuggestions() {
   if (!supabase) return;
   const { data } = await supabase.from("ai_mission_suggestions").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(8);
   const target = $("#ai-suggestion-list");
   if (target) target.innerHTML = data?.length ? data.map(proposalMarkup).join("") : '<p class="ai-status">No pending transmissions. Run an intelligence scan when you want a fresh assessment.</p>';
+}
+
+async function loadRoadmap() {
+  if (!supabase) return;
+  const { data } = await supabase.from("ai_roadmap_missions").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(4);
+  const target = $("#ai-roadmap-list");
+  if (target) target.innerHTML = data?.length ? data.map(roadmapMarkup).join("") : '<p class="ai-status">The campaign has enough active objectives. Navigator remains on watch.</p>';
 }
 
 async function loadLatestAdvisory() {
@@ -164,14 +177,17 @@ function paintLatestAdvisory() {
 async function persist(advisory, type) {
   const { data: stored, error } = await supabase.from("ai_advisories").insert({ advisory_type: type, payload: advisory }).select().single();
   if (error) throw error;
-  const proposals = advisory.proposals || [];
-  if (proposals.length) {
-    const rows = proposals.map((item) => ({ advisory_id: stored.id, advisor: item.advisor, mission_kind: item.mission_kind, title: item.title, category: item.category, priority: item.priority, rationale: item.rationale, evidence: item.evidence }));
+  const directives = advisory.directives || [];
+  const roadmap = advisory.roadmap || [];
+  if (directives.length) {
+    const rows = directives.map((item) => ({ advisory_id: stored.id, advisor: item.advisor, mission_kind: item.mission_kind, title: item.title, category: item.category, priority: item.priority, rationale: item.rationale, evidence: item.evidence, cadence_key: item.cadence_key, escalation_level: item.escalation_level }));
     const { error: proposalError } = await supabase.from("ai_mission_suggestions").insert(rows);
     if (proposalError) throw proposalError;
     const { data: savedSuggestions } = await supabase.from("ai_mission_suggestions").select("*").eq("advisory_id", stored.id).order("created_at");
+    if (roadmap.length) await supabase.from("ai_roadmap_missions").insert(roadmap.map((item) => ({ ...item, advisory_id: stored.id })));
     return savedSuggestions || [];
   }
+  if (roadmap.length) await supabase.from("ai_roadmap_missions").insert(roadmap.map((item) => ({ ...item, advisory_id: stored.id })));
   return [];
 }
 
@@ -204,18 +220,20 @@ function showTransmissionQueue() {
 }
 
 async function gather() {
-  const [operations, missions, trades, recovery, mastery, projects, phase] = await Promise.all([
+  const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap] = await Promise.all([
     supabase.from("operations").select("*").order("scheduled_date", { ascending: false }).limit(180),
     supabase.from("missions").select("*").order("created_at", { ascending: false }),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }).limit(100),
     supabase.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(10),
     supabase.from("mastery_entries").select("*").order("created_at", { ascending: false }).limit(100),
     supabase.from("business_projects").select("*").order("created_at", { ascending: false }).limit(20),
-    supabase.from("phase_protocols").select("*").limit(1).maybeSingle()
+    supabase.from("phase_protocols").select("*").limit(1).maybeSingle(),
+    supabase.from("ai_mission_suggestions").select("*").order("created_at", { ascending: false }).limit(24),
+    supabase.from("ai_roadmap_missions").select("*").order("created_at", { ascending: false }).limit(12)
   ]);
-  const values = [operations, missions, trades, recovery, mastery, projects, phase];
+  const values = [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap];
   if (values.some((result) => result.error)) throw new Error(values.find((result) => result.error)?.error.message || "Could not load command data.");
-  return buildContext({ operations: operations.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], phase: phase.data });
+  return buildContext({ operations: operations.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], phase: phase.data, directives: directives.data || [], roadmap: roadmap.data || [] });
 }
 
 function ensureScanOverlay() {
@@ -264,6 +282,7 @@ async function run(mode = "scan") {
     for (const corrective of correctives) await issueCorrective(corrective);
     transmissionQueue = [...correctives, ...savedSuggestions.filter((item) => item.mission_kind === "challenge")];
     await loadSuggestions();
+    await loadRoadmap();
     showTransmissionQueue();
   } catch (error) { alert(`Intelligence scan unavailable: ${error.message}`); }
   finally { setBusy(false); }
@@ -286,6 +305,21 @@ async function resolveSuggestion(id, action) {
   showTransmissionQueue();
 }
 
+async function resolveRoadmap(id, action) {
+  const { data: item, error } = await supabase.from("ai_roadmap_missions").select("*").eq("id", id).single();
+  if (error || !item) return alert("That roadmap objective is no longer available.");
+  if (action === "declined") {
+    await supabase.from("ai_roadmap_missions").update({ status: "declined", resolved_at: new Date().toISOString() }).eq("id", id);
+  } else {
+    const mission = { title: item.title, category: item.category, priority: item.priority, completion_type: "binary", completion_definition: `Five-year Roadmap Navigator / Phase ${item.phase}: ${item.objective}. Why now: ${item.rationale}`, completed: false, completed_count: 0, progress: 0 };
+    const { error: missionError } = await supabase.from("missions").insert(mission);
+    if (missionError) return alert(`Mission could not be added: ${missionError.message}`);
+    await supabase.from("ai_roadmap_missions").update({ status: "accepted", resolved_at: new Date().toISOString() }).eq("id", id);
+    window.dispatchEvent(new Event("aegis:missions-changed"));
+  }
+  await loadRoadmap();
+}
+
 function ensureManualScan() {
   const anchor = $("#adviser-panel");
   if (!anchor || $("#ai-manual-scan")) return;
@@ -298,12 +332,19 @@ function ensureManualScan() {
 
 function mount() {
   const missionView = $("#missions");
+  if (missionView && !$("#ai-roadmap-navigator")) {
+    const roadmap = document.createElement("section");
+    roadmap.id = "ai-roadmap-navigator";
+    roadmap.className = "panel ai-mission-control";
+    roadmap.innerHTML = '<div class="panel-head"><div><p class="eyebrow amber">FIVE-YEAR ROADMAP NAVIGATOR</p><h3>Campaign objectives</h3><p class="body-copy">Strategic missions for the Bruce Wayne / Tony Stark campaign: recovery, capability, Detective-grade trading, intellectual range, and enterprise.</p></div></div><div class="ai-suggestion-list" id="ai-roadmap-list"><p class="ai-status">Navigator is preparing the campaign state.</p></div>';
+    $("#phase-protocol")?.insertAdjacentElement("afterend", roadmap);
+  }
   if (missionView && !$("#ai-mission-control")) {
     const panel = document.createElement("section");
     panel.id = "ai-mission-control";
     panel.className = "panel ai-mission-control";
-    panel.innerHTML = '<div class="panel-head"><div><p class="eyebrow blue-text">JARVIS / ALFRED INTELLIGENCE</p><h3>Mission transmissions</h3><p class="body-copy">Corrective directives address evidence gaps. Challenge transmissions appear when your data says you are ready to raise the standard.</p></div><button class="primary compact" data-ai-run="scan">Run intelligence scan</button></div><div class="ai-suggestion-list" id="ai-suggestion-list"><p class="ai-status">Run an intelligence scan to generate evidence-based missions.</p></div>';
-    $("#phase-protocol")?.insertAdjacentElement("afterend", panel);
+    panel.innerHTML = '<div class="panel-head"><div><p class="eyebrow blue-text">ADAPTIVE DIRECTIVES</p><h3>Jarvis / Alfred transmissions</h3><p class="body-copy">Not routine. Correctives appear only when the evidence shows a meaningful repeating pattern; challenge transmissions appear when you have earned a higher standard.</p></div></div><div class="ai-suggestion-list" id="ai-suggestion-list"><p class="ai-status">No pending adaptive directives.</p></div>';
+    $("#ai-roadmap-navigator")?.insertAdjacentElement("afterend", panel);
   }
   ensureManualScan();
 }
@@ -317,13 +358,17 @@ document.addEventListener("click", (event) => {
   if (acknowledge) return resolveSuggestion(acknowledge.dataset.aiAcknowledge, "acknowledged");
   const decline = event.target.closest("[data-ai-decline]");
   if (decline) return resolveSuggestion(decline.dataset.aiDecline, "declined");
+  const roadmapAccept = event.target.closest("[data-ai-roadmap-accept]");
+  if (roadmapAccept) return resolveRoadmap(roadmapAccept.dataset.aiRoadmapAccept, "accepted");
+  const roadmapDecline = event.target.closest("[data-ai-roadmap-decline]");
+  if (roadmapDecline) return resolveRoadmap(roadmapDecline.dataset.aiRoadmapDecline, "declined");
   if (event.target.closest("[data-ai-close-directive]")) { $("#ai-transmission-dialog")?.close(); return showTransmissionQueue(); }
   if (event.target.closest("#ai-transmission-dialog .dialog-close")) { $("#ai-transmission-dialog")?.close(); return showTransmissionQueue(); }
 });
 
 if (supabase) {
-  supabase.auth.getSession().then(async ({ data: { session } }) => { if (!session) return; mount(); await loadLatestAdvisory(); await loadSuggestions(); try { latestContext = await gather(); setFocusStreak(latestContext.streaks.execution); } catch {} });
-  supabase.auth.onAuthStateChange((_event, session) => { if (session) setTimeout(async () => { mount(); await loadLatestAdvisory(); await loadSuggestions(); }, 150); });
+  supabase.auth.getSession().then(async ({ data: { session } }) => { if (!session) return; mount(); await loadLatestAdvisory(); await loadSuggestions(); await loadRoadmap(); try { latestContext = await gather(); setFocusStreak(latestContext.streaks.execution); } catch {} });
+  supabase.auth.onAuthStateChange((_event, session) => { if (session) setTimeout(async () => { mount(); await loadLatestAdvisory(); await loadSuggestions(); await loadRoadmap(); }, 150); });
   let remountTimer;
   new MutationObserver(() => {
     clearTimeout(remountTimer);
