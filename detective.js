@@ -8,6 +8,7 @@ let syncSetupUi = () => {};
 let currentTradeId = null;
 let loadedTrades = [];
 let activeFilters = {};
+let includeTheoreticalInAnalysis = false;
 let accountBalances = [];
 let activeDetectiveTab = localStorage.getItem("aegis.detective-tab") || "journal";
 
@@ -192,11 +193,11 @@ function applyFilters() {
   renderMetrics(trades);
   renderTrades(trades);
   const count = $("#filter-result-count");
-  if (count) count.textContent = `${trades.length} matching trade${trades.length === 1 ? "" : "s"}`;
+  if (count) count.textContent = `${trades.length} matching trade${trades.length === 1 ? "" : "s"} · ${includeTheoreticalInAnalysis ? "live + theoretical analysis" : "live analysis"}`;
 }
 
 function renderMetrics(trades) {
-  const closedTrades = trades.filter((trade) => !isTheoretical(trade) && resolvedOutcome(trade) !== "Open");
+  const closedTrades = trades.filter((trade) => (includeTheoreticalInAnalysis || !isTheoretical(trade)) && resolvedOutcome(trade) !== "Open");
   const outcomes = closedTrades.map(resolvedOutcome);
   const wins = outcomes.filter((outcome) => outcome === "Win").length;
   const losses = outcomes.filter((outcome) => outcome === "Loss").length;
@@ -216,7 +217,7 @@ function renderMetrics(trades) {
 
   winRateElement.textContent = winRate == null ? "—" : `${winRate}%`;
   setTone(winRateElement, winRateTone(winRate));
-  $("#detective-win-rate-note").textContent = decisiveTrades ? `${wins} win${wins === 1 ? "" : "s"} / ${decisiveTrades} closed trade${decisiveTrades === 1 ? "" : "s"}` : "Log closed trades to calculate";
+  $("#detective-win-rate-note").textContent = decisiveTrades ? `${wins} win${wins === 1 ? "" : "s"} / ${decisiveTrades} closed trade${decisiveTrades === 1 ? "" : "s"}${includeTheoreticalInAnalysis ? " · theoretical included" : ""}` : "Log closed trades to calculate";
   currentStreakElement.textContent = streaks.currentLength ? `${streaks.currentLength}${streaks.currentType === "Win" ? "W" : "L"}` : "—";
   setTone(currentStreakElement, streaks.currentType === "Win" ? "streak-win" : streaks.currentType === "Loss" ? "streak-loss" : null);
   currentStreakNote.textContent = streaks.currentLength ? `Current ${streaks.currentType.toLowerCase()} streak` : "Awaiting decisive trades";
@@ -286,7 +287,16 @@ function buildFilters() {
   filterBar.className = "detective-filter-bar";
   filterBar.innerHTML = `<div class="filter-heading"><p class="eyebrow blue-text">02 — FILTER INTELLIGENCE</p><small id="filter-result-count">All trades</small></div><div class="filter-controls"><label>Pair <select data-filter="pair"><option value="">All pairs</option>${selectOptions("#detective-pair")}</select></label><label>Setup <select data-filter="setup"><option value="">All setups</option>${selectOptions("#detective-setup")}</select></label><label>CB Hour <select data-filter="cb_hour"><option value="">All CB hours</option>${selectOptions("#detective-cb-hour")}</select></label><label>Session time <select data-filter="session_time"><option value="">All sessions</option>${selectOptions("#detective-session-time")}</select></label><label>Type <select data-filter="trade_type"><option value="">All types</option>${selectOptions("#detective-type")}</select></label><label>Market condition <select data-filter="market_condition"><option value="">All conditions</option>${selectOptions("#detective-market-condition")}</select></label><label>Position <select data-filter="position"><option value="">Long + Short</option>${selectOptions("#detective-position")}</select></label><button type="button" class="clear-filters">Clear filters</button></div>`;
   $(".trade-panel").insertBefore(filterBar, $(".trade-panel .table-wrap"));
+  const theoreticalToggle = document.createElement("label");
+  theoreticalToggle.className = "theoretical-analysis-toggle";
+  theoreticalToggle.innerHTML = '<input type="checkbox" id="filter-include-theoretical" /> Include theoretical trades <small>Detective calculations only</small>';
+  filterBar.querySelector(".clear-filters").insertAdjacentElement("beforebegin", theoreticalToggle);
   filterBar.addEventListener("change", (event) => {
+    if (event.target.id === "filter-include-theoretical") {
+      includeTheoreticalInAnalysis = event.target.checked;
+      applyFilters();
+      return;
+    }
     if (!event.target.matches("[data-filter]")) return;
     activeFilters[event.target.dataset.filter] = event.target.value;
     applyFilters();
@@ -313,11 +323,27 @@ function buildFilters() {
   });
   filterBar.querySelector(".clear-filters").addEventListener("click", () => {
     activeFilters = {};
+    includeTheoreticalInAnalysis = false;
     filterBar.querySelectorAll("select").forEach((select) => { select.value = ""; });
+    $("#filter-include-theoretical").checked = false;
     syncSetupFilter();
     applyFilters();
   });
 }
+
+function resetTheoreticalAnalysis() {
+  if (!includeTheoreticalInAnalysis) return;
+  includeTheoreticalInAnalysis = false;
+  const toggle = $("#filter-include-theoretical");
+  if (toggle) toggle.checked = false;
+  applyFilters();
+}
+
+document.addEventListener("click", (event) => {
+  const link = event.target.closest(".nav-link, .brand, [data-view-target], [data-dashboard-view]");
+  const destination = link?.dataset.view || link?.dataset.viewTarget || link?.dataset.dashboardView || (link?.classList.contains("brand") ? "command" : null);
+  if (destination && destination !== "detective") resetTheoreticalAnalysis();
+}, true);
 
 function clearForm() {
   $("#detective-trade-dialog form").reset();
