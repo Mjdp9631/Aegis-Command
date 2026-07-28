@@ -9,7 +9,7 @@ let currentTradeId = null;
 let loadedTrades = [];
 let activeFilters = {};
 let accountBalances = [];
-let activeDetectiveTab = "journal";
+let activeDetectiveTab = localStorage.getItem("aegis.detective-tab") || "journal";
 
 function numberOrNull(value) {
   return value === "" || value == null ? null : Number(value);
@@ -138,6 +138,7 @@ function renderAccountBalances() {
 
 function setDetectiveTab(tab) {
   activeDetectiveTab = tab;
+  localStorage.setItem("aegis.detective-tab", tab);
   $("#detective-journal").hidden = tab !== "journal";
   $("#detective-accounts").hidden = tab !== "accounts";
   $("#detective-brain").hidden = tab !== "brain";
