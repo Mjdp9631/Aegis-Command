@@ -92,7 +92,7 @@ function ccfxXp(projects, contentItems, startedAt) {
 }
 
 function masteryXp(entries, challenges, startedAt) {
-  const mindAwards = { "Book": 50, "Quote": 5, "Trading Note": 20, "Psychology": 15, "Space": 10, "Philosophy": 15, "Business": 15, "Stoicism": 12 };
+  const mindAwards = { "Book": 50, "Quote": 5, "Trading Note": 20, "Psychology": 15, "Space": 10, "Philosophy": 15, "Business": 15, "Stoicism": 12, "Leadership": 18, "Communication": 15, "History": 15, "Systems Thinking": 20 };
   const bodyAwards = { "Health": 15, "Gym": 25, "Sports": 35, "Performance": 20 };
   const ledgerFor = (awards) => entries.filter((entry) => isOnOrAfter(entry.created_at, startedAt) && awards[entry.category]).map((entry) => ({
     label: new Date(entry.created_at || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric" }),

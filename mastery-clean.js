@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const config = window.AEGIS_CONFIG || {};
 const db = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const root = document.querySelector("#mastery");
-const mindTypes = ["Book", "Quote", "Trading Note", "Psychology", "Space", "Philosophy", "Business", "Stoicism"];
+const mindTypes = ["Book", "Quote", "Trading Note", "Psychology", "Space", "Philosophy", "Business", "Stoicism", "Leadership", "Communication", "History", "Systems Thinking"];
 const bodyTypes = ["Health", "Gym", "Sports", "Performance"];
 const researchTopics = [
   ["Baader-Meinhof phenomenon", "Psychology", "standard", 35, "Why recently learned ideas seem to appear everywhere."],
@@ -17,6 +17,10 @@ const researchTopics = [
   ["The Ship of Theseus", "Philosophy", "advanced", 55, "Identity when all parts of something change over time."],
   ["The hedonic treadmill", "Psychology", "standard", 35, "Why achievement alone does not permanently raise satisfaction."],
   ["The absurd", "Philosophy", "advanced", 55, "Camus' problem of meaning and how to act without false certainty."]
+  ,["The responsibility of leadership", "Leadership", "standard", 35, "How leaders make decisions, set standards, and take responsibility when outcomes are uncertain."]
+  ,["The art of the difficult conversation", "Communication", "standard", 35, "How to communicate clearly when stakes, emotions, and disagreement are present."]
+  ,["The fall of the Roman Republic", "History", "advanced", 55, "How institutions, incentives, ambition, and public trust can reshape a republic."]
+  ,["Second-order effects", "Systems Thinking", "advanced", 55, "How an action’s indirect consequences can matter more than its immediate result."]
 ];
 const bodyChallenges = [
   ["Upper-body strength circuit", "Gym", "standard", 30, "Complete a 30-minute upper-body or clinician-cleared full-body session. Record the exercises and one performance note."],
@@ -56,8 +60,8 @@ function challengeCard(challenge) {
   const reward = `<small class="challenge-reward">${difficultyLabel(challenge)}${complete ? " · recorded when XP campaign launches" : " · reserved on acceptance"}</small>`;
   let actions = "";
   if (complete) actions = `<span class="system-status">Filed to ${escapeHtml(challenge.category || "Mastery")} · ${dateOnly(challenge.completed_at)}</span>`;
-  else if (status === "accepted") actions = `<div class="challenge-actions"><button class="primary compact" data-mastery-complete-challenge="${challenge.id}">Complete transmission</button><button class="ghost compact" data-mastery-deny="${challenge.id}">Deny</button><button class="ghost compact" data-mastery-clear="${challenge.id}">Clear</button></div>`;
-  else actions = `<div class="challenge-actions"><button class="primary compact" data-mastery-accept="${challenge.id}">Accept</button><button class="ghost compact" data-mastery-deny="${challenge.id}">Deny</button><button class="ghost compact" data-mastery-clear="${challenge.id}">Clear</button></div>`;
+  else if (status === "accepted") actions = `<div class="challenge-actions"><button class="primary compact" data-mastery-complete-challenge="${challenge.id}">Complete transmission</button><button class="ghost compact" data-mastery-deny="${challenge.id}">Deny</button></div>`;
+  else actions = `<div class="challenge-actions"><button class="primary compact" data-mastery-accept="${challenge.id}">Accept</button><button class="ghost compact" data-mastery-deny="${challenge.id}">Deny</button></div>`;
   return `<article class="mastery-challenge ${complete ? "complete" : ""} ${status}"><div><p class="eyebrow ${challenge.lane === "mind" ? "blue-text" : "green-text"}">${laneLabel}${complete ? " · COMPLETE" : status === "accepted" ? " · ACCEPTED" : " · AWAITING DECISION"}</p><h4>${escapeHtml(challenge.title)}</h4><p>${escapeHtml(challenge.instructions)}</p>${challenge.lane === "mind" ? `<small>30 minutes, no AI · explain it aloud for 30+ seconds, then write your own synthesis.</small>` : `<small>Use accessible, clinician-cleared activity only. No specialist purchase or team required.</small>`}${reward}${challenge.summary ? `<p class="challenge-summary"><b>Your debrief:</b> ${escapeHtml(challenge.summary)}</p>` : ""}</div>${actions}</article>`;
 }
 
@@ -67,7 +71,7 @@ function systemsPanel() {
   const label = lane === "mind" ? "Generate research mission" : recoveryReady ? "Generate body mission" : "Generate recovery-safe mission";
   const copy = lane === "mind" ? "Generate a topic, then decide deliberately. Acceptance reserves bonus XP; completion files the work under its subject." : recoveryReady ? "Generate an accessible activity, then decide deliberately. Completion files it under Health, Gym, Sports, or Performance." : "Generate only recovery-safe activity until Recovery is cleared.";
   const deep = lane === "mind" ? `<article class="mastery-system-card deep-work-card"><div><p class="eyebrow blue-text">DEEP-WORK OUTPUT</p><h3>${recentMinutes} min</h3><p>Focused work from the last seven days. The output matters more than the timer.</p></div><button class="primary compact" data-mastery-deep-work>+ Log deep work</button></article>` : "";
-  return `<section class="mastery-systems ${lane === "mind" ? "mind-systems" : "body-systems"}">${deep}<article class="mastery-system-card transmission-card"><div><p class="eyebrow ${lane === "mind" ? "blue-text" : "green-text"}">RANDOM ${lane.toUpperCase()} MISSION</p><h3>${lane === "mind" ? "Research transmission" : "Accessible activity transmission"}</h3><p>${copy}</p></div><button class="primary compact" data-mastery-generate="${lane}" ${current ? "disabled title=\"Clear or deny the current transmission first\"" : ""}>${label}</button>${current ? `<div class="transmission-state"><span>${current.status === "accepted" ? "Accepted transmission in progress. Clear or deny it to generate a replacement." : "Transmission awaiting your decision."}</span></div><div class="challenge-stack">${challengeCard(current)}</div>` : ""}</article></section>`;
+  return `<section class="mastery-systems ${lane === "mind" ? "mind-systems" : "body-systems"}">${deep}<article class="mastery-system-card transmission-card"><div><p class="eyebrow ${lane === "mind" ? "blue-text" : "green-text"}">RANDOM ${lane.toUpperCase()} MISSION</p><h3>${lane === "mind" ? "Research transmission" : "Accessible activity transmission"}</h3><p>${copy}</p></div><div class="transmission-controls"><button class="primary compact" data-mastery-generate="${lane}" ${current ? "disabled title=\"Resolve the current transmission first\"" : ""}>${label}</button><button class="ghost compact" data-mastery-clear-lane="${lane}" ${current ? "" : "disabled"}>Clear queue</button></div>${current ? `<div class="transmission-state"><span>${current.status === "accepted" ? "Accepted transmission in progress. Deny this one to decline it, or clear the queue to discard every unresolved transmission in this lane." : "Transmission awaiting your decision. Deny this one to decline it, or clear the queue to discard every unresolved transmission in this lane."}</span></div><div class="challenge-stack">${challengeCard(current)}</div>` : ""}</article></section>`;
 }
 
 function render() {
@@ -90,7 +94,7 @@ function fieldsFor(type) {
   if (type === "Book") return `${base}<label>Rating<select name="rating"><option value="">Not rated</option>${[1,2,3,4,5].map(number => `<option value="${number}">${number} / 5</option>`).join("")}</select></label><label>Summary<textarea name="summary"></textarea></label><label>Favorite quotes<textarea name="quotes"></textarea></label><label>Key takeaways<textarea name="lessons"></textarea></label><label>Action items<textarea name="actions"></textarea></label>`;
   if (type === "Quote") return `${base}<label>Source or context<textarea name="summary"></textarea></label>`;
   if (type === "Trading Note") return `${base}<label>Trade context / observation<textarea name="summary"></textarea></label><label>Key takeaway<textarea name="lessons"></textarea></label><label>Rule to test or follow<textarea name="actions"></textarea></label>`;
-  if (["Psychology", "Philosophy", "Space"].includes(type)) return `${base}<label>Explanation or source<textarea name="summary"></textarea></label><label>Key takeaway<textarea name="lessons"></textarea></label>`;
+  if (["Psychology", "Philosophy", "Space", "Leadership", "Communication", "History", "Systems Thinking"].includes(type)) return `${base}<label>Explanation or source<textarea name="summary"></textarea></label><label>Key takeaway<textarea name="lessons"></textarea></label>`;
   if (["Business", "Stoicism"].includes(type)) return `${base}<label>Summary / reflection<textarea name="summary"></textarea></label><label>Action item<textarea name="actions"></textarea></label>`;
   return `${base}<label>Notes / observation<textarea name="summary"></textarea></label>`;
 }
@@ -150,6 +154,15 @@ async function actOnChallenge(id, action) {
   await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
 }
 
+async function clearLaneQueue(kind) {
+  const queued = challenges.filter(item => item.lane === kind && !item.completed_at && ["generated", "accepted"].includes(item.status || "generated"));
+  if (!queued.length || !confirm(`Clear ${queued.length} uncompleted ${kind} transmission${queued.length === 1 ? "" : "s"}? Completed work remains in your Mastery archive.`)) return;
+  if (!db) { challenges = challenges.filter(item => !queued.some(target => target.id === item.id)); render(); return; }
+  const { error } = await db.from("mastery_challenges").delete().in("id", queued.map(item => item.id));
+  if (error) return alert(error.message);
+  await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
+}
+
 async function saveSystem(event) {
   event.preventDefault(); const form = event.currentTarget, mode = form.dataset.systemMode, data = new FormData(form); if (!db) return alert("Connect your private system database before using this feature.");
   let error;
@@ -182,7 +195,7 @@ document.addEventListener("click", event => {
   const generate = event.target.closest("[data-mastery-generate]"); if (generate) return generateChallenge(generate.dataset.masteryGenerate);
   const accept = event.target.closest("[data-mastery-accept]"); if (accept) return actOnChallenge(accept.dataset.masteryAccept, "accept");
   const deny = event.target.closest("[data-mastery-deny]"); if (deny) return actOnChallenge(deny.dataset.masteryDeny, "deny");
-  const clear = event.target.closest("[data-mastery-clear]"); if (clear) return actOnChallenge(clear.dataset.masteryClear, "clear");
+  const clearLane = event.target.closest("[data-mastery-clear-lane]"); if (clearLane) return clearLaneQueue(clearLane.dataset.masteryClearLane);
   const complete = event.target.closest("[data-mastery-complete-challenge]"); if (complete) { const challenge = challenges.find(item => item.id === complete.dataset.masteryCompleteChallenge); if (challenge) openSystemDialog("complete", challenge); }
 });
 
