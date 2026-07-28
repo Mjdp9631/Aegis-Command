@@ -15,6 +15,8 @@ const setup = (value) => { try { return JSON.parse(value || "[]").join(" + "); }
 const tradeNumberMap = () => new Map([...trades].sort((a, b) => new Date(a.traded_at || a.created_at) - new Date(b.traded_at || b.created_at)).map((trade, index) => [trade.id, index + 1]));
 const tradeLabel = (trade) => `#${String(tradeNumberMap().get(trade.id) || 0).padStart(3, "0")} · ${new Date(trade.traded_at || trade.created_at).toLocaleDateString()} · ${trade.pair || "Pair"} · ${setup(trade.setup)} · ${trade.outcome || trade.trade_status || "Open"}`;
 
+const isTheoretical = (trade) => String(trade?.account || "").trim().toLowerCase() === "theoretical";
+
 const CHAIN = [
   { id: "condition", title: "01 — Condition", question: "Can you name the active market condition without forcing it?", source: "condition", choices: [{ label: "Range", next: true }, { label: "Trending range", next: true }, { label: "Trend", next: true }, { label: "Unclear / mixed", stop: "No trade. The condition is not clear enough to build from." }] },
   { id: "location", title: "02 — Location", question: "Is price at a valid location rather than the middle of the condition?", source: "location", choices: [{ label: "Yes — valid outer half, quarter, or qualified continuation", next: true }, { label: "No — middle / undefined location", stop: "No trade. Location does not give the condition an edge." }] },
@@ -56,7 +58,24 @@ async function loadReviewerData() {
   trades = tradeResult.data || []; reviews = reviewResult.data || [];
   const control = $("#brain-review-trade");
   if (control) control.innerHTML = '<option value="">Choose a journal trade number</option>' + trades.map((trade) => `<option value="${trade.id}">${esc(tradeLabel(trade))}</option>`).join("");
+  syncTheoreticalReason();
   renderHistory();
+}
+
+function ensureTheoreticalReasonField() {
+  if ($("#brain-no-entry-wrap")) return;
+  const tradeControl = $("#brain-review-trade");
+  if (!tradeControl) return;
+  tradeControl.closest("label")?.insertAdjacentHTML("afterend", '<label id="brain-no-entry-wrap" hidden>Why was this theoretical trade not entered?<textarea id="brain-no-entry-reason" rows="3" placeholder="e.g. It did not reach my Entry-50, or the price action was not clean enough."></textarea><small>Saved with this review only. It gives context but never changes the independent audit.</small></label>');
+}
+
+function syncTheoreticalReason() {
+  ensureTheoreticalReasonField();
+  const selected = trades.find((item) => item.id === $("#brain-review-trade")?.value);
+  const wrap = $("#brain-no-entry-wrap"); const reason = $("#brain-no-entry-reason");
+  if (!wrap || !reason) return;
+  wrap.hidden = !isTheoretical(selected);
+  if (wrap.hidden) reason.value = "";
 }
 
 async function asDataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => resolve(reader.result); reader.readAsDataURL(file); }); }
@@ -68,9 +87,10 @@ async function runReview(event) {
   const status = $("#brain-review-status"); const submit = $("#brain-review-submit"); submit.disabled = true; status.textContent = "Reading chart evidence against the Clarified Chaos FX system...";
   try {
     const screenshots = await Promise.all(files.map(asDataUrl));
-    const response = await fetch("/api/trade-review", { method: "POST", headers: { "content-type":"application/json", authorization:`Bearer ${sessionData.session.access_token}` }, body: JSON.stringify({ trade, traderThesis: $("#brain-review-thesis").value.trim(), screenshots }) });
+    const noEntryReason = isTheoretical(trade) ? $("#brain-no-entry-reason").value.trim() : "";
+    const response = await fetch("/api/trade-review", { method: "POST", headers: { "content-type":"application/json", authorization:`Bearer ${sessionData.session.access_token}` }, body: JSON.stringify({ trade, noEntryReason, traderThesis: $("#brain-review-thesis").value.trim(), screenshots }) });
     const body = await response.json(); if (!response.ok) throw new Error(body.error || "The reviewer did not return an audit.");
-    const insert = await supabase.from("trade_reviews").insert({ user_id: sessionData.session.user.id, trade_id: trade.id, trader_thesis: $("#brain-review-thesis").value.trim() || null, review_payload: body.review, screenshot_count: screenshots.length, course_version: "1.1" });
+    const insert = await supabase.from("trade_reviews").insert({ user_id: sessionData.session.user.id, trade_id: trade.id, trader_thesis: $("#brain-review-thesis").value.trim() || null, no_entry_reason: noEntryReason || null, review_payload: body.review, screenshot_count: screenshots.length, course_version: "1.1" });
     if (insert.error) throw new Error(`The audit was completed but could not be saved: ${insert.error.message}`);
     status.textContent = "Audit complete. Stored in independent review history."; $("#brain-review-form").reset(); await loadReviewerData(); $("#brain-review-dialog").close(); $("#brain-review-history-list")?.scrollIntoView({ behavior:"smooth", block:"center" });
   } catch (error) { status.textContent = error.message || "The audit could not be completed."; } finally { submit.disabled = false; }
@@ -150,6 +170,7 @@ function init() {
   $("#open-trade-review")?.addEventListener("click", () => $("#brain-review-dialog").showModal());
   $("#brain-review-dialog .dialog-close")?.addEventListener("click", () => $("#brain-review-dialog").close());
   $("#brain-review-form")?.addEventListener("submit", runReview);
+  $("#brain-review-trade")?.addEventListener("change", syncTheoreticalReason);
   $("#brain-chain-reset")?.addEventListener("click", () => { chainStep = 0; chainAnswers = []; chainTerminal = ""; renderChain(); });
   document.addEventListener("click", (event) => {
     const jump = event.target.closest("[data-brain-jump]"); if (jump) openSource(jump.dataset.brainJump);

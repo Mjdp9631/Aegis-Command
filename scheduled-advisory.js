@@ -90,7 +90,8 @@ async function buildContext(serviceKey, userId) {
   const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap] = await Promise.all([
     query("operations", "scheduled_date.desc", 180), query("missions", "created_at.desc", 50), query("trade_debriefs", "traded_at.desc", 100), query("recovery_logs", "logged_on.desc", 10), query("mastery_entries", "created_at.desc", 100), query("business_projects", "created_at.desc", 30), query("phase_protocols", "created_at.desc", 1), query("ai_mission_suggestions", "created_at.desc", 24), query("ai_roadmap_missions", "created_at.desc", 12)
   ]);
-  const closed = trades.filter((trade) => String(trade.trade_status || "").toLowerCase() !== "open");
+  const liveTrades = trades.filter((trade) => String(trade.account || "").trim().toLowerCase() !== "theoretical");
+  const closed = liveTrades.filter((trade) => String(trade.trade_status || "").toLowerCase() !== "open");
   const wins = closed.filter((trade) => tradeOutcome(trade) === "win").length;
   const losses = closed.filter((trade) => tradeOutcome(trade) === "loss").length;
   const streaks = tradeStreaks(closed);
@@ -99,7 +100,7 @@ async function buildContext(serviceKey, userId) {
     active_phase: `Phase ${phase[0]?.active_phase ?? 0}`,
     operations: { open_total: openOperations.length, completed_total: operations.length - openOperations.length, next: openOperations.slice(0, 8).map(({ title, category, status }) => ({ title, category, status: status || "Queued" })) },
     missions: missions.filter((item) => !item.completed).slice(0, 8).map(({ title, category, priority, completion_definition }) => ({ title, category, priority, definition: completion_definition || null })),
-    trading: { closed_trades: closed.length, wins, losses, breakeven: closed.length - wins - losses, win_rate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : null, plan_violations: trades.filter((trade) => trade.plan_violation).length, streaks },
+    trading: { closed_trades: closed.length, wins, losses, breakeven: closed.length - wins - losses, win_rate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : null, plan_violations: liveTrades.filter((trade) => trade.plan_violation).length, streaks },
     recovery: recovery.slice(0, 5), mastery: { total_entries: mastery.length, recent: mastery.slice(0, 8) }, special_projects: projects.slice(0, 8),
     roadmap_state: { pending_or_active: roadmap.filter((item) => ["pending", "accepted"].includes(item.status)).map((item) => ({ title: item.title, phase: item.phase, category: item.category, status: item.status })), recent: roadmap.slice(0, 8).map((item) => ({ title: item.title, status: item.status, created_at: item.created_at })) },
     directive_history: directives.slice(0, 18).map((item) => ({ kind: item.mission_kind, title: item.title, status: item.status, escalation_level: item.escalation_level || 1, cadence_key: item.cadence_key || null, created_at: item.created_at, resolved_at: item.resolved_at }))

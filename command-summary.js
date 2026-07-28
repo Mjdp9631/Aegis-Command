@@ -37,7 +37,7 @@ function render({ missions, trades, projects, content, recoveryLogs, operations,
   if (!target) return;
   const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
   const priority = activeMissions.find((mission) => mission.priority === "Do now") || activeMissions[0];
-  const closed = trades.filter((trade) => outcome(trade) !== "Open");
+  const closed = trades.filter((trade) => String(trade.account || "").trim().toLowerCase() !== "theoretical" && outcome(trade) !== "Open");
   const wins = closed.filter((trade) => outcome(trade) === "Win").length;
   const losses = closed.filter((trade) => outcome(trade) === "Loss").length;
   const winRate = wins + losses ? `${Math.round((wins / (wins + losses)) * 100)}%` : "--";
@@ -76,6 +76,7 @@ if (supabase) {
   load();
   supabase.auth.onAuthStateChange(() => setTimeout(load, 100));
   window.addEventListener("aegis:missions-changed", () => setTimeout(load, 100));
+  window.addEventListener("aegis:operations-changed", () => setTimeout(load, 100));
   window.addEventListener("aegis:mastery-changed", () => setTimeout(load, 100));
   document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(load, 700); });
 }

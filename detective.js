@@ -42,6 +42,10 @@ function resolvedOutcome(trade) {
   return "B/E";
 }
 
+function isTheoretical(trade) {
+  return String(trade.account || "").trim().toLowerCase() === "theoretical";
+}
+
 function tradeTime(trade) {
   const value = new Date(trade.traded_at || trade.created_at || 0).getTime();
   return Number.isNaN(value) ? 0 : value;
@@ -99,7 +103,7 @@ function money(value) {
 
 function accountTrades(accountName) {
   return loadedTrades
-    .filter((trade) => String(trade.account || "").trim() === accountName && resolvedOutcome(trade) !== "Open")
+    .filter((trade) => !isTheoretical(trade) && String(trade.account || "").trim() === accountName && resolvedOutcome(trade) !== "Open")
     .sort((a, b) => new Date(a.traded_at || a.created_at) - new Date(b.traded_at || b.created_at));
 }
 
@@ -192,7 +196,7 @@ function applyFilters() {
 }
 
 function renderMetrics(trades) {
-  const closedTrades = trades.filter((trade) => resolvedOutcome(trade) !== "Open");
+  const closedTrades = trades.filter((trade) => !isTheoretical(trade) && resolvedOutcome(trade) !== "Open");
   const outcomes = closedTrades.map(resolvedOutcome);
   const wins = outcomes.filter((outcome) => outcome === "Win").length;
   const losses = outcomes.filter((outcome) => outcome === "Loss").length;
@@ -251,7 +255,7 @@ function renderTrades(trades) {
       <td>${displayNumber(trade.pnl_percent, "%")}</td>
       <td class="${resultClass}">${outcome}</td>
       <td>${escapeHtml(trade.position || "—")}</td>
-      <td>${escapeHtml(trade.account || "—")}</td>
+      <td>${escapeHtml(trade.account || "—")}${isTheoretical(trade) ? "<small class=\"theoretical-account\">Review only</small>" : ""}</td>
       <td>${escapeHtml(trade.trade_day || "—")}</td>
       <td>${escapeHtml(trade.trade_month || "—")}</td>
       <td>${escapeHtml(trade.session_time || "—")}</td>
@@ -408,6 +412,8 @@ async function saveTrade(event) {
 
 function init() {
   const dialog = $("#detective-trade-dialog");
+  const account = $("#detective-account");
+  if (account && !Array.from(account.options).some((option) => option.value === "Theoretical")) account.insertAdjacentHTML("beforeend", '<option>Theoretical</option>');
   const setup = $("#detective-setup");
   setup.multiple = true;
   setup.style.display = "none";

@@ -34,7 +34,7 @@ function monthKey(value) {
 
 function tradingXp(trades) {
   const totals = new Map();
-  trades.filter((trade) => trade.trade_status !== "Open" && trade.pnl_percent != null).forEach((trade) => {
+  trades.filter((trade) => String(trade.account || "").trim().toLowerCase() !== "theoretical" && trade.trade_status !== "Open" && trade.pnl_percent != null).forEach((trade) => {
     const key = monthKey(trade.traded_at);
     if (key) totals.set(key, (totals.get(key) || 0) + Number(trade.pnl_percent || 0));
   });

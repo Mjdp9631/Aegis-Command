@@ -17,7 +17,7 @@ function normalOutcome(value) {
 }
 
 function isClosed(trade) {
-  return String(trade.trade_status || "").trim().toLowerCase() !== "open";
+  return String(trade.account || "").trim().toLowerCase() !== "theoretical" && String(trade.trade_status || "").trim().toLowerCase() !== "open";
 }
 
 function tradeOutcome(trade) {
@@ -250,6 +250,7 @@ if (supabase) {
   load();
   supabase.auth.onAuthStateChange(() => setTimeout(load, 100));
   window.addEventListener("aegis:missions-changed", () => setTimeout(load, 120));
+  window.addEventListener("aegis:operations-changed", () => setTimeout(load, 120));
   window.addEventListener("aegis:mastery-changed", () => setTimeout(load, 120));
   window.addEventListener("aegis:accounts-changed", () => setTimeout(load, 120));
   document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(load, 700); });

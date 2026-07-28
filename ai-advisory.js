@@ -68,10 +68,11 @@ function missionProgress(mission) {
 }
 
 function buildContext({ operations, missions, trades, recovery, mastery, projects, phase, directives = [], roadmap = [] }) {
-  const closed = trades.filter((trade) => outcome(trade) !== "open");
+  const liveTrades = trades.filter((trade) => String(trade.account || "").trim().toLowerCase() !== "theoretical");
+  const closed = liveTrades.filter((trade) => outcome(trade) !== "open");
   const wins = closed.filter((trade) => outcome(trade) === "win").length;
   const losses = closed.filter((trade) => outcome(trade) === "loss").length;
-  const violations = trades.filter((trade) => trade.plan_violation).length;
+  const violations = liveTrades.filter((trade) => trade.plan_violation).length;
   const currentMonth = new Date().getMonth();
   const monthPnl = closed.filter((trade) => new Date(trade.traded_at || trade.created_at).getMonth() === currentMonth).reduce((sum, trade) => sum + Number(trade.pnl_percent || 0), 0);
   const tradeStreak = tradeStreaks(closed);
@@ -79,7 +80,7 @@ function buildContext({ operations, missions, trades, recovery, mastery, project
   const todayOps = operations.filter((operation) => operation.scheduled_date === today);
   const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
   const operationStreak = streakFor(operations.filter((operation) => operation.completed || operation.status === "Complete").map((operation) => operation.scheduled_date || operation.updated_at || operation.created_at));
-  const tradingStreak = streakFor(trades.map((trade) => trade.traded_at || trade.created_at));
+  const tradingStreak = streakFor(liveTrades.map((trade) => trade.traded_at || trade.created_at));
   const masteryStreak = streakFor(mastery.map((entry) => entry.created_at));
   return {
     generated_on: new Date().toISOString(),

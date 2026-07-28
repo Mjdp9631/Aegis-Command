@@ -5,3 +5,4 @@
 
 /* Detective performance tones: quality is readable at a glance, without changing the calculation. */
 #detective-win-rate.metric-tone-green{color:#63e5a1}#detective-win-rate.metric-tone-lime{color:#a8e77a}#detective-win-rate.metric-tone-yellow{color:#f0d26c}#detective-win-rate.metric-tone-orange{color:#f5a75d}#detective-win-rate.metric-tone-red{color:#ff7676}.streak-win{color:#63e5a1!important}.streak-loss{color:#ff7676!important}.detective-streak-pair{display:flex!important;align-items:baseline;gap:7px}.streak-divider{color:#6d7c93;font-weight:500}
+.theoretical-account{color:#b6c9df}.theoretical-account{display:block;color:#d9a950;font-size:10px;letter-spacing:.06em;margin-top:3px;text-transform:uppercase}
