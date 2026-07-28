@@ -4,7 +4,9 @@ const config = window.AEGIS_CONFIG || {};
 const db = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const root = document.querySelector("#mastery");
 const mindTypes = ["Book", "Quote", "Trading Note", "Psychology", "Space", "Philosophy", "Business", "Stoicism", "Leadership", "Communication", "History", "Systems Thinking"];
-const bodyTypes = ["Health", "Gym", "Sports", "Performance"];
+// Body is deliberately broad enough to hold the full capability campaign, without
+// confusing a rehabilitation log with a sport, combat session, or outdoor skill.
+const bodyTypes = ["Health", "Gym", "Mobility", "Performance", "Sports", "Outdoor Skills"];
 const researchTopics = [
   ["Baader-Meinhof phenomenon", "Psychology", "standard", 35, "Why recently learned ideas seem to appear everywhere."],
   ["Paradox of choice", "Psychology", "standard", 35, "How too many options can reduce action and satisfaction."],
@@ -23,17 +25,34 @@ const researchTopics = [
   ,["Second-order effects", "Systems Thinking", "advanced", 55, "How an action’s indirect consequences can matter more than its immediate result."]
 ];
 const bodyChallenges = [
+  // Health: recovery, nutrition, and resilience.
+  ["Nutrition audit", "Health", "easy", 20, "Plan and document one day of nutrition that supports your current goal and any medical guidance. Record one adjustment worth keeping."],
+  ["Resilience reset", "Health", "standard", 30, "Complete a deliberate recovery reset: sleep plan, hydration, stress-management practice, and a short written check-in on what would make the next seven days more sustainable."],
+  // Gym: intentionally separate from field performance.
   ["Upper-body strength circuit", "Gym", "standard", 30, "Complete a 30-minute upper-body or clinician-cleared full-body session. Record the exercises and one performance note."],
+  ["Grip and carries session", "Gym", "standard", 30, "Complete a clinician-cleared grip, carry, or upper-body accessory session. Record load, sets, and one technique cue."],
+  // Mobility: movement quality belongs here, not in the recovery metric alone.
+  ["Movement-quality session", "Mobility", "easy", 20, "Complete 30 minutes of clinician-approved mobility, balance, or movement-quality work. Record one range, position, or coordination detail that improved."],
+  ["Joint-control audit", "Mobility", "standard", 30, "Use a clinician-cleared mobility routine and compare your control at the beginning and end. Log the tightest area and one useful adjustment."],
+  // Performance: conditioning, athleticism, and combat all live here once cleared.
+  ["Measured walk or run benchmark", "Performance", "advanced", 55, "Only if cleared: complete a measured walk, jog, or run and record distance, time, and how the body responded."],
+  ["Conditioning block", "Performance", "standard", 40, "Only if cleared: complete a focused conditioning session at an intentional pace. Record duration, effort, and recovery quality."],
+  ["Athletic skill session", "Performance", "standard", 40, "Only if cleared: complete a session focused on speed, coordination, footwork, or athletic mechanics. Record one skill cue and one result."],
+  ["Combat fundamentals session", "Performance", "advanced", 55, "Only if cleared and coached: complete a technical boxing, Muay Thai, grappling, or self-defense fundamentals session. Prioritize control and learning over intensity."],
+  // Sports: accessible, low-friction options only.
   ["Shootaround session", "Sports", "standard", 40, "Find an accessible hoop and spend 30 minutes shooting, dribbling, and moving at your own pace. Use a public court or a ball you already own."],
   ["Pickleball sampler", "Sports", "standard", 40, "Use a public court or borrow a paddle for a casual 30-minute beginner session. Avoid buying equipment just for this mission."],
-  ["Measured walk or run benchmark", "Performance", "advanced", 55, "Only if cleared: complete a measured walk, jog, or run and record distance, time, and how the body responded."],
-  ["Coordination session", "Gym", "easy", 20, "Complete a 30-minute clinician-cleared coordination, mobility, or balance session. Record what felt more stable."],
-  ["Casual swimming session", "Sports", "standard", 40, "If you have pool access and clearance, complete a relaxed 30-minute swim or water-walk session."]
+  ["Casual swimming session", "Sports", "standard", 40, "If you have pool access and clearance, complete a relaxed 30-minute swim or water-walk session."],
+  // Outdoor Skills: capability without requiring expensive, one-off gear.
+  ["Navigation walk", "Outdoor Skills", "easy", 20, "Plan an accessible outdoor walk using a map. Identify your route, one landmark, one safety consideration, and document what you noticed."],
+  ["Day-hike readiness brief", "Outdoor Skills", "standard", 30, "Prepare for and complete a local, accessible nature walk or park session. Bring appropriate water and weather gear; record one practical lesson about preparation."],
+  ["Practical outdoor skill", "Outdoor Skills", "standard", 30, "Practice one low-cost outdoor skill for 30 minutes: map reading, weather interpretation, knot work, or a basic safety checklist. Capture what you learned." ]
 ];
 const recoverySafeChallenges = [
   ["Recovery-safe movement brief", "Health", "easy", 20, "Choose one clinician-approved light movement session you already have access to. Record what felt stable and what did not."],
-  ["Mobility and coordination brief", "Health", "easy", 20, "Complete 30 minutes of clinician-approved mobility, upper-body, or balance work. Record one useful recovery observation afterward."],
-  ["Spectator study mission", "Sports", "easy", 20, "Watch 30 minutes of a sport you are curious about and write what makes its movement demands, strategy, and access requirements interesting."]
+  ["Mobility and coordination brief", "Mobility", "easy", 20, "Complete 30 minutes of clinician-approved mobility, upper-body, or balance work. Record one useful recovery observation afterward."],
+  ["Resilience routine brief", "Health", "easy", 20, "Build and complete a recovery-support routine for today: hydration, sleep preparation, and one stress-management practice. Record the useful part."],
+  ["Outdoor observation walk", "Outdoor Skills", "easy", 20, "Take a short, accessible outdoor walk if cleared. Notice terrain, weather, and route safety; record one practical observation."]
 ];
 
 let lane = localStorage.getItem("aegis-mastery-lane") === "body" ? "body" : "mind";
@@ -69,7 +88,7 @@ function systemsPanel() {
   const current = activeChallenge(lane);
   const recentMinutes = deepWork.filter(log => Date.now() - new Date(log.created_at || log.logged_on).getTime() < 7 * 86400000).reduce((sum, log) => sum + Number(log.duration_minutes || 0), 0);
   const label = lane === "mind" ? "Generate research mission" : recoveryReady ? "Generate body mission" : "Generate recovery-safe mission";
-  const copy = lane === "mind" ? "Generate a topic, then decide deliberately. Acceptance reserves bonus XP; completion files the work under its subject." : recoveryReady ? "Generate an accessible activity, then decide deliberately. Completion files it under Health, Gym, Sports, or Performance." : "Generate only recovery-safe activity until Recovery is cleared.";
+  const copy = lane === "mind" ? "Generate a topic, then decide deliberately. Acceptance reserves bonus XP; completion files the work under its subject." : recoveryReady ? "Generate an accessible activity, then decide deliberately. Completion files it under Health, Gym, Mobility, Performance, Sports, or Outdoor Skills." : "Generate only recovery-safe Health, Mobility, and Outdoor Skills activity until Recovery is cleared.";
   const deep = lane === "mind" ? `<article class="mastery-system-card deep-work-card"><div><p class="eyebrow blue-text">DEEP-WORK OUTPUT</p><h3>${recentMinutes} min</h3><p>Focused work from the last seven days. The output matters more than the timer.</p></div><button class="primary compact" data-mastery-deep-work>+ Log deep work</button></article>` : "";
   return `<section class="mastery-systems ${lane === "mind" ? "mind-systems" : "body-systems"}">${deep}<article class="mastery-system-card transmission-card"><div><p class="eyebrow ${lane === "mind" ? "blue-text" : "green-text"}">RANDOM ${lane.toUpperCase()} MISSION</p><h3>${lane === "mind" ? "Research transmission" : "Accessible activity transmission"}</h3><p>${copy}</p></div><div class="transmission-controls"><button class="primary compact" data-mastery-generate="${lane}" ${current ? "disabled title=\"Resolve the current transmission first\"" : ""}>${label}</button><button class="ghost compact" data-mastery-clear-lane="${lane}" ${current ? "" : "disabled"}>Clear queue</button></div>${current ? `<div class="transmission-state"><span>${current.status === "accepted" ? "Accepted transmission in progress. Deny this one to decline it, or clear the queue to discard every unresolved transmission in this lane." : "Transmission awaiting your decision. Deny this one to decline it, or clear the queue to discard every unresolved transmission in this lane."}</span></div><div class="challenge-stack">${challengeCard(current)}</div>` : ""}</article></section>`;
 }
@@ -89,7 +108,7 @@ function render() {
 }
 
 function fieldsFor(type) {
-  const title = type === "Quote" ? "Quote" : type === "Book" ? "Book title" : type === "Space" ? "Fact or headline" : type === "Gym" || type === "Sports" || type === "Performance" ? "Session name" : "Title";
+  const title = type === "Quote" ? "Quote" : type === "Book" ? "Book title" : type === "Space" ? "Fact or headline" : ["Gym", "Mobility", "Sports", "Performance", "Outdoor Skills"].includes(type) ? "Session name" : "Title";
   const base = `<label>${title}<input name="title" required /></label>`;
   if (type === "Book") return `${base}<label>Rating<select name="rating"><option value="">Not rated</option>${[1,2,3,4,5].map(number => `<option value="${number}">${number} / 5</option>`).join("")}</select></label><label>Summary<textarea name="summary"></textarea></label><label>Favorite quotes<textarea name="quotes"></textarea></label><label>Key takeaways<textarea name="lessons"></textarea></label><label>Action items<textarea name="actions"></textarea></label>`;
   if (type === "Quote") return `${base}<label>Source or context<textarea name="summary"></textarea></label>`;
