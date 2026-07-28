@@ -1,5 +1,6 @@
 const SUPABASE_URL = "https://ifogfhaqozsyygbgwvzo.supabase.co";
 const DIRECTOR_EMAIL = "mat.investments.95@gmail.com";
+const { CAMPAIGN_CHARTER } = require("../campaign-charter.js");
 
 const schema = {
   type: "object", additionalProperties: false, required: ["morning", "signal", "evening", "sections", "roadmap", "directives"],
@@ -33,7 +34,7 @@ For trading statistics, use ONLY the exact supplied values for closed trades, wi
 
 For mode "morning", direct the morning section toward today's plan, signal toward current attention/risk, and evening toward what should be evaluated later without claiming results that have not happened. For mode "evening", make the evening section a true review of today's evidence and make the morning section the first priority for the next operating day.
 
-Two lanes: ROADMAP is the intentional five-year campaign toward a real-world Bruce Wayne / Tony Stark: capable body and recovery, disciplined Detective-grade trading process, intellectual range, financial independence, and useful enterprise. Return one roadmap item only when the supplied roadmap state has fewer than two active accepted items or shows a completed/obsolete item. Otherwise return []. DIRECTIVES are adaptive, not routine. Default to []. A corrective is non-negotiable only when the supplied history demonstrates a repeated meaningful pattern; escalation may rise only if that same pattern persists through past directives. A challenge is optional and only when a demonstrated strength has earned a stretch assignment; do not issue it if a recent challenge is in the supplied history. Never create a directive merely because a scan occurred. Deep-work logs, Director Reviews, and self-generated mastery transmissions inform advice and reflection, but must not independently trigger a corrective or challenge. At most one corrective and one challenge.`;
+Two lanes: ROADMAP is the intentional five-year campaign toward a real-world Bruce Wayne / Tony Stark: capable body and recovery, disciplined Detective-grade trading process, intellectual range, financial independence, and useful enterprise. Return one roadmap item only when the supplied roadmap state has fewer than two active accepted items or shows a completed/obsolete item. Otherwise return []. DIRECTIVES are adaptive, not routine. Default to []. A corrective is non-negotiable only when the supplied history demonstrates a repeated meaningful pattern AND it directly repairs an accepted roadmap mission, active-phase requirement, or roadmap bottleneck. It may also impose a proportional consequence, but the consequence must reinforce the missed standard (extra evidence-based work or escalating XP loss), never be arbitrary. Escalation may rise only if that same pattern persists through past directives. A challenge is optional and only when a demonstrated strength has earned a stretch assignment; do not issue it if a recent challenge is in the supplied history. Never create a directive merely because a scan occurred. Deep-work logs, Director Reviews, and self-generated mastery transmissions inform advice and reflection, but must not independently trigger a corrective or challenge. At most one corrective and one challenge.`;
 
 function easternClock() {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
@@ -110,7 +111,7 @@ async function buildContext(serviceKey, userId) {
 async function askOpenAI(context, mode) {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST", headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({ model: "gpt-4.1-mini", input: [{ role: "system", content: [{ type: "input_text", text: `${prompt}\n\n${sectionInstructions}` }] }, { role: "user", content: [{ type: "input_text", text: `Generate the ${mode} automatic scan from this data:\n${JSON.stringify(context)}` }] }], text: { format: { type: "json_schema", name: "aegis_scheduled_advisory", strict: true, schema } } })
+    body: JSON.stringify({ model: "gpt-4.1-mini", input: [{ role: "system", content: [{ type: "input_text", text: `${prompt}\n\n${sectionInstructions}\n\n${CAMPAIGN_CHARTER}` }] }, { role: "user", content: [{ type: "input_text", text: `Generate the ${mode} automatic scan from this data:\n${JSON.stringify(context)}` }] }], text: { format: { type: "json_schema", name: "aegis_scheduled_advisory", strict: true, schema } } })
   });
   if (!response.ok) throw new Error("OpenAI did not return an advisory.");
   const payload = await response.json();

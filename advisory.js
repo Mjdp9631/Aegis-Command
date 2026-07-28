@@ -1,6 +1,7 @@
 const SUPABASE_URL = "https://ifogfhaqozsyygbgwvzo.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_6knh69A_xVRQOPDotPrTcA_6_D_-RMa";
 const DIRECTOR_EMAIL = "mat.investments.95@gmail.com";
+const { CAMPAIGN_CHARTER } = require("../campaign-charter.js");
 
 const responseSchema = {
   type: "object",
@@ -41,7 +42,7 @@ For trading statistics, use ONLY the exact supplied values for closed trades, wi
 
 For mode "morning", direct the morning section toward today's plan, signal toward current attention/risk, and evening toward what should be evaluated later without claiming results that have not happened. For mode "evening", make the evening section a true review of today's evidence and make the morning section the first priority for the next operating day. For mode "scan", assess only the current moment.
 
-Two lanes: ROADMAP is the intentional five-year campaign toward a real-world Bruce Wayne / Tony Stark: capable body and recovery, disciplined Detective-grade trading process, intellectual range, financial independence, and useful enterprise. Return one roadmap item only when the supplied roadmap state has fewer than two active accepted items or shows a completed/obsolete item. Otherwise return []. DIRECTIVES are adaptive, not routine. Default to []. A corrective is non-negotiable only when the supplied history demonstrates a repeated meaningful pattern; escalation may rise only if that same pattern persists through past directives. A challenge is optional and only when a demonstrated strength has earned a stretch assignment; do not issue it if a recent challenge is in the supplied history. Never create a directive merely because a scan occurred. Deep-work logs, Director Reviews, and self-generated mastery transmissions inform advice and reflection, but must not independently trigger a corrective or challenge. At most one corrective and one challenge.`;
+Two lanes: ROADMAP is the intentional five-year campaign toward a real-world Bruce Wayne / Tony Stark: capable body and recovery, disciplined Detective-grade trading process, intellectual range, financial independence, and useful enterprise. Return one roadmap item only when the supplied roadmap state has fewer than two active accepted items or shows a completed/obsolete item. Otherwise return []. DIRECTIVES are adaptive, not routine. Default to []. A corrective is non-negotiable only when the supplied history demonstrates a repeated meaningful pattern AND it directly repairs an accepted roadmap mission, active-phase requirement, or roadmap bottleneck. It may also impose a proportional consequence, but the consequence must reinforce the missed standard (extra evidence-based work or escalating XP loss), never be arbitrary. Escalation may rise only if that same pattern persists through past directives. A challenge is optional and only when a demonstrated strength has earned a stretch assignment; do not issue it if a recent challenge is in the supplied history. Never create a directive merely because a scan occurred. Deep-work logs, Director Reviews, and self-generated mastery transmissions inform advice and reflection, but must not independently trigger a corrective or challenge. At most one corrective and one challenge.`;
 
 async function verifyDirector(req) {
   const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -69,7 +70,7 @@ module.exports = async (req, res) => {
       body: JSON.stringify({
         model: "gpt-4.1-mini",
         input: [
-          { role: "system", content: [{ type: "input_text", text: `${systemPrompt}\n\n${sectionInstructions}` }] },
+          { role: "system", content: [{ type: "input_text", text: `${systemPrompt}\n\n${sectionInstructions}\n\n${CAMPAIGN_CHARTER}` }] },
           { role: "user", content: [{ type: "input_text", text: `Analyze this AEGIS data. Current request mode: ${String(req.body?.mode || "scan")}.\n\n${JSON.stringify(context)}` }] }
         ],
         text: { format: { type: "json_schema", name: "aegis_dual_advisory", strict: true, schema: responseSchema } }
