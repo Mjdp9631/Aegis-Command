@@ -67,6 +67,19 @@
   .sidebar-signout span { color:#efb54f; font-size:18px; }
 }
 
+/* Purpose-built navigation emblems: trade intelligence, recovery, and mastery. */
+@media (min-width: 761px) {
+  .nav-link[data-view="detective"] > span::after,
+  .nav-link[data-view="recovery"] > span::after,
+  .nav-link[data-view="mastery"] > span::after { display:none !important; }
+
+  .nav-link > span.nav-icon { overflow:visible; }
+  .nav-icon svg { width:31px; height:31px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .nav-link[data-view="detective"] .nav-icon svg { width:29px; height:29px; }
+  .nav-link[data-view="mastery"] .nav-icon svg { width:32px; height:32px; }
+  .nav-link[data-view="mastery"] .nav-icon circle:first-of-type { fill:currentColor; stroke:none; }
+}
+
 /* Compact rail: icons at rest, full command rail only on hover/focus. */
 @media (min-width: 761px) {
   :root { --rail-width: 74px; }
@@ -108,4 +121,16 @@
     box-shadow:inset 3px 0 #63bbff,0 0 16px rgba(83,171,244,.14) !important;
   }
   .sidebar:hover .nav-link:hover > span,.sidebar:focus-within .nav-link:hover > span { color:#8fd0ff !important; filter:drop-shadow(0 0 8px rgba(99,187,255,.72)); }
+}
+
+/* Keep the custom SVG emblems above the older pseudo-icon layer. */
+@media (min-width: 761px) {
+  .nav-link[data-view="detective"] > span::after,
+  .nav-link[data-view="recovery"] > span::after,
+  .nav-link[data-view="mastery"] > span::after { display:none !important; }
+  .nav-link > span.nav-icon { overflow:visible; }
+  .nav-icon svg { width:31px; height:31px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .nav-link[data-view="detective"] .nav-icon svg { width:29px; height:29px; }
+  .nav-link[data-view="mastery"] .nav-icon svg { width:32px; height:32px; }
+  .nav-link[data-view="mastery"] .nav-icon circle:first-of-type { fill:currentColor; stroke:none; }
 }
