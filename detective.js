@@ -34,7 +34,7 @@ function normalizedOutcome(value) {
 
 function resolvedOutcome(trade) {
   if (String(trade.trade_status || "").trim().toLowerCase() === "open") return "Open";
-  const explicit = [trade.outcome, trade.win_loss, trade.result, trade.market_condition]
+  const explicit = [trade.outcome, trade.win_loss, trade.result]
     .map(normalizedOutcome)
     .find(Boolean);
   if (explicit) return explicit;

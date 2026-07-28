@@ -40,7 +40,9 @@ function normalizedOutcome(value) {
 // This must match Detective exactly. The AI is not allowed to reinterpret a journal field.
 function outcome(trade) {
   if (String(trade.trade_status || "").trim().toLowerCase() === "open") return "open";
-  const explicit = [trade.outcome, trade.win_loss, trade.result, trade.market_condition].map(normalizedOutcome).find(Boolean);
+  // `market_condition` describes context (range, trend, etc.), never the trade result.
+  // Use the journal's outcome first; the remaining fields only support older imported rows.
+  const explicit = [trade.outcome, trade.win_loss, trade.result].map(normalizedOutcome).find(Boolean);
   if (explicit) return explicit;
   if (Number(trade.r_multiple) > 0) return "win";
   if (Number(trade.r_multiple) < 0) return "loss";
@@ -88,7 +90,7 @@ function buildContext({ operations, missions, trades, recovery, mastery, project
     streaks: { execution: operationStreak, trading_journal: tradingStreak, mastery: masteryStreak },
     operations: { today_total: todayOps.length, today_complete: todayOps.filter((operation) => operation.completed || operation.status === "Complete").length, open_total: operations.filter((operation) => !operation.completed && operation.status !== "Complete").length, next: operations.filter((operation) => !operation.completed && operation.status !== "Complete").slice(0, 8).map((operation) => ({ title: operation.title, category: operation.category, status: operation.status || "Queued" })) },
     missions: activeMissions.slice(0, 8).map((mission) => ({ title: mission.title, category: mission.category, priority: mission.priority, progress: missionProgress(mission), definition: mission.completion_definition || null })),
-    trading: { closed_trades: closed.length, wins, losses, breakeven: closed.length - wins - losses, win_rate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : null, plan_violations: violations, month_pnl_percent: Number(monthPnl.toFixed(2)), streaks: tradeStreak, recent: closed.slice(-12).map((trade) => ({ date: dateKey(trade.traded_at || trade.created_at), pair: trade.pair, outcome: outcome(trade), r: Number(trade.r_multiple || 0), pnl_percent: trade.pnl_percent == null ? null : Number(trade.pnl_percent), violation: Boolean(trade.plan_violation), setup: trade.setup || null })) },
+    trading: { closed_trades: closed.length, wins, losses, breakeven: closed.length - wins - losses, win_rate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : null, plan_violations: violations, month_pnl_percent: Number(monthPnl.toFixed(2)), streaks: tradeStreak, authoritative_summary: `${closed.length} closed trades: ${wins} wins, ${losses} losses, ${closed.length - wins - losses} break-even; win rate ${wins + losses ? Math.round((wins / (wins + losses)) * 100) : "N/A"}%.`, recent: closed.slice(-12).map((trade) => ({ date: dateKey(trade.traded_at || trade.created_at), pair: trade.pair, outcome: outcome(trade), r: Number(trade.r_multiple || 0), pnl_percent: trade.pnl_percent == null ? null : Number(trade.pnl_percent), violation: Boolean(trade.plan_violation), setup: trade.setup || null })) },
     recovery: recovery.slice(0, 5).map((item) => ({ date: item.logged_on, pain: item.pain, swelling: item.swelling, rehab_completed: item.rehab_completed })),
     mastery: { total_entries: mastery.length, recent: mastery.slice(0, 8).map((entry) => ({ category: entry.category, title: entry.title, date: dateKey(entry.created_at) })), deep_work: { recent_minutes: deepWork.filter((item) => Date.now() - new Date(item.created_at || item.logged_on).getTime() < 7 * 86400000).reduce((sum, item) => sum + Number(item.duration_minutes || 0), 0), recent: deepWork.slice(0, 8).map((item) => ({ area: item.area, focus: item.focus, minutes: item.duration_minutes, output: item.output, date: dateKey(item.created_at || item.logged_on) })) }, transmissions: { active: challenges.filter((item) => item.status === "accepted" && !item.completed_at).slice(0, 5).map((item) => ({ lane: item.lane, category: item.category, title: item.title, type: item.challenge_type, difficulty: item.difficulty })), recent_completed: challenges.filter((item) => item.completed_at).slice(0, 5).map((item) => ({ lane: item.lane, category: item.category, title: item.title, date: dateKey(item.completed_at) })) }, director_review: directorReviews[0] ? { quarter: directorReviews[0].quarter_key, wins: directorReviews[0].wins, bottlenecks: directorReviews[0].bottlenecks, standards: directorReviews[0].standards, next_focus: directorReviews[0].next_focus } : null },
     special_projects: projects.map((project) => ({ title: project.title, status: project.status, priority: project.priority })).slice(0, 8),
@@ -147,9 +149,17 @@ function roadmapMarkup(item) {
 
 async function loadSuggestions() {
   if (!supabase) return;
-  const { data } = await supabase.from("ai_mission_suggestions").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(8);
+  // A transmission is a snapshot of the evidence available when it was issued.
+  // Never mix pending items from older scans into the current assessment.
+  const { data: latest } = await supabase.from("ai_advisories").select("id").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  let data = [];
+  if (latest?.id) {
+    const response = await supabase.from("ai_mission_suggestions").select("*").eq("status", "pending").eq("advisory_id", latest.id).order("created_at", { ascending: false }).limit(8);
+    if (response.error) throw response.error;
+    data = response.data || [];
+  }
   const target = $("#ai-suggestion-list");
-  if (target) target.innerHTML = data?.length ? data.map(proposalMarkup).join("") : '<p class="ai-status">No pending transmissions. Run an intelligence scan when you want a fresh assessment.</p>';
+  if (target) target.innerHTML = data.length ? data.map(proposalMarkup).join("") : '<p class="ai-status">No current scan transmissions. Run an intelligence scan when you want a fresh assessment.</p>';
 }
 
 async function loadRoadmap() {
@@ -224,7 +234,7 @@ async function gather() {
   const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews] = await Promise.all([
     supabase.from("operations").select("*").order("scheduled_date", { ascending: false }).limit(180),
     supabase.from("missions").select("*").order("created_at", { ascending: false }),
-    supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }).limit(100),
+    supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }).limit(1000),
     supabase.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(10),
     supabase.from("mastery_entries").select("*").order("created_at", { ascending: false }).limit(100),
     supabase.from("business_projects").select("*").order("created_at", { ascending: false }).limit(20),

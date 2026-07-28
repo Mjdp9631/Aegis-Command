@@ -21,7 +21,7 @@ function isClosed(trade) {
 }
 
 function tradeOutcome(trade) {
-  const direct = [trade.outcome, trade.win_loss, trade.result, trade.market_condition].map(normalOutcome).find(Boolean);
+  const direct = [trade.outcome, trade.win_loss, trade.result].map(normalOutcome).find(Boolean);
   if (direct) return direct;
   if (Number(trade.r_multiple) > 0) return "win";
   if (Number(trade.r_multiple) < 0) return "loss";
