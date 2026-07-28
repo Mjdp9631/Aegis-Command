@@ -21,13 +21,13 @@ function updateMetric(title, mission) {
   if (note) note.textContent = mission.completion_definition || "Define completion evidence";
 }
 
-function render(missions) {
+function render(missions, operations = []) {
   const target = $("#command-missions") || document.querySelector("#command .mission-panel .mission-list");
   if (target) {
     target.id = "command-missions";
     const priority = { "Do now": 0, Schedule: 1, Delegate: 2, Eliminate: 3 };
     const active = missions.filter((mission) => progress(mission) < 100).sort((a, b) => (priority[a.priority] ?? 9) - (priority[b.priority] ?? 9) || progress(b) - progress(a)).slice(0, 3);
-    target.innerHTML = active.length ? active.map((mission) => `<article><div class="mission-icon ${iconClass(mission.category)}">${icons[mission.category] || "*"}</div><div><strong>${escape(mission.title)}</strong><small>${escape(mission.category)} - ${escape(mission.priority)}</small></div><span>${escape(label(mission))}</span></article>`).join("") : '<article><div><strong>No active missions</strong><small>Open the next objective from Mission Control.</small></div></article>';
+    target.innerHTML = active.length ? active.map((mission) => { const linked = operations.filter(operation => operation.mission_id === mission.id); const total = linked.length, complete = linked.filter(operation => operation.completed).length, operationProgress = total ? Math.round((complete / total) * 100) : progress(mission); const operationLabel = total ? `${complete} / ${total} operations complete` : label(mission); return `<article><div class="mission-icon ${iconClass(mission.category)}">${icons[mission.category] || "*"}</div><div class="command-mission-copy"><strong>${escape(mission.title)}</strong><small>${escape(mission.category)} - ${escape(mission.priority)}</small><div class="meter command-mission-meter"><i style="width:${operationProgress}%"></i></div><small>${operationLabel}</small></div><span>${operationProgress}%</span></article>`; }).join("") : '<article><div><strong>No active missions</strong><small>Open the next objective from Mission Control.</small></div></article>';
   }
   updateMetric("RECOVERY", missions.find((mission) => mission.category === "Recovery"));
   updateMetric("TRADING PROCESS", missions.find((mission) => mission.category === "Trading"));
@@ -37,8 +37,8 @@ async function load() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const { data, error } = await supabase.from("missions").select("*").order("created_at", { ascending: false });
-  if (!error) render(data || []);
+  const [missionsResult, operationsResult] = await Promise.all([supabase.from("missions").select("*").order("created_at", { ascending: false }), supabase.from("operations").select("mission_id, completed")]);
+  if (!missionsResult.error) render(missionsResult.data || [], operationsResult.data || []);
 }
 
 if (supabase) {
