@@ -5,16 +5,46 @@ const db = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.su
 const root = document.querySelector("#mastery");
 const mindTypes = ["Book", "Quote", "Trading Note", "Psychology", "Space", "Business", "Stoicism"];
 const bodyTypes = ["Health", "Gym", "Sports", "Performance"];
+const researchTopics = [
+  ["Baader-Meinhof phenomenon", "Psychology", "Why recently learned ideas seem to appear everywhere."],
+  ["Paradox of choice", "Psychology", "How too many options can reduce action and satisfaction."],
+  ["Double-slit experiment", "Space", "What the experiment actually demonstrates and what it does not."],
+  ["State-dependent memory", "Psychology", "How internal state can affect recall."],
+  ["Fundamental attribution error", "Psychology", "Why we over-credit character and under-credit context."],
+  ["Dunning-Kruger effect", "Psychology", "Confidence, competence, and the limits of self-assessment."],
+  ["Stoic dichotomy of control", "Stoicism", "Separate controllable actions from uncontrollable outcomes."],
+  ["Antifragility", "Business", "Systems that can improve from manageable stressors."],
+  ["Fermi paradox", "Space", "The tension between the scale of the universe and the lack of confirmed contact."],
+  ["Opportunity cost", "Business", "The value of the best alternative given up by a choice."],
+  ["Cognitive reappraisal", "Psychology", "Changing interpretation to change the emotional response."],
+  ["The Ship of Theseus", "Philosophy", "Identity when all parts of something change over time."]
+];
+const bodyChallenges = [
+  ["Shootaround session", "Find an accessible hoop and spend 30 minutes shooting, dribbling, and moving at your own pace. Use an existing public court or a ball you already have."],
+  ["Walk-and-throw session", "Take a frisbee, soft ball, or similar item you already own to an open space. Move for 30 minutes and practice easy throws; no team required."],
+  ["Table tennis or badminton trial", "Use a community center, gym, friend’s equipment, or rental option for a casual 30-minute session. Keep it skill-focused, not competitive."],
+  ["Low-impact dance session", "Follow a 30-minute beginner movement or dance session at a comfortable intensity. Focus on coordination and enjoyment."],
+  ["Bowling or putting practice", "Choose a local low-commitment lane or putting area if available. Practice for 30 minutes; no league or equipment purchase required."],
+  ["Casual swimming session", "If you already have pool access and are cleared to use it, complete a relaxed 30-minute swim or water-walk session."],
+  ["Pickleball sampler", "Use a public court or borrow a paddle for a casual 30-minute beginner session. Avoid buying anything just for this mission."]
+];
+const recoverySafeChallenges = [
+  ["Recovery-safe movement brief", "Choose one clinician-approved light movement session you already have access to. Do not start a new sport before your recovery clearance; document what felt stable and what did not."],
+  ["Mobility and coordination brief", "Complete 30 minutes of only clinician-approved mobility, upper-body, or balance work. Record one useful recovery observation afterward."],
+  ["Spectator study mission", "Watch 30 minutes of a sport you are curious about and write what makes its movement demands, strategy, and access requirements interesting. This is preparation, not a clearance to play."]
+];
+
 let lane = localStorage.getItem("aegis-mastery-lane") === "body" ? "body" : "mind";
 let activeType = localStorage.getItem("aegis-mastery-type") || (lane === "body" ? "Health" : "Book");
-let entries = [];
-let recoveryReady = false;
-let cleanRendering = false;
+let entries = [], deepWork = [], challenges = [], directorReviews = [];
+let recoveryReady = false, cleanRendering = false;
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]));
 const isLocked = type => ["Sports", "Performance"].includes(type) && !recoveryReady;
 const typeLabel = type => type === "Trading Note" ? "Trading Notes" : type;
 const saveView = () => { localStorage.setItem("aegis-mastery-lane", lane); localStorage.setItem("aegis-mastery-type", activeType); };
+const quarterKey = () => `${new Date().getFullYear()}-Q${Math.floor(new Date().getMonth() / 3) + 1}`;
+const dateOnly = value => value ? new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—";
 
 function entryCard(entry) {
   return `<article class="mastery-entry"><div class="entry-meta"><span>${escapeHtml(entry.category)}</span>${entry.rating ? `<b>${entry.rating}/5</b>` : ""}</div><h3>${escapeHtml(entry.title)}</h3>${entry.summary ? `<p>${escapeHtml(entry.summary)}</p>` : ""}${entry.key_lessons ? `<p><b>Key takeaways:</b> ${escapeHtml(entry.key_lessons)}</p>` : ""}</article>`;
@@ -24,16 +54,31 @@ function tabs(types, current, attribute) {
   return types.map(type => `<button class="mastery-tab ${type === current ? "active" : ""} ${isLocked(type) ? "locked" : ""}" data-mastery-clean-${attribute}="${type}">${typeLabel(type)}${isLocked(type) ? " LOCKED" : ""}</button>`).join("");
 }
 
+function challengeCard(challenge) {
+  const complete = Boolean(challenge.completed_at);
+  return `<article class="mastery-challenge ${complete ? "complete" : ""}"><div><p class="eyebrow ${challenge.lane === "mind" ? "blue-text" : "green-text"}">${challenge.lane === "mind" ? "RESEARCH TRANSMISSION" : "BODY TRANSMISSION"}${complete ? " · COMPLETE" : ""}</p><h4>${escapeHtml(challenge.title)}</h4><p>${escapeHtml(challenge.instructions)}</p>${challenge.lane === "mind" ? `<small>30 minutes, no AI · then speak for 30+ seconds and write your summary.</small>` : `<small>Accessible, low-commitment activity · use existing/public/rental equipment only.</small>`}${challenge.summary ? `<p class="challenge-summary"><b>Your debrief:</b> ${escapeHtml(challenge.summary)}</p>` : ""}</div>${complete ? `<span class="system-status">Logged ${dateOnly(challenge.completed_at)}</span>` : `<button class="primary compact" data-mastery-complete-challenge="${challenge.id}">Complete transmission</button>`}</article>`;
+}
+
+function systemsPanel() {
+  const recentMinutes = deepWork.filter(log => Date.now() - new Date(log.created_at || log.logged_on).getTime() < 7 * 86400000).reduce((sum, log) => sum + Number(log.duration_minutes || 0), 0);
+  const laneChallenges = challenges.filter(challenge => challenge.lane === lane).slice(0, 3);
+  const review = directorReviews.find(item => item.quarter_key === quarterKey());
+  const transmissionLabel = lane === "mind" ? "Generate research mission" : recoveryReady ? "Generate body mission" : "Generate recovery-safe mission";
+  const transmissionCopy = lane === "mind" ? "A random subject. Research for 30 minutes without AI, explain it aloud for 30+ seconds, then capture your own synthesis." : recoveryReady ? "A practical sport or activity you can try without joining a team or buying specialized equipment." : "Sports and performance stay locked until Recovery is cleared. These prompts remain recovery-safe.";
+  return `<section class="mastery-systems"><article class="mastery-system-card deep-work-card"><div><p class="eyebrow blue-text">DEEP-WORK OUTPUT</p><h3>${recentMinutes} min</h3><p>Logged across the last seven days. The output matters more than the timer.</p></div><button class="primary compact" data-mastery-deep-work>+ Log deep work</button></article><article class="mastery-system-card transmission-card"><div><p class="eyebrow ${lane === "mind" ? "blue-text" : "green-text"}">RANDOM ${lane.toUpperCase()} MISSION</p><h3>${lane === "mind" ? "Research transmission" : "Accessible activity transmission"}</h3><p>${transmissionCopy}</p></div><button class="primary compact" data-mastery-generate="${lane}">${transmissionLabel}</button>${laneChallenges.length ? `<div class="challenge-stack">${laneChallenges.map(challengeCard).join("")}</div>` : ""}</article><article class="mastery-system-card director-card"><div><p class="eyebrow amber">QUARTERLY DIRECTOR REVIEW</p><h3>${quarterKey()}</h3><p>${review ? "Your quarterly standards are on file. Revisit them as the quarter develops." : "A deliberate quarterly checkpoint: wins, bottlenecks, standards, and the next focus."}</p></div><button class="primary compact" data-mastery-director-review>${review ? "Update review" : "Open Director Review"}</button>${review ? `<div class="director-preview"><span><b>Wins</b>${escapeHtml(review.wins || "Not recorded")}</span><span><b>Next focus</b>${escapeHtml(review.next_focus || "Not recorded")}</span></div>` : ""}</article></section>`;
+}
+
 function render() {
   if (!root) return;
   cleanRendering = true;
   root.dataset.masteryLane = lane;
   const types = lane === "mind" ? mindTypes : bodyTypes;
+  if (!types.includes(activeType)) activeType = types[0];
   const visible = entries.filter(entry => entry.category === activeType);
   const isCurrentLocked = isLocked(activeType);
   const categoryCards = `<div class="mastery-category-grid">${types.map(type => `<button class="mastery-category ${type === activeType ? "active" : ""} ${isLocked(type) ? "locked" : ""}" data-mastery-clean-type="${type}"><small>${type.toUpperCase()}${isLocked(type) ? " · LOCKED" : ""}</small><strong>${entries.filter(entry => entry.category === type).length}</strong><small>${type === "Book" ? "books and reading notes" : isLocked(type) ? "complete Recovery to unlock" : "entries captured"}</small></button>`).join("")}</div>`;
   const content = isCurrentLocked ? `<div class="mastery-lock"><h3>${activeType} locked</h3><p>Unlocks after Recovery is completed and you confirm archiving the Recovery section.</p></div>` : (visible.map(entryCard).join("") || `<div class="mastery-empty">Nothing logged here yet. Capture the first useful item.</div>`);
-  root.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Capture knowledge worth using and train what your current foundation supports.</p></div><div class="mastery-tabs"><button class="mastery-tab ${lane === "mind" ? "active" : ""}" data-mastery-clean-lane="mind">Mind</button><button class="mastery-tab ${lane === "body" ? "active" : ""}" data-mastery-clean-lane="body">Body</button></div>${categoryCards}<div class="mastery-toolbar"><h3>${typeLabel(activeType)}</h3>${isCurrentLocked ? "" : `<button class="primary compact" data-mastery-clean-add>+ Add entry</button>`}</div><div class="mastery-list">${content}</div>`;
+  root.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Capture knowledge worth using, produce focused work, and train only what your foundation supports.</p></div><div class="mastery-tabs"><button class="mastery-tab ${lane === "mind" ? "active" : ""}" data-mastery-clean-lane="mind">Mind</button><button class="mastery-tab ${lane === "body" ? "active" : ""}" data-mastery-clean-lane="body">Body</button></div>${categoryCards}${systemsPanel()}<div class="mastery-toolbar"><h3>${typeLabel(activeType)}</h3>${isCurrentLocked ? "" : `<button class="primary compact" data-mastery-clean-add>+ Add entry</button>`}</div><div class="mastery-list">${content}</div>`;
   setTimeout(() => { cleanRendering = false; }, 0);
 }
 
@@ -47,21 +92,22 @@ function fieldsFor(type) {
   return `${base}<label>${type === "Space" ? "Explanation or source" : "Notes"}<textarea name="summary"></textarea></label>`;
 }
 
-function buildDialog() {
-  const dialog = document.createElement("dialog");
-  dialog.id = "mastery-clean-dialog";
-  dialog.innerHTML = `<form class="dialog-card mastery-form"><button class="dialog-close" type="button">×</button><p class="eyebrow blue-text">MASTERY ENTRY</p><h2>Capture the useful thing.</h2><label>Entry type<select name="category"></select></label><div id="mastery-clean-fields"></div><button class="primary" type="submit">Save entry</button></form>`;
-  document.body.append(dialog);
-  dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
-  dialog.querySelector("select").addEventListener("change", event => {
-    dialog.querySelector("#mastery-clean-fields").innerHTML = fieldsFor(event.target.value);
-  });
-  dialog.querySelector("form").addEventListener("submit", saveEntry);
+function buildDialogs() {
+  const entryDialog = document.createElement("dialog");
+  entryDialog.id = "mastery-clean-dialog";
+  entryDialog.innerHTML = `<form class="dialog-card mastery-form"><button class="dialog-close" type="button">×</button><p class="eyebrow blue-text">MASTERY ENTRY</p><h2>Capture the useful thing.</h2><label>Entry type<select name="category"></select></label><div id="mastery-clean-fields"></div><button class="primary" type="submit">Save entry</button></form>`;
+  document.body.append(entryDialog);
+  entryDialog.querySelector(".dialog-close").addEventListener("click", () => entryDialog.close());
+  entryDialog.querySelector("select").addEventListener("change", event => { entryDialog.querySelector("#mastery-clean-fields").innerHTML = fieldsFor(event.target.value); });
+  entryDialog.querySelector("form").addEventListener("submit", saveEntry);
+
+  const systemDialog = document.createElement("dialog");
+  systemDialog.id = "mastery-system-dialog";
+  document.body.append(systemDialog);
 }
 
 function openDialog() {
-  const dialog = document.querySelector("#mastery-clean-dialog");
-  const select = dialog.querySelector("select");
+  const dialog = document.querySelector("#mastery-clean-dialog"), select = dialog.querySelector("select");
   const allowed = lane === "mind" ? mindTypes : bodyTypes.filter(type => !isLocked(type));
   select.innerHTML = allowed.map(type => `<option value="${type}">${typeLabel(type)}</option>`).join("");
   select.value = activeType;
@@ -69,32 +115,68 @@ function openDialog() {
   dialog.showModal();
 }
 
+function openSystemDialog(mode, challenge = null) {
+  const dialog = document.querySelector("#mastery-system-dialog");
+  const close = `<button class="dialog-close" type="button" data-mastery-system-close>×</button>`;
+  if (mode === "deep-work") dialog.innerHTML = `<form class="dialog-card mastery-form" data-system-mode="deep-work">${close}<p class="eyebrow blue-text">DEEP-WORK OUTPUT</p><h2>What did focused work produce?</h2><label>Focus area<select name="area"><option>Mind</option><option>Body</option><option>Trading</option><option>Business</option></select></label><label>Focus<input name="focus" required placeholder="e.g. Market replay and structured notes" /></label><label>Minutes<input name="duration_minutes" type="number" min="1" max="1440" value="30" required /></label><label>Tangible output<textarea name="output" required placeholder="What exists now that did not exist before this session?"></textarea></label><button class="primary" type="submit">Log deep work</button></form>`;
+  if (mode === "director") {
+    const review = directorReviews.find(item => item.quarter_key === quarterKey()) || {};
+    dialog.innerHTML = `<form class="dialog-card mastery-form" data-system-mode="director">${close}<p class="eyebrow amber">QUARTERLY DIRECTOR REVIEW</p><h2>${quarterKey()} review.</h2><p>Measure the person and the system—not just the outcome.</p><label>Wins<textarea name="wins" placeholder="What genuinely improved?">${escapeHtml(review.wins || "")}</textarea></label><label>Bottlenecks<textarea name="bottlenecks" placeholder="What repeatedly got in the way?">${escapeHtml(review.bottlenecks || "")}</textarea></label><label>Standards<textarea name="standards" placeholder="What standard must now be normal?">${escapeHtml(review.standards || "")}</textarea></label><label>Next focus<textarea name="next_focus" placeholder="What deserves the next quarter?">${escapeHtml(review.next_focus || "")}</textarea></label><button class="primary" type="submit">Save Director Review</button></form>`;
+  }
+  if (mode === "complete") dialog.innerHTML = `<form class="dialog-card mastery-form" data-system-mode="complete" data-challenge-id="${challenge.id}">${close}<p class="eyebrow ${challenge.lane === "mind" ? "blue-text" : "green-text"}">TRANSMISSION DEBRIEF</p><h2>${escapeHtml(challenge.title)}</h2><p>${escapeHtml(challenge.instructions)}</p>${challenge.lane === "mind" ? `<label class="mastery-check"><input name="spoken_confirmed" type="checkbox" required /> I explained this aloud for at least 30 seconds.</label>` : ""}<label>Your summary / observation<textarea name="summary" required placeholder="What did you learn, notice, or change your mind about?"></textarea></label><button class="primary" type="submit">Complete transmission</button></form>`;
+  dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
+  dialog.querySelector("form").addEventListener("submit", saveSystem);
+  dialog.showModal();
+}
+
+async function currentUserId() {
+  if (!db) return null;
+  const { data: { user } } = await db.auth.getUser();
+  return user?.id || null;
+}
+
 async function saveEntry(event) {
   event.preventDefault();
-  const form = event.currentTarget;
-  const data = new FormData(form);
-  const category = data.get("category");
+  const form = event.currentTarget, data = new FormData(form), category = data.get("category");
   const record = { category, title: String(data.get("title") || "").trim(), rating: Number(data.get("rating")) || null, summary: String(data.get("summary") || "").trim() || null, favorite_quotes: String(data.get("quotes") || "").trim() || null, key_lessons: String(data.get("lessons") || "").trim() || null, action_items: String(data.get("actions") || "").trim() || null };
   if (!record.title) return;
-  if (db) {
-    const { error } = await db.from("mastery_entries").insert(record);
-    if (error) return alert(error.message);
-  } else {
-    entries.unshift(record);
+  if (db) { const { error } = await db.from("mastery_entries").insert(record); if (error) return alert(error.message); } else entries.unshift(record);
+  lane = bodyTypes.includes(category) ? "body" : "mind"; activeType = category; saveView();
+  document.querySelector("#mastery-clean-dialog").close(); await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
+}
+
+async function generateChallenge(kind) {
+  const pool = kind === "mind" ? researchTopics : (recoveryReady ? bodyChallenges : recoverySafeChallenges);
+  const lastTitles = challenges.filter(item => item.lane === kind).slice(0, 3).map(item => item.title);
+  const available = pool.filter(item => !lastTitles.includes(item[0]));
+  const [title, categoryOrInstructions, maybeInstructions] = (available.length ? available : pool)[Math.floor(Math.random() * (available.length ? available.length : pool.length))];
+  const record = kind === "mind" ? { lane: "mind", challenge_type: "research", title, instructions: `Research “${title}” for 30 minutes using no AI. Focus: ${maybeInstructions || categoryOrInstructions}. Then explain it aloud for at least 30 seconds and write your own summary.`, research_minutes: 30 } : { lane: "body", challenge_type: "body_activity", title, instructions: categoryOrInstructions, research_minutes: null };
+  if (!db) { challenges.unshift({ ...record, id: crypto.randomUUID(), created_at: new Date().toISOString() }); render(); return; }
+  const { error } = await db.from("mastery_challenges").insert(record);
+  if (error) return alert(`Could not create transmission: ${error.message}`);
+  await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
+}
+
+async function saveSystem(event) {
+  event.preventDefault();
+  const form = event.currentTarget, mode = form.dataset.systemMode, data = new FormData(form);
+  if (!db) return alert("Connect your private system database before using this feature.");
+  let error;
+  if (mode === "deep-work") ({ error } = await db.from("deep_work_logs").insert({ area: data.get("area"), focus: String(data.get("focus")).trim(), duration_minutes: Number(data.get("duration_minutes")), output: String(data.get("output")).trim() }));
+  if (mode === "director") {
+    const user_id = await currentUserId();
+    ({ error } = await db.from("director_reviews").upsert({ user_id, quarter_key: quarterKey(), wins: String(data.get("wins")).trim() || null, bottlenecks: String(data.get("bottlenecks")).trim() || null, standards: String(data.get("standards")).trim() || null, next_focus: String(data.get("next_focus")).trim() || null, updated_at: new Date().toISOString() }, { onConflict: "user_id,quarter_key" }));
   }
-  lane = bodyTypes.includes(category) ? "body" : "mind";
-  activeType = category;
-  saveView();
-  document.querySelector("#mastery-clean-dialog").close();
-  await load();
-  window.dispatchEvent(new Event("aegis:mastery-changed"));
+  if (mode === "complete") ({ error } = await db.from("mastery_challenges").update({ summary: String(data.get("summary")).trim(), spoken_confirmed: data.get("spoken_confirmed") === "on", completed_at: new Date().toISOString() }).eq("id", form.dataset.challengeId));
+  if (error) return alert(error.message);
+  document.querySelector("#mastery-system-dialog").close(); await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
 }
 
 async function load() {
   if (db) {
-    const [{ data: entryData }, { data: missionData }] = await Promise.all([db.from("mastery_entries").select("*").order("created_at", { ascending: false }), db.from("missions").select("*")]);
-    entries = entryData || [];
-    const recovery = (missionData || []).find(mission => mission.category === "Recovery");
+    const [entryResult, missionResult, workResult, challengeResult, reviewResult] = await Promise.all([db.from("mastery_entries").select("*").order("created_at", { ascending: false }), db.from("missions").select("*"), db.from("deep_work_logs").select("*").order("created_at", { ascending: false }).limit(30), db.from("mastery_challenges").select("*").order("created_at", { ascending: false }).limit(12), db.from("director_reviews").select("*").order("updated_at", { ascending: false }).limit(4)]);
+    entries = entryResult.data || []; deepWork = workResult.data || []; challenges = challengeResult.data || []; directorReviews = reviewResult.data || [];
+    const recovery = (missionResult.data || []).find(mission => mission.category === "Recovery");
     const recoveryComplete = recovery && (recovery.completed || (recovery.completion_type === "units" && Number(recovery.completed_count) >= Number(recovery.target_count)));
     recoveryReady = Boolean(recoveryComplete && localStorage.getItem("aegis-recovery-archived") === "yes");
   }
@@ -102,21 +184,21 @@ async function load() {
 }
 
 document.addEventListener("click", event => {
-  const laneButton = event.target.closest("[data-mastery-clean-lane]");
-  const typeButton = event.target.closest("[data-mastery-clean-type]");
-  const categoryCard = event.target.closest("[data-mastery-clean-type]");
+  const laneButton = event.target.closest("[data-mastery-clean-lane]"), typeButton = event.target.closest("[data-mastery-clean-type]");
   if (laneButton) { lane = laneButton.dataset.masteryCleanLane; activeType = lane === "mind" ? "Book" : "Health"; saveView(); render(); return; }
-  if (typeButton || categoryCard) { const next = (typeButton || categoryCard).dataset.masteryCleanType; if (!isLocked(next)) { activeType = next; saveView(); render(); } return; }
-  if (event.target.closest("[data-mastery-clean-add]")) openDialog();
+  if (typeButton) { const next = typeButton.dataset.masteryCleanType; if (!isLocked(next)) { activeType = next; saveView(); render(); } return; }
+  if (event.target.closest("[data-mastery-clean-add]")) return openDialog();
+  if (event.target.closest("[data-mastery-deep-work]")) return openSystemDialog("deep-work");
+  if (event.target.closest("[data-mastery-director-review]")) return openSystemDialog("director");
+  const generate = event.target.closest("[data-mastery-generate]"); if (generate) return generateChallenge(generate.dataset.masteryGenerate);
+  const complete = event.target.closest("[data-mastery-complete-challenge]"); if (complete) { const challenge = challenges.find(item => item.id === complete.dataset.masteryCompleteChallenge); if (challenge) openSystemDialog("complete", challenge); }
 });
 
 function startMastery() {
   if (window.__aegisMasteryCleanStarted) return;
   window.__aegisMasteryCleanStarted = true;
   new MutationObserver(() => { if (!cleanRendering) render(); }).observe(root, { childList: true });
-  buildDialog();
-  load();
+  buildDialogs(); load();
 }
 
-if (document.readyState === "complete") startMastery();
-else window.addEventListener("load", startMastery, { once: true });
+if (document.readyState === "complete") startMastery(); else window.addEventListener("load", startMastery, { once: true });

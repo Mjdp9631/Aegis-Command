@@ -348,8 +348,32 @@ document.addEventListener("click", (event) => {
 function clearForm() {
   $("#detective-trade-dialog form").reset();
   $("#detective-outcome").value = "Open";
+  $("#detective-followed-plan").value = "yes";
+  syncPlanAdherenceUi();
   syncSetupUi();
   currentTradeId = null;
+}
+
+function syncPlanAdherenceUi() {
+  const followed = $("#detective-followed-plan");
+  const wrap = $("#detective-violation-wrap");
+  const reason = $("#detective-violation-reason");
+  if (!followed || !wrap || !reason) return;
+  const violated = followed.value === "no";
+  wrap.hidden = !violated;
+  reason.required = violated;
+  if (!violated) reason.value = "";
+}
+
+function ensurePlanAdherenceFields() {
+  if ($("#detective-followed-plan")) return;
+  const saveButton = $("#save-detective-trade");
+  if (!saveButton) return;
+  const wrap = document.createElement("div");
+  wrap.className = "two-col process-adherence";
+  wrap.innerHTML = `<label>Followed plan?<select id="detective-followed-plan"><option value="yes">Yes</option><option value="no">No</option></select></label><label id="detective-violation-wrap" hidden>Rule violation / why?<textarea id="detective-violation-reason" placeholder="Name the rule and what happened."></textarea></label>`;
+  saveButton.before(wrap);
+  $("#detective-followed-plan")?.addEventListener("change", syncPlanAdherenceUi);
 }
 
 function setSelectValue(selector, value) {
@@ -377,6 +401,9 @@ function editTrade(trade) {
   Array.from($("#detective-setup").options).forEach((option) => { option.selected = selectedSetups.includes(option.value); });
   ["mae", "mfe", "r", "pnl"].forEach((field) => { $("#detective-" + field).value = trade[{ mae: "mae_30m", mfe: "mfe_30m", r: "r_multiple", pnl: "pnl_percent" }[field]] ?? ""; });
   if (trade.traded_at) $("#detective-time").value = new Date(trade.traded_at).toISOString().slice(0, 16);
+  $("#detective-followed-plan").value = trade.plan_violation ? "no" : "yes";
+  $("#detective-violation-reason").value = trade.violation_type || "";
+  syncPlanAdherenceUi();
   syncSetupUi();
   $("#save-detective-trade").textContent = "Update debrief";
   $("#detective-trade-dialog").showModal();
@@ -420,6 +447,8 @@ async function saveTrade(event) {
     session_time: $("#detective-session-time").value.trim() || null,
     entry_timeframe: $("#detective-entry-tf").value.trim() || null,
     wick: $("#detective-wick").value.trim() || null,
+    plan_violation: $("#detective-followed-plan").value === "no",
+    violation_type: $("#detective-followed-plan").value === "no" ? $("#detective-violation-reason").value.trim() : null,
     traded_at: $("#detective-time").value ? new Date($("#detective-time").value).toISOString() : new Date().toISOString()
   };
   const request = currentTradeId
@@ -437,6 +466,7 @@ async function saveTrade(event) {
 }
 
 function init() {
+  ensurePlanAdherenceFields();
   const dialog = $("#detective-trade-dialog");
   const account = $("#detective-account");
   if (account && !Array.from(account.options).some((option) => option.value === "Theoretical")) account.insertAdjacentHTML("beforeend", '<option>Theoretical</option>');
@@ -464,6 +494,7 @@ function init() {
   syncSetupUi();
   const outcome = $("#detective-outcome");
   outcome.insertAdjacentHTML("afterbegin", '<option value="Open">Open</option>');
+  syncPlanAdherenceUi();
   const header = $("#trade-log").closest("table").querySelector("thead tr");
   header.insertAdjacentHTML("afterbegin", "<th>#</th>");
   header.insertAdjacentHTML("beforeend", "<th>ACTION</th>");
