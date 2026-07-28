@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/trade-review.js": {
+      "includeFiles": "brain/**"
+    }
+  }
+}

@@ -1,0 +1,267 @@
+{
+  "document": "Clarified_Chaos_FX_AEGIS_Master_Brain.md",
+  "version": "1.1.0",
+  "asset_root": "assets",
+  "items": [
+    {
+      "id": "strategy_skilltree",
+      "src": "/mnt/data/aegis_extracts/final_38.jpg",
+      "out": "01_strategy_skilltree.jpg",
+      "source": "2026-07-25 00-32-30.mp4",
+      "timestamp": "00:38",
+      "concepts": [
+        "strategy architecture",
+        "What Where How When",
+        "technical/risk integration"
+      ],
+      "caption": "Course skill tree showing market structure, auction-market theory and candle behavior feeding the What\u2013Where\u2013How\u2013When process.",
+      "relative_path": "assets/01_strategy_skilltree.jpg"
+    },
+    {
+      "id": "cbr_checklist",
+      "src": "/mnt/data/aegis_extracts/ex3_20s/400.jpg",
+      "out": "02_cbr_checklist.jpg",
+      "source": "Example 3 part 1.mp4",
+      "timestamp": "06:40",
+      "concepts": [
+        "CBR checklist",
+        "MTF range",
+        "25% ER",
+        "20m OE",
+        "T3",
+        "22-52"
+      ],
+      "caption": "Literal source checklist. It confirms the written label \u201c20m OE\u201d and the later-hour \u201c22\u201352\u201d item.",
+      "relative_path": "assets/02_cbr_checklist.jpg"
+    },
+    {
+      "id": "condition_vs_direction",
+      "src": "/mnt/data/aegis_extracts/cond_04.jpg",
+      "out": "03_condition_vs_direction.jpg",
+      "source": "Condition vs Direction.mp4",
+      "timestamp": "03:07",
+      "concepts": [
+        "direction",
+        "condition",
+        "range",
+        "trending range",
+        "trend"
+      ],
+      "caption": "Source slide separating direction from the range\u2013trending-range\u2013trend condition spectrum.",
+      "relative_path": "assets/03_condition_vs_direction.jpg"
+    },
+    {
+      "id": "condition_no_trade",
+      "src": "/mnt/data/aegis_extracts/cond_07.jpg",
+      "out": "04_condition_no_trade.jpg",
+      "source": "Condition vs Direction.mp4",
+      "timestamp": "04:59",
+      "concepts": [
+        "unclear condition",
+        "no trade",
+        "condition persistence",
+        "good loss"
+      ],
+      "caption": "Source slide: when condition is hard to identify, do not trade; condition is expected to continue until evidence shows change.",
+      "relative_path": "assets/04_condition_no_trade.jpg"
+    },
+    {
+      "id": "candle_behavior",
+      "src": "/mnt/data/aegis_extracts/candle_00.jpg",
+      "out": "05_candle_behavior.jpg",
+      "source": "Candle Behavior.mp4",
+      "timestamp": "01:14",
+      "concepts": [
+        "candle behavior",
+        "control",
+        "rejection",
+        "commitment",
+        "compressed structure"
+      ],
+      "caption": "Course overview of candle behavior as compressed market structure and a timing tool.",
+      "relative_path": "assets/05_candle_behavior.jpg"
+    },
+    {
+      "id": "duration_not_timeframe",
+      "src": "/mnt/data/aegis_extracts/candle_09.jpg",
+      "out": "06_duration_not_timeframe.jpg",
+      "source": "Candle Behavior.mp4",
+      "timestamp": "12:21",
+      "concepts": [
+        "duration of price",
+        "fractal analysis",
+        "lower middle higher duration"
+      ],
+      "caption": "Source slide instructing the trader to think about duration of price rather than relying only on conventional timeframe labels.",
+      "relative_path": "assets/06_duration_not_timeframe.jpg"
+    },
+    {
+      "id": "t2_second_shift",
+      "src": "/mnt/data/aegis_extracts/ex2_t2/240.jpg",
+      "out": "07_t2_second_shift.jpg",
+      "source": "Example 2 part 2.mp4",
+      "timestamp": "04:00",
+      "concepts": [
+        "T2",
+        "second shift",
+        "nested shift",
+        "entry confirmation"
+      ],
+      "caption": "Example source where the instructor explicitly calls for \u201cthe second shift\u201d and a high to be taken.",
+      "relative_path": "assets/07_t2_second_shift.jpg"
+    },
+    {
+      "id": "fractal_shift",
+      "src": "/mnt/data/entry_model_key/155.jpg",
+      "out": "08_fractal_shift.jpg",
+      "source": "Entry Model.mp4",
+      "timestamp": "02:35",
+      "concepts": [
+        "fractal shift",
+        "external break",
+        "internal break",
+        "nested confirmation"
+      ],
+      "caption": "Course diagram illustrating a larger shift and a nested fractal shift inside subsequent structure.",
+      "relative_path": "assets/08_fractal_shift.jpg"
+    },
+    {
+      "id": "example1_geometry",
+      "src": "/mnt/data/aegis_extracts/ex1_geometry.jpg",
+      "out": "09_example1_entry_geometry.jpg",
+      "source": "Example 1 part 1.mp4",
+      "timestamp": "04:20",
+      "concepts": [
+        "live CBR",
+        "entry",
+        "structural stop",
+        "condition target",
+        "RR"
+      ],
+      "caption": "Live Example 1 trade geometry showing the long entry, structural invalidation and upper target region.",
+      "relative_path": "assets/09_example1_entry_geometry.jpg"
+    },
+    {
+      "id": "example1_target",
+      "src": "/mnt/data/ex1p2_caps/cap_0249.jpg",
+      "out": "10_example1_target_reached.jpg",
+      "source": "Example 1 part 2.mp4",
+      "timestamp": "~08:18",
+      "concepts": [
+        "target reached",
+        "trade management",
+        "CBR outcome"
+      ],
+      "caption": "Final Example 1 frame showing price reaching the drawn target region.",
+      "relative_path": "assets/10_example1_target_reached.jpg"
+    },
+    {
+      "id": "risk_priority",
+      "src": "/mnt/data/aegis_extracts/math_00.jpg",
+      "out": "11_risk_priority_drawdown.jpg",
+      "source": "The Maths of winning.mp4",
+      "timestamp": "01:35",
+      "concepts": [
+        "drawdown",
+        "recovery asymmetry",
+        "risk-adjusted returns",
+        "compounding"
+      ],
+      "caption": "Source slide placing capital protection and drawdown control before return optimization.",
+      "relative_path": "assets/11_risk_priority_drawdown.jpg"
+    },
+    {
+      "id": "losing_streaks",
+      "src": "/mnt/data/aegis_extracts/math_06.jpg",
+      "out": "12_losing_streak_heatmap.jpg",
+      "source": "The Maths of winning.mp4",
+      "timestamp": "11:06",
+      "concepts": [
+        "losing streaks",
+        "variance",
+        "probability estimate"
+      ],
+      "caption": "Course heatmap illustrating that losing streaks are built into probabilistic systems. Values are estimates, not deterministic forecasts.",
+      "relative_path": "assets/12_losing_streak_heatmap.jpg"
+    },
+    {
+      "id": "trade_limit",
+      "src": "/mnt/data/limit.png",
+      "out": "13_trade_frequency_limit.png",
+      "source": "Trade Frequency.mp4",
+      "timestamp": null,
+      "concepts": [
+        "trade frequency",
+        "mental capital",
+        "limited trading window"
+      ],
+      "caption": "Source slide recommending a limited number of high-quality setups and a constrained trading window.",
+      "relative_path": "assets/13_trade_frequency_limit.png"
+    },
+    {
+      "id": "daily_loss_limit",
+      "src": "/mnt/data/losslimit.png",
+      "out": "14_daily_loss_limit.png",
+      "source": "Trade Frequency.mp4",
+      "timestamp": null,
+      "concepts": [
+        "daily loss limit",
+        "precommitment",
+        "mechanical shutdown"
+      ],
+      "caption": "Source slide showing precommitted session limits rather than reliance on in-session willpower.",
+      "relative_path": "assets/14_daily_loss_limit.png"
+    },
+    {
+      "id": "psychology_system_first",
+      "src": "/mnt/data/Screenshot 2026-07-25 173110.png",
+      "out": "15_psychology_system_first.png",
+      "source": "Psychology Handbook",
+      "timestamp": null,
+      "concepts": [
+        "behavior gap",
+        "system first",
+        "clarity before psychology"
+      ],
+      "caption": "Handbook source: psychology matters after the trader has a defined plan, process and journal.",
+      "relative_path": "assets/15_psychology_system_first.png"
+    },
+    {
+      "id": "metacognition_pyramid",
+      "src": "/mnt/data/Screenshot 2026-07-25 173202.png",
+      "out": "16_metacognition_pyramid.png",
+      "source": "Psychology Handbook",
+      "timestamp": null,
+      "concepts": [
+        "metacognition",
+        "identity",
+        "beliefs",
+        "behavior",
+        "technical skill"
+      ],
+      "caption": "Handbook pyramid showing technical execution resting on behavior, thoughts, beliefs and experience.",
+      "relative_path": "assets/16_metacognition_pyramid.png"
+    },
+    {
+      "id": "example3_results",
+      "src": "/mnt/data/aegis_extracts/ex3_results_492.jpg",
+      "out": "17_example3_results.jpg",
+      "source": "Example 3 part 2(1).mp4",
+      "timestamp": "08:12",
+      "concepts": [
+        "small sample analytics",
+        "11 trades",
+        "81.82% win rate",
+        "15.09R"
+      ],
+      "caption": "Literal replay analytics for Example 3. This is an 11-trade demonstration, not edge validation.",
+      "relative_path": "assets/17_example3_results.jpg"
+    }
+  ],
+  "retrieval_notes": [
+    "Treat screenshots as literal visual source evidence.",
+    "Treat captions as Archive descriptions, not verbatim instructor statements.",
+    "Timestamps are approximate when marked with ~.",
+    "Small-sample replay analytics are demonstrations, not edge validation."
+  ]
+}

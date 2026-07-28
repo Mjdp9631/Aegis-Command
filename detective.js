@@ -140,6 +140,7 @@ function setDetectiveTab(tab) {
   activeDetectiveTab = tab;
   $("#detective-journal").hidden = tab !== "journal";
   $("#detective-accounts").hidden = tab !== "accounts";
+  $("#detective-brain").hidden = tab !== "brain";
   document.querySelectorAll("[data-detective-tab]").forEach((button) => button.classList.toggle("active", button.dataset.detectiveTab === tab));
 }
 
