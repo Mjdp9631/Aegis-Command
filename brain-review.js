@@ -5,10 +5,34 @@ const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(con
 const $ = (selector) => document.querySelector(selector);
 let trades = [];
 let reviews = [];
+let chainStep = 0;
+let chainAnswers = [];
+let chainTerminal = "";
 
 const esc = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[character]));
 const setup = (value) => { try { return JSON.parse(value || "[]").join(" + "); } catch { return value || "—"; } };
-const tradeLabel = (trade) => `${new Date(trade.traded_at || trade.created_at).toLocaleDateString()} · ${trade.pair || "Pair"} · ${setup(trade.setup)} · ${trade.outcome || trade.trade_status || "Open"}`;
+const tradeNumberMap = () => new Map([...trades].sort((a, b) => new Date(a.traded_at || a.created_at) - new Date(b.traded_at || b.created_at)).map((trade, index) => [trade.id, index + 1]));
+const tradeLabel = (trade) => `#${String(tradeNumberMap().get(trade.id) || 0).padStart(3, "0")} · ${new Date(trade.traded_at || trade.created_at).toLocaleDateString()} · ${trade.pair || "Pair"} · ${setup(trade.setup)} · ${trade.outcome || trade.trade_status || "Open"}`;
+
+const CHAIN = [
+  { id: "condition", title: "01 — Condition", question: "Can you name the active market condition without forcing it?", source: "condition", choices: [{ label: "Range", next: true }, { label: "Trending range", next: true }, { label: "Trend", next: true }, { label: "Unclear / mixed", stop: "No trade. The condition is not clear enough to build from." }] },
+  { id: "location", title: "02 — Location", question: "Is price at a valid location rather than the middle of the condition?", source: "location", choices: [{ label: "Yes — valid outer half, quarter, or qualified continuation", next: true }, { label: "No — middle / undefined location", stop: "No trade. Location does not give the condition an edge." }] },
+  { id: "trigger", title: "03 — Arrival & confirmation", question: "Did price arrive with meaningful behavior and then give structural proof?", source: "trigger", choices: [{ label: "Yes — meaningful arrival and confirmed shift", next: true }, { label: "Arrival is grinding / insignificant", stop: "No trade. Arrival is not meaningful enough." }, { label: "No structural confirmation yet", stop: "Wait. A prediction is not confirmation." }] },
+  { id: "execution", title: "04 — Execution", question: "Is the entry actually offered by the system, without chasing or improvising?", source: "execution", choices: [{ label: "Yes — valid entry variant is offered", next: true }, { label: "Entry was missed / price is extended", stop: "Pass. A missed entry is not permission to chase." }, { label: "No valid variant is offered", stop: "Wait for the system to offer an execution." }] },
+  { id: "risk", title: "05 — Risk", question: "Can the stop, target, and risk all be defined before entering?", source: "risk", choices: [{ label: "Yes — structural stop, derived target, permitted risk", next: true }, { label: "No — stop, target, or risk is unclear", stop: "No trade. Governance must be defined before exposure." }] }
+];
+
+function renderChain() {
+  const root = $("#brain-chain");
+  if (!root) return;
+  const history = chainAnswers.map((answer, index) => `<div class="brain-chain-answer"><span>${esc(CHAIN[index].title)}</span><strong>${esc(answer)}</strong></div>`).join("");
+  if (chainStep >= CHAIN.length) {
+    root.innerHTML = chainTerminal ? `${history}<article class="brain-chain-result stop"><p class="eyebrow">SYSTEM RESULT</p><h4>${esc(chainTerminal)}</h4><button type="button" data-brain-jump="${CHAIN[chainAnswers.length - 1].source}">Read the source rule</button></article>` : `${history}<article class="brain-chain-result pass"><p class="eyebrow">SYSTEM RESULT</p><h4>Candidate is structurally eligible for review.</h4><p>This is not an instruction to enter. Re-check the complete source rules, then execute only what is actually offered.</p><button type="button" data-brain-jump="risk">Read risk governance</button></article>`;
+    return;
+  }
+  const step = CHAIN[chainStep];
+  root.innerHTML = `${history}<article class="brain-chain-question"><p class="eyebrow">${esc(step.title)}</p><h4>${esc(step.question)}</h4><div class="brain-chain-options">${step.choices.map((choice, index) => `<button type="button" data-chain-choice="${index}">${esc(choice.label)}</button>`).join("")}</div><button type="button" class="brain-chain-source" data-brain-jump="${step.source}">Open the source rule</button></article>`;
+}
 
 function renderReview(review) {
   const verdictClass = String(review.verdict || "").toLowerCase().replaceAll(" ", "-");
@@ -17,8 +41,7 @@ function renderReview(review) {
 }
 
 function renderHistory() {
-  const list = $("#brain-review-history-list");
-  const count = $("#brain-review-count");
+  const list = $("#brain-review-history-list"); const count = $("#brain-review-count");
   if (!list || !count) return;
   count.textContent = `${reviews.length} REVIEW${reviews.length === 1 ? "" : "S"}`;
   list.innerHTML = reviews.length ? reviews.map((entry) => `<button class="brain-history-item" data-review-id="${entry.id}"><span>${esc(entry.review_payload?.verdict || "Review")}</span><strong>${esc(entry.trade_debriefs ? tradeLabel(entry.trade_debriefs) : "Trade review")}</strong><small>${new Date(entry.created_at).toLocaleString()}</small></button>`).join("") : "No AI reviews yet. Select a trade, provide the screenshots, then let the system audit it.";
@@ -26,91 +49,85 @@ function renderHistory() {
 
 async function loadReviewerData() {
   if (!supabase) return;
-  const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) return;
-  const [tradeResult, reviewResult] = await Promise.all([
-    supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }),
-    supabase.from("trade_reviews").select("*, trade_debriefs(*)").order("created_at", { ascending: false }).limit(24)
-  ]);
-  trades = tradeResult.data || [];
-  reviews = reviewResult.data || [];
+  const { data: sessionData } = await supabase.auth.getSession(); if (!sessionData.session) return;
+  const [tradeResult, reviewResult] = await Promise.all([supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }), supabase.from("trade_reviews").select("*, trade_debriefs(*)").order("created_at", { ascending: false }).limit(24)]);
+  trades = tradeResult.data || []; reviews = reviewResult.data || [];
   const control = $("#brain-review-trade");
-  if (control) control.innerHTML = '<option value="">Choose a logged trade</option>' + trades.map((trade) => `<option value="${trade.id}">${esc(tradeLabel(trade))}</option>`).join("");
+  if (control) control.innerHTML = '<option value="">Choose a journal trade number</option>' + trades.map((trade) => `<option value="${trade.id}">${esc(tradeLabel(trade))}</option>`).join("");
   renderHistory();
 }
 
-async function asDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = () => resolve(reader.result);
-    reader.readAsDataURL(file);
-  });
-}
-
+async function asDataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => resolve(reader.result); reader.readAsDataURL(file); }); }
 async function runReview(event) {
-  event.preventDefault();
-  if (!supabase) return alert("Cloud connection is not configured.");
-  const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) return alert("Sign in before requesting a trade review.");
-  const trade = trades.find((item) => item.id === $("#brain-review-trade").value);
-  const files = Array.from($("#brain-review-images").files || []);
-  if (!trade || !files.length) return;
-  if (files.length > 8) return alert("Use up to 8 screenshots for one audit.");
-  const status = $("#brain-review-status");
-  const submit = $("#brain-review-submit");
-  submit.disabled = true;
-  status.textContent = "Reading chart evidence against the Clarified Chaos FX system…";
+  event.preventDefault(); if (!supabase) return alert("Cloud connection is not configured.");
+  const { data: sessionData } = await supabase.auth.getSession(); if (!sessionData.session) return alert("Sign in before requesting a trade review.");
+  const trade = trades.find((item) => item.id === $("#brain-review-trade").value); const files = Array.from($("#brain-review-images").files || []);
+  if (!trade || !files.length) return; if (files.length > 8) return alert("Use up to 8 screenshots for one audit.");
+  const status = $("#brain-review-status"); const submit = $("#brain-review-submit"); submit.disabled = true; status.textContent = "Reading chart evidence against the Clarified Chaos FX system...";
   try {
     const screenshots = await Promise.all(files.map(asDataUrl));
     const response = await fetch("/api/trade-review", { method: "POST", headers: { "content-type":"application/json", authorization:`Bearer ${sessionData.session.access_token}` }, body: JSON.stringify({ trade, traderThesis: $("#brain-review-thesis").value.trim(), screenshots }) });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error || "The reviewer did not return an audit.");
+    const body = await response.json(); if (!response.ok) throw new Error(body.error || "The reviewer did not return an audit.");
     const insert = await supabase.from("trade_reviews").insert({ user_id: sessionData.session.user.id, trade_id: trade.id, trader_thesis: $("#brain-review-thesis").value.trim() || null, review_payload: body.review, screenshot_count: screenshots.length, course_version: "1.1" });
     if (insert.error) throw new Error(`The audit was completed but could not be saved: ${insert.error.message}`);
-    status.textContent = "Audit complete. Stored in independent review history.";
-    $("#brain-review-form").reset();
-    await loadReviewerData();
-    $("#brain-review-dialog").close();
-    const library = $("#brain-review-history-list");
-    library?.scrollIntoView({ behavior:"smooth", block:"center" });
-  } catch (error) {
-    status.textContent = error.message || "The audit could not be completed.";
-  } finally { submit.disabled = false; }
+    status.textContent = "Audit complete. Stored in independent review history."; $("#brain-review-form").reset(); await loadReviewerData(); $("#brain-review-dialog").close(); $("#brain-review-history-list")?.scrollIntoView({ behavior:"smooth", block:"center" });
+  } catch (error) { status.textContent = error.message || "The audit could not be completed."; } finally { submit.disabled = false; }
 }
 
+const sourceRefs = { condition: "1.4 Direction and Condition", location: "1.6 Location and the Three 50%s", trigger: "1.7 Arrival / Counter-Sequence", execution: "1.12 Entry Variants", risk: "3.3 Risk Principles" };
+function sourceId(title) { const found = Object.entries(sourceRefs).find(([, reference]) => title.includes(reference)); return found ? `brain-source-${found[0]}` : ""; }
+function inline(text) { return esc(text).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/`(.+?)`/g, "<code>$1</code>"); }
+function renderSourceBody(lines) {
+  let html = ""; let list = []; const flush = () => { if (list.length) { html += `<ul>${list.map((item) => `<li>${inline(item)}</li>`).join("")}</ul>`; list = []; } };
+  for (const raw of lines) {
+    const line = raw.trim(); const image = line.match(/^!\[([^\]]*)\]\((assets\/[^)]+)\)/);
+    if (image) { flush(); html += `<button class="brain-source-image" type="button" data-brain-image="brain/${esc(image[2])}" data-brain-caption="${esc(image[1])}"><img src="brain/${esc(image[2])}" alt="${esc(image[1])}" loading="lazy"><span>Click to enlarge</span></button>`; continue; }
+    if (!line) { flush(); continue; }
+    if (/^###\s/.test(line)) { flush(); html += `<h4>${inline(line.replace(/^###\s*/, ""))}</h4>`; continue; }
+    if (/^####\s/.test(line)) { flush(); html += `<h5>${inline(line.replace(/^####\s*/, ""))}</h5>`; continue; }
+    if (/^[-*]\s+/.test(line) || /^\d+\.\s+/.test(line)) { list.push(line.replace(/^[-*]\s+|^\d+\.\s+/, "")); continue; }
+    if (/^>\s?/.test(line)) { flush(); html += `<blockquote>${inline(line.replace(/^>\s?/, ""))}</blockquote>`; continue; }
+    flush(); html += `<p>${inline(line)}</p>`;
+  }
+  flush(); return html;
+}
 function formatCourse(markdown) {
-  const mapping = { "condition":"1.4 Direction and Condition", "location":"1.6 Location and the Three 50%s", "trigger":"1.7 Arrival / Counter-Sequence", "execution":"1.12 Entry Variants", "risk":"3. Risk Governance" };
-  const headings = markdown.split(/\r?\n/).filter((line) => /^#{1,3}\s/.test(line));
-  return headings.map((line) => {
-    const text = line.replace(/^#+\s*/, "");
-    const id = Object.entries(mapping).find(([, reference]) => text.includes(reference))?.[0] || "";
-    return `<button class="brain-source-link" ${id ? `id="brain-source-${id}"` : ""}><span>${esc(text)}</span><b>Open source</b></button>`;
-  }).join("");
+  const blocks = markdown.replace(/^---[\s\S]*?---\s*/, "").split(/^##\s+/m).filter(Boolean);
+  return blocks.map((block, index) => { const lines = block.split(/\r?\n/); const title = lines.shift().trim(); const id = sourceId(title); return `<details class="brain-source-section" ${index === 0 ? "open" : ""} ${id ? `id="${id}"` : ""}><summary><span>${esc(title)}</span><b>Open notes</b></summary><div class="brain-source-notes">${renderSourceBody(lines)}</div></details>`; }).join("");
 }
-
+function ensureImageDialog() {
+  if ($("#brain-image-dialog")) return;
+  document.body.insertAdjacentHTML("beforeend", '<dialog id="brain-image-dialog" class="dialog-card brain-image-dialog"><button class="dialog-close" type="button" aria-label="Close">×</button><img id="brain-image-large" alt="Course reference" /><p id="brain-image-caption"></p></dialog>');
+}
+function upgradeBrainDom() {
+  const oldGrid = $(".brain-flow-grid");
+  if (oldGrid && !$("#brain-chain")) oldGrid.outerHTML = '<div id="brain-chain" class="brain-chain"></div>';
+  const chainHead = $(".brain-flow .panel-head");
+  if (chainHead && !$("#brain-chain-reset")) chainHead.insertAdjacentHTML("beforeend", '<button id="brain-chain-reset" class="text-link" type="button">Restart chain</button>');
+  const library = $(".brain-library");
+  const source = $("#brain-library-content");
+  if (library && source && !$(".brain-summary")) source.insertAdjacentHTML("beforebegin", '<section class="brain-summary"><p class="eyebrow">THE SYSTEM AT A GLANCE</p><div class="brain-summary-grid"><button data-brain-jump="condition"><b>01 Condition</b><span>Name the environment before hunting an entry.</span></button><button data-brain-jump="location"><b>02 Location</b><span>Do not manufacture a trade from the middle.</span></button><button data-brain-jump="trigger"><b>03 Confirmation</b><span>Wait for meaningful arrival and structural proof.</span></button><button data-brain-jump="execution"><b>04 Execution</b><span>Use the offered entry; never chase it.</span></button><button data-brain-jump="risk"><b>05 Risk</b><span>The stop, target, and risk must all make sense first.</span></button></div><aside><b>Must know:</b> A clean condition without location is incomplete. A trigger without structure is noise. A missed entry is not permission to chase.</aside></section>');
+  const legacyGallery = $("#brain-visual-library");
+  if (legacyGallery) legacyGallery.remove();
+}
+function openSource(key) { const target = $("#brain-source-" + key); if (target) { target.open = true; target.scrollIntoView({ behavior:"smooth", block:"start" }); } }
 async function loadCourseLibrary() {
-  try {
-    const [master, index] = await Promise.all([fetch("brain/Clarified_Chaos_FX_AEGIS_Master_Brain.md").then((response) => response.text()), fetch("brain/source_index.json").then((response) => response.json())]);
-    $("#brain-library-content").innerHTML = formatCourse(master);
-    const items = Array.isArray(index) ? index : (index.items || index.assets || []);
-    $("#brain-visual-library").innerHTML = items.map((asset) => `<article><img src="brain/${esc(asset.relative_path || asset.path || asset.file || "")}" alt="${esc(asset.caption || asset.title || "Course reference")}" loading="lazy" /><p>${esc(asset.caption || asset.title || "Course reference")}</p><small>${esc((asset.concepts || []).join(" · "))}</small></article>`).join("");
-  } catch { $("#brain-library-content").innerHTML = "The source library could not be loaded. Confirm the brain folder was uploaded with the deployment."; }
+  try { const master = await fetch("brain/Clarified_Chaos_FX_AEGIS_Master_Brain.md").then((response) => response.text()); $("#brain-library-content").innerHTML = formatCourse(master); }
+  catch { $("#brain-library-content").innerHTML = "The source library could not be loaded. Confirm the brain folder was uploaded with the deployment."; }
 }
-
 function init() {
+  upgradeBrainDom();
   $("#open-trade-review")?.addEventListener("click", () => $("#brain-review-dialog").showModal());
   $("#brain-review-dialog .dialog-close")?.addEventListener("click", () => $("#brain-review-dialog").close());
   $("#brain-review-form")?.addEventListener("submit", runReview);
+  $("#brain-chain-reset")?.addEventListener("click", () => { chainStep = 0; chainAnswers = []; chainTerminal = ""; renderChain(); });
   document.addEventListener("click", (event) => {
-    const jump = event.target.closest("[data-brain-jump]");
-    if (jump) $("#brain-source-" + jump.dataset.brainJump)?.scrollIntoView({ behavior:"smooth", block:"center" });
-    const history = event.target.closest("[data-review-id]");
-    if (history) { const review = reviews.find((entry) => entry.id === history.dataset.reviewId); if (review) { const target = $("#brain-review-history-list"); target.innerHTML = renderReview(review.review_payload); } }
+    const jump = event.target.closest("[data-brain-jump]"); if (jump) openSource(jump.dataset.brainJump);
+    const choice = event.target.closest("[data-chain-choice]"); if (choice) { const selected = CHAIN[chainStep].choices[Number(choice.dataset.chainChoice)]; chainAnswers.push(selected.label); if (selected.stop) { chainTerminal = selected.stop; chainStep = CHAIN.length; renderChain(); return; } chainStep += 1; renderChain(); }
+    const history = event.target.closest("[data-review-id]"); if (history) { const review = reviews.find((entry) => entry.id === history.dataset.reviewId); if (review) $("#brain-review-history-list").innerHTML = renderReview(review.review_payload); }
+    const image = event.target.closest("[data-brain-image]"); if (image) { ensureImageDialog(); $("#brain-image-large").src = image.dataset.brainImage; $("#brain-image-caption").textContent = image.dataset.brainCaption || "Course reference"; $("#brain-image-dialog").showModal(); }
+    if (event.target.closest("#brain-image-dialog .dialog-close")) $("#brain-image-dialog").close();
   });
-  loadCourseLibrary();
-  loadReviewerData();
-  supabase?.auth.onAuthStateChange(() => setTimeout(loadReviewerData, 50));
+  ensureImageDialog(); renderChain(); loadCourseLibrary(); loadReviewerData(); supabase?.auth.onAuthStateChange(() => setTimeout(loadReviewerData, 50));
 }
-
 init();

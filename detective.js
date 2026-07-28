@@ -227,15 +227,17 @@ function renderMetrics(trades) {
 function renderTrades(trades) {
   const table = $("#trade-log");
   if (!trades.length) {
-    table.innerHTML = '<tr class="empty-row"><td colspan="19">No trade debriefs yet. Preserve data; log the next execution.</td></tr>';
+    table.innerHTML = '<tr class="empty-row"><td colspan="20">No trade debriefs yet. Preserve data; log the next execution.</td></tr>';
     return;
   }
 
+  const tradeNumbers = new Map([...loadedTrades].sort((a, b) => new Date(a.traded_at || a.created_at) - new Date(b.traded_at || b.created_at)).map((trade, index) => [trade.id, index + 1]));
   table.innerHTML = trades.map((trade) => {
     const outcome = resolvedOutcome(trade);
     const resultClass = outcome === "Win" || outcome === "Small win" ? "result-positive" : outcome === "Loss" || outcome === "Small loss" ? "result-negative" : "";
     const date = new Date(trade.traded_at || trade.created_at);
     return `<tr>
+      <td class="trade-number">#${String(tradeNumbers.get(trade.id) || 0).padStart(3, "0")}</td>
       <td>${date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
       <td><strong>${escapeHtml(trade.pair)}</strong></td>
       <td>${escapeHtml(trade.trade_type || "—")}</td>
@@ -430,6 +432,7 @@ function init() {
   const outcome = $("#detective-outcome");
   outcome.insertAdjacentHTML("afterbegin", '<option value="Open">Open</option>');
   const header = $("#trade-log").closest("table").querySelector("thead tr");
+  header.insertAdjacentHTML("afterbegin", "<th>#</th>");
   header.insertAdjacentHTML("beforeend", "<th>ACTION</th>");
   buildFilters();
   const pnlMetric = $("#detective-violations").closest(".metric");
