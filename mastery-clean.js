@@ -3,69 +3,71 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const config = window.AEGIS_CONFIG || {};
 const db = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const root = document.querySelector("#mastery");
-const mindTypes = ["Book", "Quote", "Trading Note", "Psychology", "Space", "Business", "Stoicism"];
+const mindTypes = ["Book", "Quote", "Trading Note", "Psychology", "Space", "Philosophy", "Business", "Stoicism"];
 const bodyTypes = ["Health", "Gym", "Sports", "Performance"];
 const researchTopics = [
-  ["Baader-Meinhof phenomenon", "Psychology", "Why recently learned ideas seem to appear everywhere."],
-  ["Paradox of choice", "Psychology", "How too many options can reduce action and satisfaction."],
-  ["Double-slit experiment", "Space", "What the experiment actually demonstrates and what it does not."],
-  ["State-dependent memory", "Psychology", "How internal state can affect recall."],
-  ["Fundamental attribution error", "Psychology", "Why we over-credit character and under-credit context."],
-  ["Dunning-Kruger effect", "Psychology", "Confidence, competence, and the limits of self-assessment."],
-  ["Stoic dichotomy of control", "Stoicism", "Separate controllable actions from uncontrollable outcomes."],
-  ["Antifragility", "Business", "Systems that can improve from manageable stressors."],
-  ["Fermi paradox", "Space", "The tension between the scale of the universe and the lack of confirmed contact."],
-  ["Opportunity cost", "Business", "The value of the best alternative given up by a choice."],
-  ["Cognitive reappraisal", "Psychology", "Changing interpretation to change the emotional response."],
-  ["The Ship of Theseus", "Philosophy", "Identity when all parts of something change over time."]
+  ["Baader-Meinhof phenomenon", "Psychology", "standard", 35, "Why recently learned ideas seem to appear everywhere."],
+  ["Paradox of choice", "Psychology", "standard", 35, "How too many options can reduce action and satisfaction."],
+  ["Double-slit experiment", "Space", "advanced", 55, "What the experiment actually demonstrates and what it does not."],
+  ["State-dependent memory", "Psychology", "standard", 35, "How internal state can affect recall."],
+  ["Fundamental attribution error", "Psychology", "standard", 35, "Why we over-credit character and under-credit context."],
+  ["Stoic dichotomy of control", "Stoicism", "standard", 35, "Separate controllable actions from uncontrollable outcomes."],
+  ["Fermi paradox", "Space", "advanced", 55, "The tension between the scale of the universe and the lack of confirmed contact."],
+  ["Opportunity cost", "Business", "standard", 35, "The value of the best alternative given up by a choice."],
+  ["The Ship of Theseus", "Philosophy", "advanced", 55, "Identity when all parts of something change over time."],
+  ["The hedonic treadmill", "Psychology", "standard", 35, "Why achievement alone does not permanently raise satisfaction."],
+  ["The absurd", "Philosophy", "advanced", 55, "Camus' problem of meaning and how to act without false certainty."]
 ];
 const bodyChallenges = [
-  ["Shootaround session", "Find an accessible hoop and spend 30 minutes shooting, dribbling, and moving at your own pace. Use an existing public court or a ball you already have."],
-  ["Walk-and-throw session", "Take a frisbee, soft ball, or similar item you already own to an open space. Move for 30 minutes and practice easy throws; no team required."],
-  ["Table tennis or badminton trial", "Use a community center, gym, friend’s equipment, or rental option for a casual 30-minute session. Keep it skill-focused, not competitive."],
-  ["Low-impact dance session", "Follow a 30-minute beginner movement or dance session at a comfortable intensity. Focus on coordination and enjoyment."],
-  ["Bowling or putting practice", "Choose a local low-commitment lane or putting area if available. Practice for 30 minutes; no league or equipment purchase required."],
-  ["Casual swimming session", "If you already have pool access and are cleared to use it, complete a relaxed 30-minute swim or water-walk session."],
-  ["Pickleball sampler", "Use a public court or borrow a paddle for a casual 30-minute beginner session. Avoid buying anything just for this mission."]
+  ["Upper-body strength circuit", "Gym", "standard", 30, "Complete a 30-minute upper-body or clinician-cleared full-body session. Record the exercises and one performance note."],
+  ["Shootaround session", "Sports", "standard", 40, "Find an accessible hoop and spend 30 minutes shooting, dribbling, and moving at your own pace. Use a public court or a ball you already own."],
+  ["Pickleball sampler", "Sports", "standard", 40, "Use a public court or borrow a paddle for a casual 30-minute beginner session. Avoid buying equipment just for this mission."],
+  ["Measured walk or run benchmark", "Performance", "advanced", 55, "Only if cleared: complete a measured walk, jog, or run and record distance, time, and how the body responded."],
+  ["Coordination session", "Gym", "easy", 20, "Complete a 30-minute clinician-cleared coordination, mobility, or balance session. Record what felt more stable."],
+  ["Casual swimming session", "Sports", "standard", 40, "If you have pool access and clearance, complete a relaxed 30-minute swim or water-walk session."]
 ];
 const recoverySafeChallenges = [
-  ["Recovery-safe movement brief", "Choose one clinician-approved light movement session you already have access to. Do not start a new sport before your recovery clearance; document what felt stable and what did not."],
-  ["Mobility and coordination brief", "Complete 30 minutes of only clinician-approved mobility, upper-body, or balance work. Record one useful recovery observation afterward."],
-  ["Spectator study mission", "Watch 30 minutes of a sport you are curious about and write what makes its movement demands, strategy, and access requirements interesting. This is preparation, not a clearance to play."]
+  ["Recovery-safe movement brief", "Health", "easy", 20, "Choose one clinician-approved light movement session you already have access to. Record what felt stable and what did not."],
+  ["Mobility and coordination brief", "Health", "easy", 20, "Complete 30 minutes of clinician-approved mobility, upper-body, or balance work. Record one useful recovery observation afterward."],
+  ["Spectator study mission", "Sports", "easy", 20, "Watch 30 minutes of a sport you are curious about and write what makes its movement demands, strategy, and access requirements interesting."]
 ];
 
 let lane = localStorage.getItem("aegis-mastery-lane") === "body" ? "body" : "mind";
 let activeType = localStorage.getItem("aegis-mastery-type") || (lane === "body" ? "Health" : "Book");
-let entries = [], deepWork = [], challenges = [], directorReviews = [];
+let entries = [], deepWork = [], challenges = [];
 let recoveryReady = false, cleanRendering = false;
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]));
 const isLocked = type => ["Sports", "Performance"].includes(type) && !recoveryReady;
 const typeLabel = type => type === "Trading Note" ? "Trading Notes" : type;
 const saveView = () => { localStorage.setItem("aegis-mastery-lane", lane); localStorage.setItem("aegis-mastery-type", activeType); };
-const quarterKey = () => `${new Date().getFullYear()}-Q${Math.floor(new Date().getMonth() / 3) + 1}`;
 const dateOnly = value => value ? new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—";
+const activeChallenge = kind => challenges.find(item => item.lane === kind && ["generated", "accepted"].includes(item.status || "generated") && !item.completed_at);
+const difficultyLabel = challenge => `${String(challenge.difficulty || "standard").toUpperCase()} · +${Number(challenge.xp_reward || 0)} BONUS XP`;
 
 function entryCard(entry) {
   return `<article class="mastery-entry"><div class="entry-meta"><span>${escapeHtml(entry.category)}</span>${entry.rating ? `<b>${entry.rating}/5</b>` : ""}</div><h3>${escapeHtml(entry.title)}</h3>${entry.summary ? `<p>${escapeHtml(entry.summary)}</p>` : ""}${entry.key_lessons ? `<p><b>Key takeaways:</b> ${escapeHtml(entry.key_lessons)}</p>` : ""}</article>`;
 }
 
-function tabs(types, current, attribute) {
-  return types.map(type => `<button class="mastery-tab ${type === current ? "active" : ""} ${isLocked(type) ? "locked" : ""}" data-mastery-clean-${attribute}="${type}">${typeLabel(type)}${isLocked(type) ? " LOCKED" : ""}</button>`).join("");
-}
-
 function challengeCard(challenge) {
   const complete = Boolean(challenge.completed_at);
-  return `<article class="mastery-challenge ${complete ? "complete" : ""}"><div><p class="eyebrow ${challenge.lane === "mind" ? "blue-text" : "green-text"}">${challenge.lane === "mind" ? "RESEARCH TRANSMISSION" : "BODY TRANSMISSION"}${complete ? " · COMPLETE" : ""}</p><h4>${escapeHtml(challenge.title)}</h4><p>${escapeHtml(challenge.instructions)}</p>${challenge.lane === "mind" ? `<small>30 minutes, no AI · then speak for 30+ seconds and write your summary.</small>` : `<small>Accessible, low-commitment activity · use existing/public/rental equipment only.</small>`}${challenge.summary ? `<p class="challenge-summary"><b>Your debrief:</b> ${escapeHtml(challenge.summary)}</p>` : ""}</div>${complete ? `<span class="system-status">Logged ${dateOnly(challenge.completed_at)}</span>` : `<button class="primary compact" data-mastery-complete-challenge="${challenge.id}">Complete transmission</button>`}</article>`;
+  const status = challenge.status || "generated";
+  const laneLabel = challenge.lane === "mind" ? "RESEARCH TRANSMISSION" : "BODY TRANSMISSION";
+  const reward = `<small class="challenge-reward">${difficultyLabel(challenge)}${complete ? " · recorded when XP campaign launches" : " · reserved on acceptance"}</small>`;
+  let actions = "";
+  if (complete) actions = `<span class="system-status">Filed to ${escapeHtml(challenge.category || "Mastery")} · ${dateOnly(challenge.completed_at)}</span>`;
+  else if (status === "accepted") actions = `<button class="primary compact" data-mastery-complete-challenge="${challenge.id}">Complete transmission</button>`;
+  else actions = `<div class="challenge-actions"><button class="primary compact" data-mastery-accept="${challenge.id}">Accept</button><button class="ghost compact" data-mastery-deny="${challenge.id}">Deny</button><button class="ghost compact" data-mastery-clear="${challenge.id}">Clear</button></div>`;
+  return `<article class="mastery-challenge ${complete ? "complete" : ""} ${status}"><div><p class="eyebrow ${challenge.lane === "mind" ? "blue-text" : "green-text"}">${laneLabel}${complete ? " · COMPLETE" : status === "accepted" ? " · ACCEPTED" : " · AWAITING DECISION"}</p><h4>${escapeHtml(challenge.title)}</h4><p>${escapeHtml(challenge.instructions)}</p>${challenge.lane === "mind" ? `<small>30 minutes, no AI · explain it aloud for 30+ seconds, then write your own synthesis.</small>` : `<small>Use accessible, clinician-cleared activity only. No specialist purchase or team required.</small>`}${reward}${challenge.summary ? `<p class="challenge-summary"><b>Your debrief:</b> ${escapeHtml(challenge.summary)}</p>` : ""}</div>${actions}</article>`;
 }
 
 function systemsPanel() {
+  const current = activeChallenge(lane);
   const recentMinutes = deepWork.filter(log => Date.now() - new Date(log.created_at || log.logged_on).getTime() < 7 * 86400000).reduce((sum, log) => sum + Number(log.duration_minutes || 0), 0);
-  const laneChallenges = challenges.filter(challenge => challenge.lane === lane).slice(0, 3);
-  const review = directorReviews.find(item => item.quarter_key === quarterKey());
-  const transmissionLabel = lane === "mind" ? "Generate research mission" : recoveryReady ? "Generate body mission" : "Generate recovery-safe mission";
-  const transmissionCopy = lane === "mind" ? "A random subject. Research for 30 minutes without AI, explain it aloud for 30+ seconds, then capture your own synthesis." : recoveryReady ? "A practical sport or activity you can try without joining a team or buying specialized equipment." : "Sports and performance stay locked until Recovery is cleared. These prompts remain recovery-safe.";
-  return `<section class="mastery-systems"><article class="mastery-system-card deep-work-card"><div><p class="eyebrow blue-text">DEEP-WORK OUTPUT</p><h3>${recentMinutes} min</h3><p>Logged across the last seven days. The output matters more than the timer.</p></div><button class="primary compact" data-mastery-deep-work>+ Log deep work</button></article><article class="mastery-system-card transmission-card"><div><p class="eyebrow ${lane === "mind" ? "blue-text" : "green-text"}">RANDOM ${lane.toUpperCase()} MISSION</p><h3>${lane === "mind" ? "Research transmission" : "Accessible activity transmission"}</h3><p>${transmissionCopy}</p></div><button class="primary compact" data-mastery-generate="${lane}">${transmissionLabel}</button>${laneChallenges.length ? `<div class="challenge-stack">${laneChallenges.map(challengeCard).join("")}</div>` : ""}</article><article class="mastery-system-card director-card"><div><p class="eyebrow amber">QUARTERLY DIRECTOR REVIEW</p><h3>${quarterKey()}</h3><p>${review ? "Your quarterly standards are on file. Revisit them as the quarter develops." : "A deliberate quarterly checkpoint: wins, bottlenecks, standards, and the next focus."}</p></div><button class="primary compact" data-mastery-director-review>${review ? "Update review" : "Open Director Review"}</button>${review ? `<div class="director-preview"><span><b>Wins</b>${escapeHtml(review.wins || "Not recorded")}</span><span><b>Next focus</b>${escapeHtml(review.next_focus || "Not recorded")}</span></div>` : ""}</article></section>`;
+  const label = lane === "mind" ? "Generate research mission" : recoveryReady ? "Generate body mission" : "Generate recovery-safe mission";
+  const copy = lane === "mind" ? "Generate a topic, then decide deliberately. Acceptance reserves bonus XP; completion files the work under its subject." : recoveryReady ? "Generate an accessible activity, then decide deliberately. Completion files it under Health, Gym, Sports, or Performance." : "Generate only recovery-safe activity until Recovery is cleared.";
+  const deep = lane === "mind" ? `<article class="mastery-system-card deep-work-card"><div><p class="eyebrow blue-text">DEEP-WORK OUTPUT</p><h3>${recentMinutes} min</h3><p>Focused work from the last seven days. The output matters more than the timer.</p></div><button class="primary compact" data-mastery-deep-work>+ Log deep work</button></article>` : "";
+  return `<section class="mastery-systems ${lane === "mind" ? "mind-systems" : "body-systems"}">${deep}<article class="mastery-system-card transmission-card"><div><p class="eyebrow ${lane === "mind" ? "blue-text" : "green-text"}">RANDOM ${lane.toUpperCase()} MISSION</p><h3>${lane === "mind" ? "Research transmission" : "Accessible activity transmission"}</h3><p>${copy}</p></div>${current ? `<div class="transmission-state"><span>Transmission awaiting your decision.</span></div>` : `<button class="primary compact" data-mastery-generate="${lane}">${label}</button>`}${current ? `<div class="challenge-stack">${challengeCard(current)}</div>` : ""}</article></section>`;
 }
 
 function render() {
@@ -83,13 +85,14 @@ function render() {
 }
 
 function fieldsFor(type) {
-  const base = `<label>${type === "Quote" ? "Quote" : type === "Book" ? "Book title" : type === "Space" ? "Fact or headline" : type === "Gym" || type === "Sports" ? "Session name" : "Title"}<input name="title" required /></label>`;
-  if (type === "Book") return `${base}<label>Rating<select name="rating"><option value="">Not rated</option>${[1, 2, 3, 4, 5].map(number => `<option value="${number}">${number} / 5</option>`).join("")}</select></label><label>Summary<textarea name="summary"></textarea></label><label>Favorite quotes<textarea name="quotes"></textarea></label><label>Key takeaways<textarea name="lessons"></textarea></label><label>Action items<textarea name="actions"></textarea></label>`;
+  const title = type === "Quote" ? "Quote" : type === "Book" ? "Book title" : type === "Space" ? "Fact or headline" : type === "Gym" || type === "Sports" || type === "Performance" ? "Session name" : "Title";
+  const base = `<label>${title}<input name="title" required /></label>`;
+  if (type === "Book") return `${base}<label>Rating<select name="rating"><option value="">Not rated</option>${[1,2,3,4,5].map(number => `<option value="${number}">${number} / 5</option>`).join("")}</select></label><label>Summary<textarea name="summary"></textarea></label><label>Favorite quotes<textarea name="quotes"></textarea></label><label>Key takeaways<textarea name="lessons"></textarea></label><label>Action items<textarea name="actions"></textarea></label>`;
   if (type === "Quote") return `${base}<label>Source or context<textarea name="summary"></textarea></label>`;
   if (type === "Trading Note") return `${base}<label>Trade context / observation<textarea name="summary"></textarea></label><label>Key takeaway<textarea name="lessons"></textarea></label><label>Rule to test or follow<textarea name="actions"></textarea></label>`;
-  if (type === "Psychology") return `${base}<label>Explanation<textarea name="summary"></textarea></label><label>Key takeaway<textarea name="lessons"></textarea></label>`;
-  if (type === "Business" || type === "Stoicism") return `${base}<label>Summary / reflection<textarea name="summary"></textarea></label><label>Action item<textarea name="actions"></textarea></label>`;
-  return `${base}<label>${type === "Space" ? "Explanation or source" : "Notes"}<textarea name="summary"></textarea></label>`;
+  if (["Psychology", "Philosophy", "Space"].includes(type)) return `${base}<label>Explanation or source<textarea name="summary"></textarea></label><label>Key takeaway<textarea name="lessons"></textarea></label>`;
+  if (["Business", "Stoicism"].includes(type)) return `${base}<label>Summary / reflection<textarea name="summary"></textarea></label><label>Action item<textarea name="actions"></textarea></label>`;
+  return `${base}<label>Notes / observation<textarea name="summary"></textarea></label>`;
 }
 
 function buildDialogs() {
@@ -100,87 +103,74 @@ function buildDialogs() {
   entryDialog.querySelector(".dialog-close").addEventListener("click", () => entryDialog.close());
   entryDialog.querySelector("select").addEventListener("change", event => { entryDialog.querySelector("#mastery-clean-fields").innerHTML = fieldsFor(event.target.value); });
   entryDialog.querySelector("form").addEventListener("submit", saveEntry);
-
-  const systemDialog = document.createElement("dialog");
-  systemDialog.id = "mastery-system-dialog";
-  document.body.append(systemDialog);
+  const systemDialog = document.createElement("dialog"); systemDialog.id = "mastery-system-dialog"; document.body.append(systemDialog);
 }
 
 function openDialog() {
   const dialog = document.querySelector("#mastery-clean-dialog"), select = dialog.querySelector("select");
   const allowed = lane === "mind" ? mindTypes : bodyTypes.filter(type => !isLocked(type));
-  select.innerHTML = allowed.map(type => `<option value="${type}">${typeLabel(type)}</option>`).join("");
-  select.value = activeType;
-  dialog.querySelector("#mastery-clean-fields").innerHTML = fieldsFor(activeType);
-  dialog.showModal();
+  select.innerHTML = allowed.map(type => `<option value="${type}">${typeLabel(type)}</option>`).join(""); select.value = activeType;
+  dialog.querySelector("#mastery-clean-fields").innerHTML = fieldsFor(activeType); dialog.showModal();
 }
 
-function openSystemDialog(mode, challenge = null) {
-  const dialog = document.querySelector("#mastery-system-dialog");
-  const close = `<button class="dialog-close" type="button" data-mastery-system-close>×</button>`;
-  if (mode === "deep-work") dialog.innerHTML = `<form class="dialog-card mastery-form" data-system-mode="deep-work">${close}<p class="eyebrow blue-text">DEEP-WORK OUTPUT</p><h2>What did focused work produce?</h2><label>Focus area<select name="area"><option>Mind</option><option>Body</option><option>Trading</option><option>Business</option></select></label><label>Focus<input name="focus" required placeholder="e.g. Market replay and structured notes" /></label><label>Minutes<input name="duration_minutes" type="number" min="1" max="1440" value="30" required /></label><label>Tangible output<textarea name="output" required placeholder="What exists now that did not exist before this session?"></textarea></label><button class="primary" type="submit">Log deep work</button></form>`;
-  if (mode === "director") {
-    const review = directorReviews.find(item => item.quarter_key === quarterKey()) || {};
-    dialog.innerHTML = `<form class="dialog-card mastery-form" data-system-mode="director">${close}<p class="eyebrow amber">QUARTERLY DIRECTOR REVIEW</p><h2>${quarterKey()} review.</h2><p>Measure the person and the system—not just the outcome.</p><label>Wins<textarea name="wins" placeholder="What genuinely improved?">${escapeHtml(review.wins || "")}</textarea></label><label>Bottlenecks<textarea name="bottlenecks" placeholder="What repeatedly got in the way?">${escapeHtml(review.bottlenecks || "")}</textarea></label><label>Standards<textarea name="standards" placeholder="What standard must now be normal?">${escapeHtml(review.standards || "")}</textarea></label><label>Next focus<textarea name="next_focus" placeholder="What deserves the next quarter?">${escapeHtml(review.next_focus || "")}</textarea></label><button class="primary" type="submit">Save Director Review</button></form>`;
-  }
+function openSystemDialog(mode, challenge) {
+  const dialog = document.querySelector("#mastery-system-dialog"), close = `<button class="dialog-close" type="button" data-mastery-system-close>×</button>`;
+  if (mode === "deep-work") dialog.innerHTML = `<form class="dialog-card mastery-form" data-system-mode="deep-work">${close}<p class="eyebrow blue-text">DEEP-WORK OUTPUT</p><h2>What did focused work produce?</h2><label>Focus area<select name="area"><option>Mind</option><option>Trading</option><option>Business</option></select></label><label>Focus<input name="focus" required placeholder="e.g. Market replay and structured notes" /></label><label>Minutes<input name="duration_minutes" type="number" min="1" max="1440" value="30" required /></label><label>Tangible output<textarea name="output" required placeholder="What exists now that did not exist before this session?"></textarea></label><button class="primary" type="submit">Log deep work</button></form>`;
   if (mode === "complete") dialog.innerHTML = `<form class="dialog-card mastery-form" data-system-mode="complete" data-challenge-id="${challenge.id}">${close}<p class="eyebrow ${challenge.lane === "mind" ? "blue-text" : "green-text"}">TRANSMISSION DEBRIEF</p><h2>${escapeHtml(challenge.title)}</h2><p>${escapeHtml(challenge.instructions)}</p>${challenge.lane === "mind" ? `<label class="mastery-check"><input name="spoken_confirmed" type="checkbox" required /> I explained this aloud for at least 30 seconds.</label>` : ""}<label>Your summary / observation<textarea name="summary" required placeholder="What did you learn, notice, or change your mind about?"></textarea></label><button class="primary" type="submit">Complete transmission</button></form>`;
-  dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
-  dialog.querySelector("form").addEventListener("submit", saveSystem);
-  dialog.showModal();
+  dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close()); dialog.querySelector("form").addEventListener("submit", saveSystem); dialog.showModal();
 }
 
-async function currentUserId() {
-  if (!db) return null;
-  const { data: { user } } = await db.auth.getUser();
-  return user?.id || null;
-}
+async function currentUserId() { if (!db) return null; const { data: { user } } = await db.auth.getUser(); return user?.id || null; }
 
 async function saveEntry(event) {
-  event.preventDefault();
-  const form = event.currentTarget, data = new FormData(form), category = data.get("category");
+  event.preventDefault(); const form = event.currentTarget, data = new FormData(form), category = data.get("category");
   const record = { category, title: String(data.get("title") || "").trim(), rating: Number(data.get("rating")) || null, summary: String(data.get("summary") || "").trim() || null, favorite_quotes: String(data.get("quotes") || "").trim() || null, key_lessons: String(data.get("lessons") || "").trim() || null, action_items: String(data.get("actions") || "").trim() || null };
   if (!record.title) return;
   if (db) { const { error } = await db.from("mastery_entries").insert(record); if (error) return alert(error.message); } else entries.unshift(record);
-  lane = bodyTypes.includes(category) ? "body" : "mind"; activeType = category; saveView();
-  document.querySelector("#mastery-clean-dialog").close(); await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
+  lane = bodyTypes.includes(category) ? "body" : "mind"; activeType = category; saveView(); document.querySelector("#mastery-clean-dialog").close(); await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
 }
 
 async function generateChallenge(kind) {
+  if (activeChallenge(kind)) return;
   const pool = kind === "mind" ? researchTopics : (recoveryReady ? bodyChallenges : recoverySafeChallenges);
-  const lastTitles = challenges.filter(item => item.lane === kind).slice(0, 3).map(item => item.title);
-  const available = pool.filter(item => !lastTitles.includes(item[0]));
-  const [title, categoryOrInstructions, maybeInstructions] = (available.length ? available : pool)[Math.floor(Math.random() * (available.length ? available.length : pool.length))];
-  const record = kind === "mind" ? { lane: "mind", challenge_type: "research", title, instructions: `Research “${title}” for 30 minutes using no AI. Focus: ${maybeInstructions || categoryOrInstructions}. Then explain it aloud for at least 30 seconds and write your own summary.`, research_minutes: 30 } : { lane: "body", challenge_type: "body_activity", title, instructions: categoryOrInstructions, research_minutes: null };
+  const recent = challenges.filter(item => item.lane === kind).slice(0, 4).map(item => item.title);
+  const available = pool.filter(item => !recent.includes(item[0]));
+  const [title, category, difficulty, xp_reward, brief] = (available.length ? available : pool)[Math.floor(Math.random() * (available.length ? available.length : pool.length))];
+  const record = kind === "mind" ? { lane: "mind", challenge_type: "research", title, category, difficulty, xp_reward, status: "generated", instructions: `Research “${title}” for 30 minutes using no AI. Focus: ${brief} Then explain it aloud for at least 30 seconds and write your own summary.`, research_minutes: 30 } : { lane: "body", challenge_type: "body_activity", title, category, difficulty, xp_reward, status: "generated", instructions: brief, research_minutes: null };
   if (!db) { challenges.unshift({ ...record, id: crypto.randomUUID(), created_at: new Date().toISOString() }); render(); return; }
-  const { error } = await db.from("mastery_challenges").insert(record);
-  if (error) return alert(`Could not create transmission: ${error.message}`);
+  const { error } = await db.from("mastery_challenges").insert(record); if (error) return alert(`Could not create transmission: ${error.message}`);
+  await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
+}
+
+async function actOnChallenge(id, action) {
+  const challenge = challenges.find(item => item.id === id); if (!challenge) return;
+  if (!db) { challenges = challenges.filter(item => action === "clear" ? item.id !== id : true).map(item => item.id === id ? { ...item, status: action === "accept" ? "accepted" : "denied" } : item); render(); return; }
+  if (action === "clear") { const { error } = await db.from("mastery_challenges").delete().eq("id", id); if (error) return alert(error.message); }
+  else { const patch = action === "accept" ? { status: "accepted", accepted_at: new Date().toISOString() } : { status: "denied", denied_at: new Date().toISOString() }; const { error } = await db.from("mastery_challenges").update(patch).eq("id", id); if (error) return alert(error.message); }
   await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
 }
 
 async function saveSystem(event) {
-  event.preventDefault();
-  const form = event.currentTarget, mode = form.dataset.systemMode, data = new FormData(form);
-  if (!db) return alert("Connect your private system database before using this feature.");
+  event.preventDefault(); const form = event.currentTarget, mode = form.dataset.systemMode, data = new FormData(form); if (!db) return alert("Connect your private system database before using this feature.");
   let error;
   if (mode === "deep-work") ({ error } = await db.from("deep_work_logs").insert({ area: data.get("area"), focus: String(data.get("focus")).trim(), duration_minutes: Number(data.get("duration_minutes")), output: String(data.get("output")).trim() }));
-  if (mode === "director") {
-    const user_id = await currentUserId();
-    ({ error } = await db.from("director_reviews").upsert({ user_id, quarter_key: quarterKey(), wins: String(data.get("wins")).trim() || null, bottlenecks: String(data.get("bottlenecks")).trim() || null, standards: String(data.get("standards")).trim() || null, next_focus: String(data.get("next_focus")).trim() || null, updated_at: new Date().toISOString() }, { onConflict: "user_id,quarter_key" }));
+  if (mode === "complete") {
+    const challenge = challenges.find(item => item.id === form.dataset.challengeId); if (!challenge) return;
+    const summary = String(data.get("summary")).trim();
+    ({ error } = await db.from("mastery_challenges").update({ summary, spoken_confirmed: data.get("spoken_confirmed") === "on", status: "completed", completed_at: new Date().toISOString() }).eq("id", challenge.id));
+    if (!error) ({ error } = await db.from("mastery_entries").insert({ category: challenge.category, title: challenge.title, summary, key_lessons: `Completed ${challenge.lane === "mind" ? "research" : "activity"} transmission · ${String(challenge.difficulty).toUpperCase()} difficulty.`, action_items: `Potential bonus XP reserved: +${Number(challenge.xp_reward || 0)}. XP remains paused until the campaign is launched.` }));
   }
-  if (mode === "complete") ({ error } = await db.from("mastery_challenges").update({ summary: String(data.get("summary")).trim(), spoken_confirmed: data.get("spoken_confirmed") === "on", completed_at: new Date().toISOString() }).eq("id", form.dataset.challengeId));
   if (error) return alert(error.message);
   document.querySelector("#mastery-system-dialog").close(); await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
 }
 
 async function load() {
   if (db) {
-    const [entryResult, missionResult, workResult, challengeResult, reviewResult] = await Promise.all([db.from("mastery_entries").select("*").order("created_at", { ascending: false }), db.from("missions").select("*"), db.from("deep_work_logs").select("*").order("created_at", { ascending: false }).limit(30), db.from("mastery_challenges").select("*").order("created_at", { ascending: false }).limit(12), db.from("director_reviews").select("*").order("updated_at", { ascending: false }).limit(4)]);
-    entries = entryResult.data || []; deepWork = workResult.data || []; challenges = challengeResult.data || []; directorReviews = reviewResult.data || [];
-    const recovery = (missionResult.data || []).find(mission => mission.category === "Recovery");
-    const recoveryComplete = recovery && (recovery.completed || (recovery.completion_type === "units" && Number(recovery.completed_count) >= Number(recovery.target_count)));
+    const [entryResult, missionResult, workResult, challengeResult] = await Promise.all([db.from("mastery_entries").select("*").order("created_at", { ascending: false }), db.from("missions").select("*"), db.from("deep_work_logs").select("*").order("created_at", { ascending: false }).limit(30), db.from("mastery_challenges").select("*").order("created_at", { ascending: false }).limit(30)]);
+    entries = entryResult.data || []; deepWork = workResult.data || []; challenges = challengeResult.data || [];
+    const recovery = (missionResult.data || []).find(mission => mission.category === "Recovery"); const recoveryComplete = recovery && (recovery.completed || (recovery.completion_type === "units" && Number(recovery.completed_count) >= Number(recovery.target_count)));
     recoveryReady = Boolean(recoveryComplete && localStorage.getItem("aegis-recovery-archived") === "yes");
-  }
-  render();
+  } render();
 }
 
 document.addEventListener("click", event => {
@@ -189,16 +179,12 @@ document.addEventListener("click", event => {
   if (typeButton) { const next = typeButton.dataset.masteryCleanType; if (!isLocked(next)) { activeType = next; saveView(); render(); } return; }
   if (event.target.closest("[data-mastery-clean-add]")) return openDialog();
   if (event.target.closest("[data-mastery-deep-work]")) return openSystemDialog("deep-work");
-  if (event.target.closest("[data-mastery-director-review]")) return openSystemDialog("director");
   const generate = event.target.closest("[data-mastery-generate]"); if (generate) return generateChallenge(generate.dataset.masteryGenerate);
+  const accept = event.target.closest("[data-mastery-accept]"); if (accept) return actOnChallenge(accept.dataset.masteryAccept, "accept");
+  const deny = event.target.closest("[data-mastery-deny]"); if (deny) return actOnChallenge(deny.dataset.masteryDeny, "deny");
+  const clear = event.target.closest("[data-mastery-clear]"); if (clear) return actOnChallenge(clear.dataset.masteryClear, "clear");
   const complete = event.target.closest("[data-mastery-complete-challenge]"); if (complete) { const challenge = challenges.find(item => item.id === complete.dataset.masteryCompleteChallenge); if (challenge) openSystemDialog("complete", challenge); }
 });
 
-function startMastery() {
-  if (window.__aegisMasteryCleanStarted) return;
-  window.__aegisMasteryCleanStarted = true;
-  new MutationObserver(() => { if (!cleanRendering) render(); }).observe(root, { childList: true });
-  buildDialogs(); load();
-}
-
+function startMastery() { if (window.__aegisMasteryCleanStarted) return; window.__aegisMasteryCleanStarted = true; new MutationObserver(() => { if (!cleanRendering) render(); }).observe(root, { childList: true }); buildDialogs(); load(); }
 if (document.readyState === "complete") startMastery(); else window.addEventListener("load", startMastery, { once: true });
