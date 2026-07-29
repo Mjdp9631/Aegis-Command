@@ -8,6 +8,31 @@ const mindTypes = ["Book", "Quote", "Trading Note", "Psychology", "Space", "Phil
 // confusing a rehabilitation log with a sport, combat session, or outdoor skill.
 const bodyTypes = ["Health", "Gym", "Mobility", "Performance", "Sports", "Outdoor Skills"];
 const researchTopics = [
+  ["Self-determination theory", "Psychology", "advanced", 55, "How autonomy, competence, and relatedness affect durable motivation."],
+  ["Locus of control", "Psychology", "standard", 35, "How internal and external control beliefs shape decisions, responsibility, and resilience."],
+  ["Attachment styles", "Psychology", "advanced", 55, "How attachment patterns can affect trust, conflict, independence, and relationships."],
+  ["Mere-exposure effect", "Psychology", "standard", 35, "Why repeated exposure can increase familiarity and preference without proving quality."],
+  ["Peak-end rule", "Psychology", "standard", 35, "Why people often judge an experience from its emotional peak and ending rather than its full duration."],
+  ["Ego depletion debate", "Psychology", "advanced", 55, "What the original self-control theory proposed, why replication matters, and what practical conclusion is justified."],
+  ["Yerkes-Dodson law", "Psychology", "standard", 35, "How arousal can help performance up to a point, then impair it as pressure rises."],
+  ["Law of averages", "Systems Thinking", "standard", 35, "Why small samples and gambler's-fallacy thinking can distort probability judgments."],
+  ["Solomon's paradox", "Psychology", "advanced", 55, "Why people can reason more wisely about another person's problem than their own."],
+  ["Pavlovian conditioning", "Psychology", "standard", 35, "What Pavlov's conditioning experiments actually showed about learned associations."],
+  ["The Coriolis effect", "Space", "advanced", 55, "How rotation changes apparent motion and why common weather explanations can be oversimplified."],
+  ["The Cambrian explosion", "History", "advanced", 55, "What rapid diversification in early animal life means and what it does not prove."],
+  ["The Pareto principle", "Systems Thinking", "standard", 35, "How uneven distributions can guide focus without becoming an excuse to ignore the remaining work."],
+  ["Emotional granularity", "Psychology", "advanced", 55, "How naming emotions precisely can improve regulation and decision-making."],
+  ["Ironic process theory", "Psychology", "advanced", 55, "Why trying not to think about something can make the thought more persistent."],
+  ["White holes", "Space", "advanced", 55, "What a white hole is as a theoretical time-reversal concept and why none are confirmed."],
+  ["The black hole information paradox", "Space", "advanced", 55, "Why black-hole evaporation creates a conflict between quantum information and classical gravity."],
+  ["Vacuum decay", "Space", "advanced", 55, "What a metastable vacuum would mean in quantum field theory, including uncertainty and timescale."],
+  ["Boltzmann brains", "Space", "advanced", 55, "Why this thought experiment tests cosmological models and assumptions about observers."],
+  ["Cognitive dissonance", "Psychology", "standard", 35, "How conflict between beliefs and behavior can drive rationalization or change."],
+  ["Prisoner's dilemma", "Systems Thinking", "standard", 35, "How individual incentives can produce a worse collective result and what cooperation changes."],
+  ["The Drake equation", "Space", "advanced", 55, "How the equation frames uncertainty about communicative civilizations rather than predicting a known answer."],
+  ["Antifragility", "Systems Thinking", "advanced", 55, "The distinction between fragile, robust, and systems that can benefit from manageable stressors."],
+  ["The Lindy effect", "History", "standard", 35, "Why the continued survival of some non-perishable ideas can affect estimates of their future life."],
+  ["Inversion", "Philosophy", "standard", 35, "How asking how to fail can reveal risks that a direct success-only plan misses."],
   ["Baader-Meinhof phenomenon", "Psychology", "standard", 35, "Why recently learned ideas seem to appear everywhere."],
   ["Paradox of choice", "Psychology", "standard", 35, "How too many options can reduce action and satisfaction."],
   ["Double-slit experiment", "Space", "advanced", 55, "What the experiment actually demonstrates and what it does not."],
@@ -77,10 +102,13 @@ function challengeCard(challenge) {
   const status = challenge.status || "generated";
   const laneLabel = challenge.lane === "mind" ? "RESEARCH TRANSMISSION" : "BODY TRANSMISSION";
   const reward = `<small class="challenge-reward">${difficultyLabel(challenge)}${complete ? " · recorded when XP campaign launches" : " · reserved on acceptance"}</small>`;
+  const assessment = typeof challenge.ai_assessment === "string" ? (() => { try { return JSON.parse(challenge.ai_assessment); } catch { return null; } })() : challenge.ai_assessment;
+  const feedback = complete && assessment ? `<div class="challenge-ai-feedback"><b>AEGIS accuracy check: ${escapeHtml(assessment.accuracy_grade || "Reviewed")}</b><span>${escapeHtml(assessment.overall_assessment || "")}</span>${Array.isArray(assessment.corrections) && assessment.corrections.length ? `<small>Correction: ${escapeHtml(assessment.corrections[0])}</small>` : ""}</div>` : "";
   let actions = "";
   if (complete) actions = `<span class="system-status">Filed to ${escapeHtml(challenge.category || "Mastery")} · ${dateOnly(challenge.completed_at)}</span>`;
   else if (status === "accepted") actions = `<div class="challenge-actions"><button class="primary compact" data-mastery-complete-challenge="${challenge.id}">Complete transmission</button><button class="ghost compact" data-mastery-deny="${challenge.id}">Deny</button></div>`;
   else actions = `<div class="challenge-actions"><button class="primary compact" data-mastery-accept="${challenge.id}">Accept</button><button class="ghost compact" data-mastery-deny="${challenge.id}">Deny</button></div>`;
+  if (complete && feedback) actions = `<div class="challenge-actions challenge-ai-result">${feedback}${actions}</div>`;
   return `<article class="mastery-challenge ${complete ? "complete" : ""} ${status}"><div><p class="eyebrow ${challenge.lane === "mind" ? "blue-text" : "green-text"}">${laneLabel}${complete ? " · COMPLETE" : status === "accepted" ? " · ACCEPTED" : " · AWAITING DECISION"}</p><h4>${escapeHtml(challenge.title)}</h4><p>${escapeHtml(challenge.instructions)}</p>${challenge.lane === "mind" ? `<small>30 minutes, no AI · explain it aloud for 30+ seconds, then write your own synthesis.</small>` : `<small>Use accessible, clinician-cleared activity only. No specialist purchase or team required.</small>`}${reward}${challenge.summary ? `<p class="challenge-summary"><b>Your debrief:</b> ${escapeHtml(challenge.summary)}</p>` : ""}</div>${actions}</article>`;
 }
 
@@ -139,7 +167,7 @@ function openDialog() {
 function openSystemDialog(mode, challenge) {
   const dialog = document.querySelector("#mastery-system-dialog"), close = `<button class="dialog-close" type="button" data-mastery-system-close>×</button>`;
   if (mode === "deep-work") dialog.innerHTML = `<form class="dialog-card mastery-form" data-system-mode="deep-work">${close}<p class="eyebrow blue-text">DEEP-WORK OUTPUT</p><h2>What did focused work produce?</h2><label>Focus area<select name="area"><option>Mind</option><option>Trading</option><option>Business</option></select></label><label>Focus<input name="focus" required placeholder="e.g. Market replay and structured notes" /></label><label>Minutes<input name="duration_minutes" type="number" min="1" max="1440" value="30" required /></label><label>Tangible output<textarea name="output" required placeholder="What exists now that did not exist before this session?"></textarea></label><button class="primary" type="submit">Log deep work</button></form>`;
-  if (mode === "complete") dialog.innerHTML = `<form class="dialog-card mastery-form" data-system-mode="complete" data-challenge-id="${challenge.id}">${close}<p class="eyebrow ${challenge.lane === "mind" ? "blue-text" : "green-text"}">TRANSMISSION DEBRIEF</p><h2>${escapeHtml(challenge.title)}</h2><p>${escapeHtml(challenge.instructions)}</p>${challenge.lane === "mind" ? `<label class="mastery-check"><input name="spoken_confirmed" type="checkbox" required /> I explained this aloud for at least 30 seconds.</label>` : ""}<label>Your summary / observation<textarea name="summary" required placeholder="What did you learn, notice, or change your mind about?"></textarea></label><button class="primary" type="submit">Complete transmission</button></form>`;
+  if (mode === "complete") dialog.innerHTML = `<form class="dialog-card mastery-form" data-system-mode="complete" data-challenge-id="${challenge.id}">${close}<p class="eyebrow ${challenge.lane === "mind" ? "blue-text" : "green-text"}">TRANSMISSION DEBRIEF</p><h2>${escapeHtml(challenge.title)}</h2><p>${escapeHtml(challenge.instructions)}</p>${challenge.lane === "mind" ? `<label class="mastery-check"><input name="spoken_confirmed" type="checkbox" required /> I explained this aloud for at least 30 seconds.</label><label>1 - What is it?<small>Define the concept in your own words.</small><textarea name="definition" required placeholder="Give a clear, accurate definition."></textarea></label><label>2 - What does this mean for you?<small>Connect it to your decisions, behavior, or perspective.</small><textarea name="personal_meaning" required placeholder="What does this clarify, challenge, or change for you?"></textarea></label><label>3 - How can you apply this?<small>Name one concrete action, experiment, or decision rule.</small><textarea name="application" required placeholder="How will you use this in real life?"></textarea></label><p class="mastery-ai-note">AEGIS will check factual accuracy and name corrections. It will not grade you for agreeing with it.</p>` : `<label>Your summary / observation<textarea name="summary" required placeholder="What did you learn, notice, or change your mind about?"></textarea></label>`}<button class="primary" type="submit">${challenge.lane === "mind" ? "Submit for AEGIS accuracy check" : "Complete transmission"}</button><p class="mastery-form-status" aria-live="polite"></p></form>`;
   dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close()); dialog.querySelector("form").addEventListener("submit", saveSystem); dialog.showModal();
 }
 
@@ -188,8 +216,26 @@ async function saveSystem(event) {
   if (mode === "deep-work") ({ error } = await db.from("deep_work_logs").insert({ area: data.get("area"), focus: String(data.get("focus")).trim(), duration_minutes: Number(data.get("duration_minutes")), output: String(data.get("output")).trim() }));
   if (mode === "complete") {
     const challenge = challenges.find(item => item.id === form.dataset.challengeId); if (!challenge) return;
-    const summary = String(data.get("summary")).trim();
-    ({ error } = await db.from("mastery_challenges").update({ summary, spoken_confirmed: data.get("spoken_confirmed") === "on", status: "completed", completed_at: new Date().toISOString() }).eq("id", challenge.id));
+    const definition = String(data.get("definition") || "").trim();
+    const personalMeaning = String(data.get("personal_meaning") || "").trim();
+    const application = String(data.get("application") || "").trim();
+    const summary = challenge.lane === "mind" ? `Definition: ${definition}\n\nWhat it means for me: ${personalMeaning}\n\nApplication: ${application}` : String(data.get("summary")).trim();
+    let assessment = null;
+    if (challenge.lane === "mind") {
+      const reviewStatus = form.querySelector(".mastery-form-status");
+      if (reviewStatus) reviewStatus.textContent = "AEGIS is checking the accuracy of your synthesis...";
+      try {
+        const { data: { session } } = await db.auth.getSession();
+        const response = await fetch("/api/mastery-review", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session?.access_token || ""}` }, body: JSON.stringify({ topic: challenge.title, category: challenge.category, definition, personal_meaning: personalMeaning, application }) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "AEGIS could not review this synthesis.");
+        assessment = result.assessment;
+      } catch (reviewError) {
+        if (reviewStatus) reviewStatus.textContent = reviewError.message || "The accuracy check failed. This transmission was not filed.";
+        return;
+      }
+    }
+    ({ error } = await db.from("mastery_challenges").update({ summary, spoken_confirmed: data.get("spoken_confirmed") === "on", research_definition: definition || null, research_personal_meaning: personalMeaning || null, research_application: application || null, ai_assessment: assessment, status: "completed", completed_at: new Date().toISOString() }).eq("id", challenge.id));
     if (!error) ({ error } = await db.from("mastery_entries").insert({ category: challenge.category, title: challenge.title, summary, key_lessons: `Completed ${challenge.lane === "mind" ? "research" : "activity"} transmission · ${String(challenge.difficulty).toUpperCase()} difficulty.`, action_items: `Potential bonus XP reserved: +${Number(challenge.xp_reward || 0)}. XP remains paused until the campaign is launched.` }));
   }
   if (error) return alert(error.message);
