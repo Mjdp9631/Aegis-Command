@@ -82,7 +82,7 @@ const recoverySafeChallenges = [
 
 let lane = localStorage.getItem("aegis-mastery-lane") === "body" ? "body" : "mind";
 let activeType = localStorage.getItem("aegis-mastery-type") || (lane === "body" ? "Health" : "Book");
-let entries = [], deepWork = [], challenges = [];
+let entries = [], deepWork = [], challenges = [], trainingSessions = [], trainingSets = [], weightLogs = [], foodLogs = [];
 let recoveryReady = false, cleanRendering = false;
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]));
@@ -95,6 +95,19 @@ const difficultyLabel = challenge => `${String(challenge.difficulty || "standard
 
 function entryCard(entry) {
   return `<article class="mastery-entry"><div class="entry-meta"><span>${escapeHtml(entry.category)}</span>${entry.rating ? `<b>${entry.rating}/5</b>` : ""}</div><h3>${escapeHtml(entry.title)}</h3>${entry.summary ? `<p>${escapeHtml(entry.summary)}</p>` : ""}${entry.key_lessons ? `<p><b>Key takeaways:</b> ${escapeHtml(entry.key_lessons)}</p>` : ""}</article>`;
+}
+
+function trainingCard(session) {
+  const sets = trainingSets.filter(set => set.session_id === session.id);
+  return `<article class="mastery-entry training-entry"><div class="entry-meta"><span>${escapeHtml(session.workout_split || session.session_type || "GYM")}</span><b>${dateOnly(session.logged_on || session.created_at)}</b></div><h3>${escapeHtml(session.title || "Training session")}</h3>${sets.length ? `<div class="training-set-summary">${sets.map(set => `<span><b>${escapeHtml(set.exercise_name)}</b> · ${Number(set.weight_lbs || 0)} lb × ${Number(set.reps || 0)} × ${Number(set.sets || 1)}</span>`).join("")}</div>` : ""}${session.notes ? `<p>${escapeHtml(session.notes)}</p>` : ""}</article>`;
+}
+
+function healthCard() {
+  const today = new Date().toISOString().slice(0, 10);
+  const todayWeights = weightLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today);
+  const todayFoods = foodLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today);
+  const sum = field => Math.round(todayFoods.reduce((total, item) => total + Number(item[field] || 0), 0));
+  return `<article class="mastery-entry health-entry"><div class="entry-meta"><span>HEALTH PULSE · TODAY</span></div><h3>${todayWeights.length ? todayWeights.map(item => `${item.measured_at}: ${item.weight_lbs} lb`).join(" · ") : "No weigh-ins logged today"}</h3><p>${todayFoods.length ? `${todayFoods.length} foods · ~${sum("calories")} kcal · ${sum("protein_g")}g protein · ${sum("fiber_g")}g fiber · ${sum("fat_g")}g fat · ${sum("sugar_g")}g sugar` : "Add food as a rough estimate—precision is optional; consistency is the point."}</p></article>`;
 }
 
 function challengeCard(challenge) {
@@ -130,7 +143,8 @@ function render() {
   const visible = entries.filter(entry => entry.category === activeType);
   const isCurrentLocked = isLocked(activeType);
   const categoryCards = `<div class="mastery-category-grid">${types.map(type => `<button class="mastery-category ${type === activeType ? "active" : ""} ${isLocked(type) ? "locked" : ""}" data-mastery-clean-type="${type}"><small>${type.toUpperCase()}${isLocked(type) ? " · LOCKED" : ""}</small><strong>${entries.filter(entry => entry.category === type).length}</strong><small>${type === "Book" ? "books and reading notes" : isLocked(type) ? "complete Recovery to unlock" : "entries captured"}</small></button>`).join("")}</div>`;
-  const content = isCurrentLocked ? `<div class="mastery-lock"><h3>${activeType} locked</h3><p>Unlocks after Recovery is completed and you confirm archiving the Recovery section.</p></div>` : (visible.map(entryCard).join("") || `<div class="mastery-empty">Nothing logged here yet. Capture the first useful item.</div>`);
+  const specialContent = activeType === "Gym" ? trainingSessions.slice(0, 12).map(trainingCard).join("") : activeType === "Health" ? healthCard() : "";
+  const content = isCurrentLocked ? `<div class="mastery-lock"><h3>${activeType} locked</h3><p>Unlocks after Recovery is completed and you confirm archiving the Recovery section.</p></div>` : (specialContent || visible.map(entryCard).join("") || `<div class="mastery-empty">Nothing logged here yet. Capture the first useful item.</div>`);
   root.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Capture knowledge worth using, produce focused work, and train only what your foundation supports.</p></div><div class="mastery-tabs"><button class="mastery-tab ${lane === "mind" ? "active" : ""}" data-mastery-clean-lane="mind">Mind</button><button class="mastery-tab ${lane === "body" ? "active" : ""}" data-mastery-clean-lane="body">Body</button></div>${categoryCards}${systemsPanel()}<div class="mastery-toolbar"><h3>${typeLabel(activeType)}</h3>${isCurrentLocked ? "" : `<button class="primary compact" data-mastery-clean-add>+ Add entry</button>`}</div><div class="mastery-list">${content}</div>`;
   setTimeout(() => { cleanRendering = false; }, 0);
 }
@@ -155,13 +169,37 @@ function buildDialogs() {
   entryDialog.querySelector("select").addEventListener("change", event => { entryDialog.querySelector("#mastery-clean-fields").innerHTML = fieldsFor(event.target.value); });
   entryDialog.querySelector("form").addEventListener("submit", saveEntry);
   const systemDialog = document.createElement("dialog"); systemDialog.id = "mastery-system-dialog"; document.body.append(systemDialog);
+  const fitnessDialog = document.createElement("dialog");
+  fitnessDialog.id = "mastery-fitness-dialog";
+  document.body.append(fitnessDialog);
 }
 
 function openDialog() {
+  if (activeType === "Gym" || activeType === "Health") return openFitnessDialog(activeType);
   const dialog = document.querySelector("#mastery-clean-dialog"), select = dialog.querySelector("select");
   const allowed = lane === "mind" ? mindTypes : bodyTypes.filter(type => !isLocked(type));
   select.innerHTML = allowed.map(type => `<option value="${type}">${typeLabel(type)}</option>`).join(""); select.value = activeType;
   dialog.querySelector("#mastery-clean-fields").innerHTML = fieldsFor(activeType); dialog.showModal();
+}
+
+function gymSetRow() {
+  return `<div class="exercise-row"><label>Exercise<input name="exercise_name" required placeholder="e.g. DB bench press" /></label><label>Weight (lb)<input name="weight_lbs" type="number" min="0" step="0.5" required /></label><label>Reps<input name="reps" type="number" min="1" required /></label><label>Sets<input name="sets" type="number" min="1" value="1" required /></label><button class="ghost compact" type="button" data-remove-exercise>Remove</button></div>`;
+}
+
+function foodRow() {
+  return `<div class="nutrition-row"><label>Food<input name="food_name" required placeholder="e.g. Chicken rice bowl" /></label><label>Calories<input name="calories" type="number" min="0" placeholder="rough" /></label><label>Protein g<input name="protein_g" type="number" min="0" step="0.1" /></label><label>Fiber g<input name="fiber_g" type="number" min="0" step="0.1" /></label><label>Fat g<input name="fat_g" type="number" min="0" step="0.1" /></label><label>Sugar g<input name="sugar_g" type="number" min="0" step="0.1" /></label><button class="ghost compact" type="button" data-remove-food>Remove</button></div>`;
+}
+
+function openFitnessDialog(type) {
+  const dialog = document.querySelector("#mastery-fitness-dialog");
+  if (type === "Gym") dialog.innerHTML = `<form class="dialog-card mastery-form fitness-form" data-fitness-mode="gym"><button class="dialog-close" type="button">×</button><p class="eyebrow green-text">GYM LOG</p><h2>Record the work.</h2><p class="schedule-copy">Each line becomes training evidence. AEGIS compares the same exercise over time for load, reps, and total volume.</p><label>Workout split<select name="workout_split" required><option>Legs</option><option>Push</option><option>Pull</option><option>Upper Body</option><option>Lower Body</option><option>Recovery-safe mobility</option></select></label><label>Session note <span class="field-optional">optional</span><textarea name="notes" placeholder="Energy, pain, form cue, or anything worth tracking."></textarea></label><div class="form-subhead"><b>Exercise sets</b><button class="ghost compact" type="button" data-add-exercise>+ Add exercise</button></div><div class="exercise-list">${gymSetRow()}</div><button class="primary" type="submit">Save gym session</button></form>`;
+  else dialog.innerHTML = `<form class="dialog-card mastery-form fitness-form" data-fitness-mode="health"><button class="dialog-close" type="button">×</button><p class="eyebrow green-text">HEALTH LOG</p><h2>Capture the signal.</h2><p class="schedule-copy">Use rough estimates. The trend matters more than pretending every macro is exact.</p><div class="health-weight-grid"><label>AM weight (lb) <span class="field-optional">optional</span><input name="am_weight" type="number" min="1" step="0.1" /></label><label>PM weight (lb) <span class="field-optional">optional</span><input name="pm_weight" type="number" min="1" step="0.1" /></label></div><div class="form-subhead"><b>Food intake · rough estimates</b><button class="ghost compact" type="button" data-add-food>+ Add food</button></div><div class="food-list">${foodRow()}</div><label>Health note <span class="field-optional">optional</span><textarea name="notes" placeholder="Sleep, hydration, appetite, recovery, or a pattern worth remembering."></textarea></label><button class="primary" type="submit">Save health log</button></form>`;
+  dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
+  dialog.querySelector("[data-add-exercise]")?.addEventListener("click", () => dialog.querySelector(".exercise-list").insertAdjacentHTML("beforeend", gymSetRow()));
+  dialog.querySelector("[data-add-food]")?.addEventListener("click", () => dialog.querySelector(".food-list").insertAdjacentHTML("beforeend", foodRow()));
+  dialog.onclick = event => { const removeExercise = event.target.closest("[data-remove-exercise]"); const removeFood = event.target.closest("[data-remove-food]"); if (removeExercise) removeExercise.closest(".exercise-row")?.remove(); if (removeFood) removeFood.closest(".nutrition-row")?.remove(); };
+  dialog.querySelector("form").addEventListener("submit", saveFitnessLog);
+  dialog.showModal();
 }
 
 function openSystemDialog(mode, challenge) {
@@ -179,6 +217,57 @@ async function saveEntry(event) {
   if (!record.title) return;
   if (db) { const { error } = await db.from("mastery_entries").insert(record); if (error) return alert(error.message); } else entries.unshift(record);
   lane = bodyTypes.includes(category) ? "body" : "mind"; activeType = category; saveView(); document.querySelector("#mastery-clean-dialog").close(); await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
+}
+
+async function saveFitnessLog(event) {
+  event.preventDefault();
+  if (!db) return alert("Connect your private system database before saving fitness evidence.");
+  const form = event.currentTarget;
+  const mode = form.dataset.fitnessMode;
+  const data = new FormData(form);
+  const userId = await currentUserId();
+  if (!userId) return alert("Your session has expired. Please sign in again.");
+  const loggedOn = new Date().toISOString().slice(0, 10);
+  try {
+    if (mode === "gym") {
+      const workoutSplit = String(data.get("workout_split") || "").trim();
+      const rows = [...form.querySelectorAll(".exercise-row")].map(row => ({
+        exercise_name: String(row.querySelector('[name="exercise_name"]')?.value || "").trim(),
+        weight_lbs: Number(row.querySelector('[name="weight_lbs"]')?.value || 0),
+        reps: Number(row.querySelector('[name="reps"]')?.value || 0),
+        sets: Number(row.querySelector('[name="sets"]')?.value || 0)
+      })).filter(row => row.exercise_name && row.reps > 0 && row.sets > 0);
+      if (!rows.length) return alert("Add at least one completed exercise set.");
+      const { data: session, error: sessionError } = await db.from("training_sessions").insert({
+        user_id: userId, session_type: "Gym", title: `${workoutSplit} workout`, workout_split: workoutSplit,
+        notes: String(data.get("notes") || "").trim() || null, logged_on: loggedOn
+      }).select().single();
+      if (sessionError) throw sessionError;
+      const { error: setError } = await db.from("training_sets").insert(rows.map(row => ({ ...row, user_id: userId, session_id: session.id, logged_on: loggedOn })));
+      if (setError) throw setError;
+    } else {
+      const weights = [["AM", data.get("am_weight")], ["PM", data.get("pm_weight")]]
+        .filter(([, value]) => value !== null && String(value).trim() !== "")
+        .map(([measured_at, value]) => ({ user_id: userId, measured_at, weight_lbs: Number(value), logged_on: loggedOn }));
+      const foods = [...form.querySelectorAll(".nutrition-row")].map(row => ({
+        food_name: String(row.querySelector('[name="food_name"]')?.value || "").trim(),
+        calories: Number(row.querySelector('[name="calories"]')?.value || 0) || null,
+        protein_g: Number(row.querySelector('[name="protein_g"]')?.value || 0) || null,
+        fiber_g: Number(row.querySelector('[name="fiber_g"]')?.value || 0) || null,
+        fat_g: Number(row.querySelector('[name="fat_g"]')?.value || 0) || null,
+        sugar_g: Number(row.querySelector('[name="sugar_g"]')?.value || 0) || null,
+        user_id: userId, logged_on: loggedOn
+      })).filter(row => row.food_name);
+      if (weights.length) { const { error } = await db.from("health_weight_logs").insert(weights); if (error) throw error; }
+      if (foods.length) { const { error } = await db.from("health_food_logs").insert(foods); if (error) throw error; }
+      if (!weights.length && !foods.length) return alert("Add a weigh-in or at least one food item.");
+    }
+    document.querySelector("#mastery-fitness-dialog")?.close();
+    await load();
+    window.dispatchEvent(new Event("aegis:mastery-changed"));
+  } catch (error) {
+    alert(`Could not save this evidence: ${error.message || error}. Run the Phase 0 fitness migration first if this is a new feature.`);
+  }
 }
 
 async function generateChallenge(kind) {
@@ -244,8 +333,13 @@ async function saveSystem(event) {
 
 async function load() {
   if (db) {
-    const [entryResult, missionResult, workResult, challengeResult] = await Promise.all([db.from("mastery_entries").select("*").order("created_at", { ascending: false }), db.from("missions").select("*"), db.from("deep_work_logs").select("*").order("created_at", { ascending: false }).limit(30), db.from("mastery_challenges").select("*").order("created_at", { ascending: false }).limit(30)]);
+    const [entryResult, missionResult, workResult, challengeResult, sessionResult, setResult, weightResult, foodResult] = await Promise.all([
+      db.from("mastery_entries").select("*").order("created_at", { ascending: false }), db.from("missions").select("*"), db.from("deep_work_logs").select("*").order("created_at", { ascending: false }).limit(30), db.from("mastery_challenges").select("*").order("created_at", { ascending: false }).limit(30),
+      db.from("training_sessions").select("*").order("logged_on", { ascending: false }).limit(40), db.from("training_sets").select("*").order("logged_on", { ascending: false }).limit(240),
+      db.from("health_weight_logs").select("*").order("logged_on", { ascending: false }).limit(60), db.from("health_food_logs").select("*").order("logged_on", { ascending: false }).limit(240)
+    ]);
     entries = entryResult.data || []; deepWork = workResult.data || []; challenges = challengeResult.data || [];
+    trainingSessions = sessionResult.data || []; trainingSets = setResult.data || []; weightLogs = weightResult.data || []; foodLogs = foodResult.data || [];
     const recovery = (missionResult.data || []).find(mission => mission.category === "Recovery"); const recoveryComplete = recovery && (recovery.completed || (recovery.completion_type === "units" && Number(recovery.completed_count) >= Number(recovery.target_count)));
     recoveryReady = Boolean(recoveryComplete && localStorage.getItem("aegis-recovery-archived") === "yes");
   } render();

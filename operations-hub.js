@@ -25,18 +25,40 @@ const cachedOperations = () => {
 };
 const saveCachedOperations = () => localStorage.setItem("aegis-operations", JSON.stringify(operations));
 const esc = (value = "") => String(value).replace(/[&<>\"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
-const statusOrder = ["Queued", "Ongoing", "Complete"];
-const priorityFor = (category) => category === "Recovery" || category === "Trading" ? "High" : "Medium";
+// Claim the queue before legacy dashboard code has a chance to repaint it.
+window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
+const statusOrder = ["Queued", "Scheduled", "Ongoing", "Complete"];
+const priorityFor = (category) => category === "Recovery" || category === "Trading" ? "High" : category === "Body" ? "High" : "Medium";
 const dateOnly = (value) => value ? String(value).slice(0, 10) : "";
 
 const starterOperations = () => {
   return [
-    ["Complete prescribed ACL rehab", "Recovery"],
     ["Pre-market analysis", "Trading"],
     ["Review charts and document one lesson", "Trading"],
     ["Read one chapter", "Mind"],
     ["Evening mission debrief", "Mind"],
-  ].map(([title, category]) => ({ title, category, completed: false, scheduled_date: null, status: "Queued" }));
+  ].map(([title, category]) => ({ title, category, completed: false, scheduled_date: null, scheduled_time: null, operation_date: todayKey(), is_daily: true, status: "Queued" }));
+};
+
+const gymSplitForToday = () => {
+  const split = ["Rest", "Legs", "Push", "Pull", "Rest", "Upper Body", "Lower Body"];
+  return split[new Date().getDay()];
+};
+const gymOperationForToday = () => {
+  const split = gymSplitForToday();
+  const isRest = split === "Rest";
+  return {
+    title: isRest ? "Recovery — rest and reset" : `Gym — ${split}`,
+    category: isRest ? "Recovery" : "Body",
+    priority: isRest ? "Medium" : "High",
+    status: "Queued",
+    completed: false,
+    is_daily: true,
+    operation_date: todayKey(),
+    brief: isRest
+      ? "Protect recovery: light mobility only if it feels good, hydrate, sleep on time, and do not turn rest into a missed plan."
+      : `Complete the ${split} session selected in Self Mastery. Log every exercise with weight, reps, and sets so AEGIS can evaluate progressive improvement.`,
+  };
 };
 
 let operations = [];
@@ -87,6 +109,12 @@ function checklistFor(operation) {
     "Compare the feedback with what was actually executed, not intention.",
     "Record one adjustment or schedule tomorrow's first clear operation.",
   ];
+  if (/gym.*legs/.test(name)) return ["Open Self Mastery > Body > Gym.", "Choose Legs and log each exercise, load, reps, and completed sets.", "Stop at the recovery-safe limit and record anything that needs attention."];
+  if (/gym.*push/.test(name)) return ["Open Self Mastery > Body > Gym.", "Choose Push and log each exercise, load, reps, and completed sets.", "Use controlled form; record the work so progression is measurable."];
+  if (/gym.*pull/.test(name)) return ["Open Self Mastery > Body > Gym.", "Choose Pull and log each exercise, load, reps, and completed sets.", "Record any pain, limitation, or performance change honestly."];
+  if (/gym.*upper body/.test(name)) return ["Open Self Mastery > Body > Gym.", "Choose Upper Body and log every exercise, load, reps, and sets.", "Keep the session consistent enough for next week's comparison."];
+  if (/gym.*lower body/.test(name)) return ["Open Self Mastery > Body > Gym.", "Choose Lower Body only within your PT/orthopedic clearance.", "Log exercise, weight, reps, and sets; flag knee symptoms rather than pushing through them."];
+  if (/rest and reset/.test(name)) return ["Keep training load intentionally low.", "Log AM/PM weight or nutrition if useful.", "Prepare the next training day and protect sleep."];
   return [
     "Read the mission this operation advances and define the evidence of completion.",
     "Do the work deliberately and update the status honestly.",
@@ -96,8 +124,18 @@ function checklistFor(operation) {
 
 function resolveMission(operation) {
   if (operation.mission_id) return missions.find((mission) => mission.id === operation.mission_id) || null;
-  const category = String(operation.category || "").toLowerCase();
   const title = String(operation.title || "").toLowerCase();
+  // These are intentionally exact enough to keep daily evidence attached to
+  // the right Phase 0 mission instead of whichever mission happens to share a
+  // category.
+  const byPhrase = (phrases) => missions.find((mission) => !mission.completed && phrases.some((phrase) => `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().includes(phrase)));
+  if (/pt session|orthopedic|acl rehab/.test(title)) return byPhrase(["orthopedic recovery", "pt sessions", "return to sports"]);
+  if (/gym|legs|push|pull|upper body|lower body|rest and reset/.test(title)) return byPhrase(["training baseline", "recovery-safe"]);
+  if (/review charts|trade review/.test(title)) return byPhrase(["evidence-based trade reviews", "process review"]);
+  if (/mission debrief|evening debrief/.test(title)) return byPhrase(["operating debrief rhythm", "operating baseline"]);
+  if (/read one chapter|read chapter/.test(title)) return byPhrase(["learning rhythm", "chapters"]);
+  if (/pre-market/.test(title)) return byPhrase(["trading preparation rhythm", "execution playbook", "pre-market"]);
+  const category = String(operation.category || "").toLowerCase();
   const candidates = missions.filter((mission) => !mission.completed && String(mission.category || "").toLowerCase() === category);
   if (!candidates.length) return null;
   const measured = candidates.filter((mission) => String(mission.completion_type || "").toLowerCase() === "units" && Number(mission.target_count) > 0);
@@ -105,7 +143,12 @@ function resolveMission(operation) {
     const unit = String(mission.unit_label || "").toLowerCase();
     return (/acl|rehab|pt|orthopedic/.test(title) && /session|rehab|pt/.test(unit)) || (/read|chapter/.test(title) && /chapter|page/.test(unit));
   });
-  return unitMatch || measured[0] || candidates[0];
+  const titleMatch = measured.find((mission) => {
+    const text = `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase();
+    return (/playbook|condition|location|cbr|shift|entry|review/.test(title) && /playbook|trading/.test(text)) ||
+      (/daily scorecard|chapter|debrief/.test(title) && /scorecard|baseline|daily/.test(text));
+  });
+  return unitMatch || titleMatch || measured[0] || candidates[0];
 }
 
 function priorityClass(priority) {
@@ -118,7 +161,7 @@ function priorityClass(priority) {
 function mergeSavedStatus(remote = []) {
   const saved = cachedOperations();
   if (!saved.length) return remote;
-  return remote.map((operation) => {
+  const merged = remote.map((operation) => {
     const local = saved.find((item) => String(item.id || item.title) === String(operation.id || operation.title));
     return local ? {
       ...operation,
@@ -129,6 +172,12 @@ function mergeSavedStatus(remote = []) {
       ...Object.fromEntries(Object.entries(local).filter(([, value]) => value !== undefined)),
     } : operation;
   });
+  // A network refresh must never erase an operation that was just created or
+  // updated locally while the database response is catching up.
+  saved.forEach((local) => {
+    if (!merged.some((remote) => String(remote.id || remote.title) === String(local.id || local.title))) merged.push(local);
+  });
+  return merged;
 }
 
 function queueTarget() {
@@ -136,34 +185,51 @@ function queueTarget() {
 }
 
 function isDailyOperation(operation) {
-  return /pre-market|review charts|read one chapter|mission debrief|daily/i.test(String(operation.title || ""));
+  return Boolean(operation.is_daily) || /pre-market|review charts|read one chapter|mission debrief|daily|^gym|rest and reset/i.test(String(operation.title || ""));
 }
 
 function queueOperations() {
   const start = todayKey();
   const horizon = new Date();
-  horizon.setDate(horizon.getDate() + 7);
+  horizon.setDate(horizon.getDate() + 14);
   const end = dayKey(horizon);
-  const relevant = operations.filter((operation) => {
+  const today = operations.filter((operation) => {
     if (normalizedStatus(operation) === "Complete" && !isCompleteToday(operation)) return false;
     const scheduled = dateOnly(operation.scheduled_date);
-    // Recurring routines are a single current-day item, not calendar events.
+    const operationDay = dateOnly(operation.operation_date);
+    if (isDailyOperation(operation) && operationDay && operationDay !== start) return false;
     if (isDailyOperation(operation)) return true;
     if (scheduled === start) return true;
-    if (scheduled > start && scheduled <= end) return true;
-    // Important standing operations remain visible without becoming calendar clutter.
     return !scheduled;
-  }).sort((a, b) => {
+  });
+  const upcoming = operations.filter((operation) => {
+    if (normalizedStatus(operation) === "Complete") return false;
+    const scheduled = dateOnly(operation.scheduled_date);
+    return scheduled > start && scheduled <= end;
+  });
+  const sort = (items) => items.sort((a, b) => {
     const aDate = dateOnly(a.scheduled_date) || "9999-12-31";
     const bDate = dateOnly(b.scheduled_date) || "9999-12-31";
     return aDate.localeCompare(bDate) || String(a.title).localeCompare(String(b.title));
   });
   const unique = new Map();
-  relevant.forEach((operation) => {
-    const key = String(operation.title || "").trim().toLowerCase();
+  const uniqueItems = (items) => items.filter((operation) => {
+    const key = `${String(operation.title || "").trim().toLowerCase()}|${dateOnly(operation.operation_date) || dateOnly(operation.scheduled_date) || "standing"}`;
     if (!unique.has(key)) unique.set(key, operation);
+    else return false;
+    return true;
   });
-  return [...unique.values()];
+  const todayItems = uniqueItems(sort(today));
+  const upcomingItems = uniqueItems(sort(upcoming));
+  // Never show an empty command queue solely because a legacy record has a
+  // malformed or stale date. Keep a compact operational fallback visible.
+  if (!todayItems.length && operations.length) {
+    const fallback = operations
+      .filter((operation) => normalizedStatus(operation) !== "Complete" || isCompleteToday(operation))
+      .slice(0, 8);
+    return { today: uniqueItems(fallback), upcoming: upcomingItems };
+  }
+  return { today: todayItems, upcoming: upcomingItems };
 }
 
 function renderQueue() {
@@ -172,26 +238,28 @@ function renderQueue() {
   if (!operations.length) operations = cachedOperations();
   if (!operations.length) operations = starterOperations();
   const active = queueOperations();
-  if (!active.length) {
+  const rows = (items, kind = "today") => items.map((operation) => {
+      const status = normalizedStatus(operation);
+      const priority = operation.priority || priorityFor(operation.category);
+      const scheduled = dateOnly(operation.scheduled_date);
+      const time = operation.scheduled_time ? ` · ${String(operation.scheduled_time).slice(0, 5)}` : "";
+      const timing = scheduled ? `${new Date(`${scheduled}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}${time}` : "Schedule";
+      const doneClass = status === "Complete" ? " done operation-complete" : "";
+      return `<article class="operation operation-table-row operation-table-v2${doneClass}">
+        <button type="button" class="operation-status ${status.toLowerCase()}" data-hub-status="${esc(operation.id || operation.title)}"><i></i>${esc(status)}</button>
+        <span class="hub-operation-stack"><button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.id || operation.title)}">${esc(operation.title)}</button><button type="button" class="operation-schedule-control ${scheduled ? "is-scheduled" : ""}" data-hub-schedule="${esc(operation.id || operation.title)}">${esc(timing)}</button></span>
+        <span>${esc(operation.category || "Mission")}</span>
+        <b class="${priorityClass(priority)}">${esc(priority)}</b>
+      </article>`;
+    }).join("");
+  if (!active.today.length && !active.upcoming.length) {
     target.innerHTML = '<p class="empty-operations">No operations for today or the next seven days. Schedule the next deliberate move from Mission Control.</p>';
     return;
   }
   target.innerHTML = `
-    <div class="operation-table-head operation-table-v2"><span>STATUS</span><span>OPERATION</span><span>WHEN</span><span>CATEGORY</span><span>PRIORITY</span></div>
-    ${active.map((operation) => {
-      const status = normalizedStatus(operation);
-      const priority = operation.priority || priorityFor(operation.category);
-      const scheduled = dateOnly(operation.scheduled_date);
-      const timing = scheduled ? new Date(`${scheduled}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Schedule";
-      const doneClass = status === "Complete" ? " done operation-complete" : "";
-      return `<article class="operation operation-table-row operation-table-v2${doneClass}">
-        <button type="button" class="operation-status ${status.toLowerCase()}" data-hub-status="${esc(operation.id || operation.title)}"><i></i>${esc(status)}</button>
-        <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.id || operation.title)}">${esc(operation.title)}</button>
-        <button type="button" class="operation-schedule-control ${scheduled ? "is-scheduled" : ""}" data-hub-schedule="${esc(operation.id || operation.title)}">${esc(timing)}</button>
-        <span>${esc(operation.category || "Mission")}</span>
-        <b class="${priorityClass(priority)}">${esc(priority)}</b>
-      </article>`;
-    }).join("")}`;
+    <div class="operation-table-head operation-table-v2"><span>STATUS</span><span>OPERATION</span><span>CATEGORY</span><span>PRIORITY</span></div>
+    ${rows(active.today)}
+    ${active.upcoming.length ? `<p class="operations-upcoming-label">UPCOMING / NEXT 14 DAYS</p>${rows(active.upcoming, "upcoming")}` : ""}`;
   target.querySelectorAll("[data-hub-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.hubStatus)));
   target.querySelectorAll("[data-hub-schedule]").forEach((button) => button.addEventListener("click", () => openScheduleDialog(findOperation(button.dataset.hubSchedule))));
   target.querySelectorAll("[data-hub-detail]").forEach((button) => button.addEventListener("click", () => showOperationDetail(button.dataset.hubDetail)));
@@ -211,10 +279,10 @@ function showOperationDetail(key) {
 }
 
 async function persist(operation) {
-  if (!client || !currentUser || !operation.id) return;
-  const payload = { status: operation.status, completed: operation.completed, scheduled_date: operation.scheduled_date || null };
+  if (!client || !currentUser || !operation.id) return true;
+  const payload = { status: operation.status, completed: operation.completed, scheduled_date: operation.scheduled_date || null, scheduled_time: operation.scheduled_time || null, operation_date: operation.operation_date || null, is_daily: Boolean(operation.is_daily) };
   const { error } = await client.from("operations").update(payload).eq("id", operation.id).eq("user_id", currentUser.id);
-  if (error) console.warn("Could not save operation status", error.message);
+  if (error) { console.warn("Could not save operation status", error.message); return false; }
   const evidence = {
     completed_on: operation.completed_on || null,
     mission_id: operation.mission_id || null,
@@ -222,9 +290,16 @@ async function persist(operation) {
   };
   const { error: evidenceError } = await client.from("operations").update(evidence).eq("id", operation.id).eq("user_id", currentUser.id);
   if (evidenceError) console.warn("Operation evidence columns are not ready yet", evidenceError.message);
+  // The primary status was saved above. Evidence fields are a progressive
+  // enhancement, so an older database must not make the queue look unsaved.
+  return true;
 }
 
 async function updateMissionEvidence(operation, direction) {
+  // A debrief is the daily audit, not a second unit of progress. The chapter
+  // (or another explicitly-linked operation) supplies the evidence; reading
+  // the advisory must never advance the same 30-day mission twice.
+  if (/evening\s+mission\s+debrief/i.test(String(operation.title || ""))) return;
   const mission = resolveMission(operation);
   if (!mission || String(mission.completion_type || "").toLowerCase() !== "units") return;
   const target = Math.max(1, Number(mission.target_count || 1));
@@ -280,16 +355,45 @@ async function seedIfEmpty() {
   const { data, error } = await client.from("operations").select("*").eq("user_id", currentUser.id).order("scheduled_date", { ascending: true }).order("created_at", { ascending: true });
   if (error) {
     console.warn("Could not load operations", error.message);
-    return starterOperations();
+    const local = cachedOperations();
+    return ensureTodayOperations(local.length ? local : starterOperations());
   }
-  if (data?.length) return mergeSavedStatus(data);
+  if (data?.length) return ensureTodayOperations(mergeSavedStatus(data));
   const seed = starterOperations().map((operation) => ({ ...operation, user_id: currentUser.id }));
   const { data: inserted, error: insertError } = await client.from("operations").insert(seed).select();
   if (insertError) {
     console.warn("Could not seed operations", insertError.message);
     return seed;
   }
-  return inserted || seed;
+  return ensureTodayOperations(inserted || seed);
+}
+
+async function ensureTodayOperations(records = []) {
+  const daily = [
+    ["Pre-market analysis", "Trading", "Mark higher-timeframe condition, key liquidity/reaction levels, and the valid setup before active price reaches the area."],
+    ["Review charts and document one lesson", "Trading", "Review one relevant chart or completed trade, capture one process lesson, and file it in Detective or Self Mastery."],
+    ["Read one chapter", "Mind", "Read one chapter without notifications, then capture one useful idea, quote, or action in Self Mastery."],
+    ["Evening mission debrief", "Mind", "Read Jarvis and Alfred's evening reflection, compare it with what you actually executed, then write one adjustment for tomorrow."],
+  ].map(([title, category, brief]) => ({ title, category, brief, priority: priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: todayKey() }));
+  daily.push(gymOperationForToday());
+
+  const additions = daily.filter((planned) => !records.some((operation) => dateOnly(operation.operation_date) === todayKey() && String(operation.title || "").toLowerCase() === planned.title.toLowerCase()));
+  const recovery = resolveMission({ title: "Orthopedic PT session", category: "Recovery" });
+  const completedSessions = Number(recovery?.completed_count || 0);
+  const targetSessions = Number(recovery?.target_count || 10);
+  if (recovery && completedSessions < targetSessions) {
+    const hasOpenPt = records.some((operation) => !operation.completed && /orthopedic pt session|prescribed acl rehab|pt session/.test(String(operation.title || "").toLowerCase()));
+    if (!hasOpenPt) additions.push({ title: `Orthopedic PT session ${completedSessions + 1} of ${targetSessions}`, category: "Recovery", priority: "High", status: "Queued", completed: false, is_daily: false, mission_id: recovery.id, brief: "Complete only your clinician/PT-prescribed work. Log pain, swelling, range-of-motion changes, and the next session date after you finish." });
+  }
+  if (!additions.length) return records;
+  if (!client || !currentUser) return [...records, ...additions.map((item, index) => ({ ...item, id: `local-${todayKey()}-${index}-${item.title}` }))];
+  const prepared = additions.map((item) => ({ ...item, user_id: currentUser.id, mission_id: item.mission_id || resolveMission(item)?.id || null }));
+  const { data, error } = await client.from("operations").insert(prepared).select();
+  if (error) {
+    console.warn("Could not create today's operations", error.message);
+    return [...records, ...prepared.map((item, index) => ({ ...item, id: `local-${todayKey()}-${index}-${item.title}` }))];
+  }
+  return [...records, ...(data || prepared)];
 }
 
 async function loadMissions() {
@@ -305,14 +409,17 @@ function ensureScheduleDialog() {
   dialog = document.createElement("dialog");
   dialog.id = "operation-schedule-dialog";
   dialog.className = "dialog-card operation-schedule-card";
-  dialog.innerHTML = `<form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h2>Plan this operation.</h2><p class="schedule-copy">Scheduling is optional. It adds this one operation to the calendar without changing its execution status.</p><label>Date<input id="operation-schedule-date" type="date" required></label><div class="dialog-actions"><button value="clear" type="submit" class="text-button">Remove from calendar</button><button value="cancel" type="submit" class="text-button">Cancel</button><button value="schedule" type="submit" class="primary">Add to calendar</button></div></form>`;
+  dialog.innerHTML = `<form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h2>Plan this operation.</h2><p class="schedule-copy">Scheduling is optional. It adds this one operation to the calendar and keeps it visible as an upcoming commitment.</p><div class="schedule-input-grid"><label>Date<input id="operation-schedule-date" type="date" required></label><label>Time <span class="field-optional">optional</span><input id="operation-schedule-time" type="time"></label></div><div class="dialog-actions"><button value="clear" type="submit" class="text-button">Remove from calendar</button><button value="cancel" type="submit" class="text-button">Cancel</button><button value="schedule" type="submit" class="primary">Add to calendar</button></div></form>`;
   document.body.append(dialog);
   dialog.addEventListener("close", async () => {
     const operation = findOperation(dialog.dataset.operationKey);
     if (!operation || dialog.returnValue === "cancel") return;
     const date = dialog.returnValue === "clear" ? "" : $("#operation-schedule-date")?.value;
+    const time = dialog.returnValue === "clear" ? "" : $("#operation-schedule-time")?.value;
     if (dialog.returnValue === "schedule" && !date) return;
     operation.scheduled_date = date || null;
+    operation.scheduled_time = time || null;
+    if (date && normalizedStatus(operation) === "Queued") operation.status = "Scheduled";
     await persist(operation);
     saveCachedOperations();
     if (date) selectedDay = date;
@@ -328,6 +435,8 @@ function openScheduleDialog(operation) {
   dialog.dataset.operationKey = String(operation.id || operation.title);
   const input = $("#operation-schedule-date");
   if (input) input.value = dateOnly(operation.scheduled_date) || todayKey();
+  const time = $("#operation-schedule-time");
+  if (time) time.value = operation.scheduled_time || "";
   if (!dialog.open) dialog.showModal();
 }
 
@@ -387,10 +496,10 @@ async function boot() {
   // flight. Cloud records replace this small local safety feed as soon as the
   // session is available.
   const local = cachedOperations();
+  if (currentUser) await loadMissions();
   if (currentUser) operations = await seedIfEmpty();
   else operations = local;
   if (!operations.length) operations = local.length ? local : starterOperations();
-  await loadMissions();
   saveCachedOperations();
   renderQueue();
   renderCalendar();
