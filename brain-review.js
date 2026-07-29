@@ -78,19 +78,60 @@ function syncTheoreticalReason() {
   if (wrap.hidden) reason.value = "";
 }
 
-async function asDataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => resolve(reader.result); reader.readAsDataURL(file); }); }
+function syncViolationReason() {
+  const wrap = $("#brain-review-violation-wrap"); const field = $("#brain-review-violation");
+  if (!wrap || !field) return;
+  wrap.hidden = $("#brain-review-followed")?.value !== "No";
+  if (wrap.hidden) field.value = "";
+}
+
+async function compressImage(file) {
+  const source = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = reject;
+      image.onload = () => resolve(image);
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  const scale = Math.min(1, 1280 / Math.max(source.width, source.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(source.width * scale));
+  canvas.height = Math.max(1, Math.round(source.height * scale));
+  canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.72);
+}
+
+function reviewWriteup() {
+  return {
+    thesis: $("#brain-review-thesis")?.value.trim() || "",
+    followed_system: $("#brain-review-followed")?.value || "",
+    rule_violation: $("#brain-review-violation")?.value.trim() || "",
+    went_well: $("#brain-review-went-well")?.value.trim() || "",
+    would_change: $("#brain-review-change")?.value.trim() || "",
+    management_notes: $("#brain-review-management")?.value.trim() || ""
+  };
+}
 async function runReview(event) {
   event.preventDefault(); if (!supabase) return alert("Cloud connection is not configured.");
   const { data: sessionData } = await supabase.auth.getSession(); if (!sessionData.session) return alert("Sign in before requesting a trade review.");
-  const trade = trades.find((item) => item.id === $("#brain-review-trade").value); const files = Array.from($("#brain-review-images").files || []);
-  if (!trade || !files.length) return; if (files.length > 8) return alert("Use up to 8 screenshots for one audit.");
+  const trade = trades.find((item) => item.id === $("#brain-review-trade").value);
+  const evidenceControls = Array.from(document.querySelectorAll("[data-review-frame]"));
+  const missing = evidenceControls.filter((input) => !input.files?.[0]).map((input) => input.dataset.reviewFrame.replace("_", " ").toUpperCase());
+  if (!trade) return alert("Choose a journal trade number first.");
+  if (missing.length) return alert("Add every required frame before the audit: " + missing.join(", ") + ".");
   const status = $("#brain-review-status"); const submit = $("#brain-review-submit"); submit.disabled = true; status.textContent = "Reading chart evidence against the Clarified Chaos FX system...";
   try {
-    const screenshots = await Promise.all(files.map(asDataUrl));
+    const screenshots = Object.fromEntries(await Promise.all(evidenceControls.map(async (input) => [input.dataset.reviewFrame, await compressImage(input.files[0])])));
     const noEntryReason = isTheoretical(trade) ? $("#brain-no-entry-reason").value.trim() : "";
-    const response = await fetch("/api/trade-review", { method: "POST", headers: { "content-type":"application/json", authorization:`Bearer ${sessionData.session.access_token}` }, body: JSON.stringify({ trade, noEntryReason, traderThesis: $("#brain-review-thesis").value.trim(), screenshots }) });
+    const writeup = reviewWriteup();
+    const response = await fetch("/api/trade-review", { method: "POST", headers: { "content-type":"application/json", authorization:`Bearer ${sessionData.session.access_token}` }, body: JSON.stringify({ trade, noEntryReason, writeup, screenshots }) });
     const body = await response.json(); if (!response.ok) throw new Error(body.error || "The reviewer did not return an audit.");
-    const insert = await supabase.from("trade_reviews").insert({ user_id: sessionData.session.user.id, trade_id: trade.id, trader_thesis: $("#brain-review-thesis").value.trim() || null, no_entry_reason: noEntryReason || null, review_payload: body.review, screenshot_count: screenshots.length, course_version: "1.1" });
+    const reviewPayload = { ...body.review, input_context: { writeup, evidence_frames: Object.keys(screenshots) } };
+    const insert = await supabase.from("trade_reviews").insert({ user_id: sessionData.session.user.id, trade_id: trade.id, trader_thesis: writeup.thesis || null, no_entry_reason: noEntryReason || null, review_payload: reviewPayload, screenshot_count: Object.keys(screenshots).length, course_version: "1.2" });
     if (insert.error) throw new Error(`The audit was completed but could not be saved: ${insert.error.message}`);
     status.textContent = "Audit complete. Stored in independent review history."; $("#brain-review-form").reset(); await loadReviewerData(); $("#brain-review-dialog").close(); $("#brain-review-history-list")?.scrollIntoView({ behavior:"smooth", block:"center" });
   } catch (error) { status.textContent = error.message || "The audit could not be completed."; } finally { submit.disabled = false; }
@@ -171,6 +212,7 @@ function init() {
   $("#brain-review-dialog .dialog-close")?.addEventListener("click", () => $("#brain-review-dialog").close());
   $("#brain-review-form")?.addEventListener("submit", runReview);
   $("#brain-review-trade")?.addEventListener("change", syncTheoreticalReason);
+  $("#brain-review-followed")?.addEventListener("change", syncViolationReason);
   $("#brain-chain-reset")?.addEventListener("click", () => { chainStep = 0; chainAnswers = []; chainTerminal = ""; renderChain(); });
   document.addEventListener("click", (event) => {
     const jump = event.target.closest("[data-brain-jump]"); if (jump) openSource(jump.dataset.brainJump);
@@ -182,6 +224,6 @@ function init() {
     const image = event.target.closest("[data-brain-image]"); if (image) { ensureImageDialog(); $("#brain-image-large").src = image.dataset.brainImage; $("#brain-image-caption").textContent = image.dataset.brainCaption || "Course reference"; $("#brain-image-dialog").showModal(); }
     if (event.target.closest("#brain-image-dialog .dialog-close")) $("#brain-image-dialog").close();
   });
-  ensureImageDialog(); renderChain(); renderBriefing(); loadCourseLibrary(); loadReviewerData(); supabase?.auth.onAuthStateChange(() => setTimeout(loadReviewerData, 50));
+  ensureImageDialog(); syncViolationReason(); renderChain(); renderBriefing(); loadCourseLibrary(); loadReviewerData(); supabase?.auth.onAuthStateChange(() => setTimeout(loadReviewerData, 50));
 }
 init();

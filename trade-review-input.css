@@ -1,0 +1,12 @@
+.brain-review-dialog{width:min(920px,calc(100vw - 30px));max-height:calc(100vh - 28px);overflow:auto}
+.brain-review-dialog fieldset{margin:18px 0 0;padding:16px;border:1px solid rgba(88,166,232,.24);background:rgba(3,12,24,.42)}
+.brain-review-dialog legend{padding:0 8px;color:#8ecbff;font:700 12px var(--mono,monospace);letter-spacing:.08em;text-transform:uppercase}
+.brain-review-writeup{display:grid;gap:2px}
+.brain-evidence-grid>p{margin:0;color:#a9bad0;line-height:1.45}
+.brain-evidence-columns{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.brain-evidence-columns section{padding:4px 14px 14px;border-left:2px solid rgba(76,161,232,.5)}
+.brain-evidence-columns section+section{border-left-color:rgba(223,167,76,.65)}
+.brain-evidence-columns h3{margin:9px 0 0;font-size:15px}
+.brain-evidence-columns input[type=file]{font-size:12px}
+.brain-review-dialog textarea{resize:vertical}
+@media(max-width:800px){.brain-evidence-columns{grid-template-columns:1fr}}
