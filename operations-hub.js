@@ -25,19 +25,18 @@ const cachedOperations = () => {
 };
 const saveCachedOperations = () => localStorage.setItem("aegis-operations", JSON.stringify(operations));
 const esc = (value = "") => String(value).replace(/[&<>\"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
-const statusOrder = ["Queued", "Scheduled", "Ongoing", "Complete"];
+const statusOrder = ["Queued", "Ongoing", "Complete"];
 const priorityFor = (category) => category === "Recovery" || category === "Trading" ? "High" : "Medium";
 const dateOnly = (value) => value ? String(value).slice(0, 10) : "";
 
 const starterOperations = () => {
-  const date = todayKey();
   return [
     ["Complete prescribed ACL rehab", "Recovery"],
     ["Pre-market analysis", "Trading"],
     ["Review charts and document one lesson", "Trading"],
     ["Read one chapter", "Mind"],
     ["Evening mission debrief", "Mind"],
-  ].map(([title, category]) => ({ title, category, completed: false, scheduled_date: date, status: "Queued" }));
+  ].map(([title, category]) => ({ title, category, completed: false, scheduled_date: null, status: "Queued" }));
 };
 
 let operations = [];
@@ -62,7 +61,12 @@ function mergeSavedStatus(remote = []) {
   if (!saved.length) return remote;
   return remote.map((operation) => {
     const local = saved.find((item) => String(item.id || item.title) === String(operation.id || operation.title));
-    return local ? { ...operation, status: local.status, completed: local.completed, scheduled_date: local.scheduled_date || operation.scheduled_date } : operation;
+    return local ? {
+      ...operation,
+      status: local.status,
+      completed: local.completed,
+      scheduled_date: Object.prototype.hasOwnProperty.call(local, "scheduled_date") ? local.scheduled_date : operation.scheduled_date,
+    } : operation;
   });
 }
 
@@ -70,29 +74,64 @@ function queueTarget() {
   return $("#operations-list") || $("#command-operations-list");
 }
 
+function isDailyOperation(operation) {
+  return /pre-market|review charts|read one chapter|mission debrief|daily/i.test(String(operation.title || ""));
+}
+
+function queueOperations() {
+  const start = todayKey();
+  const horizon = new Date();
+  horizon.setDate(horizon.getDate() + 7);
+  const end = dayKey(horizon);
+  const relevant = operations.filter((operation) => {
+    if (normalizedStatus(operation) === "Complete") return false;
+    const scheduled = dateOnly(operation.scheduled_date);
+    // Recurring routines are a single current-day item, not calendar events.
+    if (isDailyOperation(operation)) return true;
+    if (scheduled === start) return true;
+    if (scheduled > start && scheduled <= end) return true;
+    // Important standing operations remain visible without becoming calendar clutter.
+    return !scheduled;
+  }).sort((a, b) => {
+    const aDate = dateOnly(a.scheduled_date) || "9999-12-31";
+    const bDate = dateOnly(b.scheduled_date) || "9999-12-31";
+    return aDate.localeCompare(bDate) || String(a.title).localeCompare(String(b.title));
+  });
+  const unique = new Map();
+  relevant.forEach((operation) => {
+    const key = String(operation.title || "").trim().toLowerCase();
+    if (!unique.has(key)) unique.set(key, operation);
+  });
+  return [...unique.values()];
+}
+
 function renderQueue() {
   const target = queueTarget();
   if (!target) return;
   if (!operations.length) operations = cachedOperations();
   if (!operations.length) operations = starterOperations();
-  const active = operations.filter((operation) => normalizedStatus(operation) !== "Complete");
+  const active = queueOperations();
   if (!active.length) {
-    target.innerHTML = '<p class="empty-operations">No active operations. Open Mission Control to schedule the next move.</p>';
+    target.innerHTML = '<p class="empty-operations">No operations for today or the next seven days. Schedule the next deliberate move from Mission Control.</p>';
     return;
   }
   target.innerHTML = `
-    <div class="operation-table-head operation-table-v2"><span>STATUS</span><span>OPERATION</span><span>CATEGORY</span><span>PRIORITY</span></div>
+    <div class="operation-table-head operation-table-v2"><span>STATUS</span><span>OPERATION</span><span>WHEN</span><span>CATEGORY</span><span>PRIORITY</span></div>
     ${active.map((operation) => {
       const status = normalizedStatus(operation);
       const priority = operation.priority || priorityFor(operation.category);
+      const scheduled = dateOnly(operation.scheduled_date);
+      const timing = scheduled ? new Date(`${scheduled}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Schedule";
       return `<article class="operation operation-table-row operation-table-v2">
         <button type="button" class="operation-status ${status.toLowerCase()}" data-hub-status="${esc(operation.id || operation.title)}"><i></i>${esc(status)}</button>
         <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.id || operation.title)}">${esc(operation.title)}</button>
+        <button type="button" class="operation-schedule-control ${scheduled ? "is-scheduled" : ""}" data-hub-schedule="${esc(operation.id || operation.title)}">${esc(timing)}</button>
         <span>${esc(operation.category || "Mission")}</span>
         <b class="${priorityClass(priority)}">${esc(priority)}</b>
       </article>`;
     }).join("")}`;
   target.querySelectorAll("[data-hub-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.hubStatus)));
+  target.querySelectorAll("[data-hub-schedule]").forEach((button) => button.addEventListener("click", () => openScheduleDialog(findOperation(button.dataset.hubSchedule))));
   target.querySelectorAll("[data-hub-detail]").forEach((button) => button.addEventListener("click", () => showOperationDetail(button.dataset.hubDetail)));
   window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: operations }));
 }
@@ -120,10 +159,6 @@ async function cycleStatus(key) {
   if (!operation) return;
   const index = statusOrder.indexOf(normalizedStatus(operation));
   const next = statusOrder[(index + 1) % statusOrder.length];
-  if (next === "Scheduled") {
-    openScheduleDialog(operation);
-    return;
-  }
   operation.status = next;
   operation.completed = next === "Complete";
   await persist(operation);
@@ -155,19 +190,17 @@ function ensureScheduleDialog() {
   dialog = document.createElement("dialog");
   dialog.id = "operation-schedule-dialog";
   dialog.className = "dialog-card operation-schedule-card";
-  dialog.innerHTML = `<form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h2>Set the next operation date.</h2><p class="schedule-copy">This creates one calendar slot. For a multi-session plan such as PT, schedule the next session after each completed session.</p><label>Date<input id="operation-schedule-date" type="date" required></label><div class="dialog-actions"><button value="cancel" type="submit" class="text-button">Cancel</button><button value="schedule" type="submit" class="primary">Schedule operation</button></div></form>`;
+  dialog.innerHTML = `<form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h2>Plan this operation.</h2><p class="schedule-copy">Scheduling is optional. It adds this one operation to the calendar without changing its execution status.</p><label>Date<input id="operation-schedule-date" type="date" required></label><div class="dialog-actions"><button value="clear" type="submit" class="text-button">Remove from calendar</button><button value="cancel" type="submit" class="text-button">Cancel</button><button value="schedule" type="submit" class="primary">Add to calendar</button></div></form>`;
   document.body.append(dialog);
   dialog.addEventListener("close", async () => {
-    if (dialog.returnValue !== "schedule") return;
     const operation = findOperation(dialog.dataset.operationKey);
-    const date = $("#operation-schedule-date")?.value;
-    if (!operation || !date) return;
-    operation.status = "Scheduled";
-    operation.completed = false;
-    operation.scheduled_date = date;
+    if (!operation || dialog.returnValue === "cancel") return;
+    const date = dialog.returnValue === "clear" ? "" : $("#operation-schedule-date")?.value;
+    if (dialog.returnValue === "schedule" && !date) return;
+    operation.scheduled_date = date || null;
     await persist(operation);
     saveCachedOperations();
-    selectedDay = date;
+    if (date) selectedDay = date;
     renderQueue();
     renderCalendar();
   });
@@ -175,6 +208,7 @@ function ensureScheduleDialog() {
 }
 
 function openScheduleDialog(operation) {
+  if (!operation) return;
   const dialog = ensureScheduleDialog();
   dialog.dataset.operationKey = String(operation.id || operation.title);
   const input = $("#operation-schedule-date");
