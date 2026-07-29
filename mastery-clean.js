@@ -99,7 +99,7 @@ function entryCard(entry) {
 
 function trainingCard(session) {
   const sets = trainingSets.filter(set => set.session_id === session.id);
-  return `<article class="mastery-entry training-entry"><div class="entry-meta"><span>${escapeHtml(session.workout_split || session.session_type || "GYM")}</span><b>${dateOnly(session.logged_on || session.created_at)}</b></div><h3>${escapeHtml(session.title || "Training session")}</h3>${sets.length ? `<div class="training-set-summary">${sets.map(set => `<span><b>${escapeHtml(set.exercise_name)}</b> · ${Number(set.weight_lbs || 0)} lb × ${Number(set.reps || 0)} × ${Number(set.sets || 1)}</span>`).join("")}</div>` : ""}${session.notes ? `<p>${escapeHtml(session.notes)}</p>` : ""}</article>`;
+  return `<article class="mastery-entry training-entry"><div class="entry-meta"><span>${escapeHtml(session.workout_split || session.session_type || "GYM")}</span><b>${dateOnly(session.logged_on || session.created_at)}</b></div><h3>${escapeHtml(session.title || "Training session")}</h3>${sets.length ? `<div class="training-set-summary">${sets.map(set => { const resistance = set.resistance_type === "Bands" ? `${escapeHtml(set.band_resistance || "Band")}` : `${Number(set.weight_lbs || 0)} lb`; return `<span><b>${escapeHtml(set.exercise_name)}</b> · ${resistance} × ${Number(set.reps || 0)} × ${Number(set.sets || 1)}</span>`; }).join("")}</div>` : ""}${session.notes ? `<p>${escapeHtml(session.notes)}</p>` : ""}</article>`;
 }
 
 function healthCard() {
@@ -183,7 +183,20 @@ function openDialog() {
 }
 
 function gymSetRow() {
-  return `<div class="exercise-row"><label>Exercise<input name="exercise_name" required placeholder="e.g. DB bench press" /></label><label>Weight (lb)<input name="weight_lbs" type="number" min="0" step="0.5" required /></label><label>Reps<input name="reps" type="number" min="1" required /></label><label>Sets<input name="sets" type="number" min="1" value="1" required /></label><button class="ghost compact" type="button" data-remove-exercise>Remove</button></div>`;
+  return `<div class="exercise-row"><label>Exercise<input name="exercise_name" required placeholder="e.g. DB bench press" /></label><label>Resistance<select name="resistance_type" data-resistance-type><option value="Weights">Weights</option><option value="Bands">Bands</option></select></label><label data-weight-field>Weight (lb)<input name="weight_lbs" type="number" min="0" step="0.5" required /></label><label data-band-field hidden>Band resistance<select name="band_resistance" disabled><option value="">Select band</option><option>Light</option><option>Medium</option><option>Heavy</option><option>Extra heavy</option><option>Other</option></select></label><label>Reps<input name="reps" type="number" min="1" required /></label><label>Sets<input name="sets" type="number" min="1" value="1" required /></label><button class="ghost compact" type="button" data-remove-exercise>Remove</button></div>`;
+}
+
+function syncResistanceFields(row) {
+  const type = row.querySelector("[data-resistance-type]")?.value || "Weights";
+  const weightField = row.querySelector("[data-weight-field]");
+  const bandField = row.querySelector("[data-band-field]");
+  const weight = row.querySelector('[name="weight_lbs"]');
+  const band = row.querySelector('[name="band_resistance"]');
+  const bands = type === "Bands";
+  if (weightField) weightField.hidden = bands;
+  if (bandField) bandField.hidden = !bands;
+  if (weight) { weight.disabled = bands; weight.required = !bands; if (bands) weight.value = ""; }
+  if (band) { band.disabled = !bands; band.required = bands; if (!bands) band.value = ""; }
 }
 
 function foodRow() {
@@ -198,6 +211,7 @@ function openFitnessDialog(type) {
   dialog.querySelector("[data-add-exercise]")?.addEventListener("click", () => dialog.querySelector(".exercise-list").insertAdjacentHTML("beforeend", gymSetRow()));
   dialog.querySelector("[data-add-food]")?.addEventListener("click", () => dialog.querySelector(".food-list").insertAdjacentHTML("beforeend", foodRow()));
   dialog.onclick = event => { const removeExercise = event.target.closest("[data-remove-exercise]"); const removeFood = event.target.closest("[data-remove-food]"); if (removeExercise) removeExercise.closest(".exercise-row")?.remove(); if (removeFood) removeFood.closest(".nutrition-row")?.remove(); };
+  dialog.querySelector(".exercise-list")?.addEventListener("change", event => { if (event.target.matches("[data-resistance-type]")) syncResistanceFields(event.target.closest(".exercise-row")); });
   dialog.querySelector("form").addEventListener("submit", saveFitnessLog);
   dialog.showModal();
 }
@@ -233,10 +247,12 @@ async function saveFitnessLog(event) {
       const workoutSplit = String(data.get("workout_split") || "").trim();
       const rows = [...form.querySelectorAll(".exercise-row")].map(row => ({
         exercise_name: String(row.querySelector('[name="exercise_name"]')?.value || "").trim(),
-        weight_lbs: Number(row.querySelector('[name="weight_lbs"]')?.value || 0),
+        resistance_type: String(row.querySelector('[name="resistance_type"]')?.value || "Weights"),
+        weight_lbs: row.querySelector('[name="resistance_type"]')?.value === "Bands" ? null : Number(row.querySelector('[name="weight_lbs"]')?.value || 0),
+        band_resistance: row.querySelector('[name="resistance_type"]')?.value === "Bands" ? String(row.querySelector('[name="band_resistance"]')?.value || "").trim() : null,
         reps: Number(row.querySelector('[name="reps"]')?.value || 0),
         sets: Number(row.querySelector('[name="sets"]')?.value || 0)
-      })).filter(row => row.exercise_name && row.reps > 0 && row.sets > 0);
+      })).filter(row => row.exercise_name && row.reps > 0 && row.sets > 0 && (row.resistance_type === "Bands" ? row.band_resistance : row.weight_lbs !== null));
       if (!rows.length) return alert("Add at least one completed exercise set.");
       const { data: session, error: sessionError } = await db.from("training_sessions").insert({
         user_id: userId, session_type: "Gym", title: `${workoutSplit} workout`, workout_split: workoutSplit,
