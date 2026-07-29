@@ -9,6 +9,9 @@ let chainStep = 0;
 let chainAnswers = [];
 let chainTerminal = "";
 let briefingSlide = 0;
+let lastDeletedReview = null;
+let deleteUndoTimer = null;
+const EVIDENCE_BUCKET = "trade-review-evidence";
 
 const esc = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[character]));
 const setup = (value) => { try { return JSON.parse(value || "[]").join(" + "); } catch { return value || "—"; } };
@@ -38,10 +41,12 @@ function renderChain() {
   root.innerHTML = `${history}<article class="brain-chain-question"><p class="eyebrow">${esc(step.title)}</p><h4>${esc(step.question)}</h4><div class="brain-chain-options">${step.choices.map((choice, index) => `<button type="button" data-chain-choice="${index}">${esc(choice.label)}</button>`).join("")}</div><div class="brain-chain-actions"><button type="button" class="brain-chain-source" data-brain-jump="${step.source}">Open the source rule</button>${back}</div></article>`;
 }
 
-function renderReview(review) {
+function renderReview(review, entry = null) {
   const verdictClass = String(review.verdict || "").toLowerCase().replaceAll(" ", "-");
   const audit = (review.rule_audit || []).map((item) => `<article class="review-rule"><strong>${esc(item.rule)}</strong><span class="review-status ${esc(String(item.status || "").toLowerCase().replaceAll(" ", "-"))}">${esc(item.status)}</span><p>${esc(item.evidence)}</p><small>${esc(item.source_reference)}</small></article>`).join("");
-  return `<article class="brain-review-card"><div class="brain-review-card-head"><div><p class="eyebrow blue-text">SYSTEM AUDIT</p><h3>${esc(review.process_grade || "Process review")}</h3></div><span class="review-verdict ${verdictClass}">${esc(review.verdict || "Pending")}</span></div><p>${esc(review.executive_summary || "No summary returned.")}</p><div class="review-columns"><div><h4>Observed evidence</h4><ul>${(review.observed_evidence || []).map((item) => `<li>${esc(item)}</li>`).join("") || "<li>No decisive evidence captured.</li>"}</ul></div><div><h4>Missing evidence</h4><ul>${(review.missing_evidence || []).map((item) => `<li>${esc(item)}</li>`).join("") || "<li>None identified.</li>"}</ul></div></div><div class="review-rules">${audit}</div><div class="thesis-compare"><h4>Thesis comparison</h4><p><b>Where it aligns:</b> ${(review.thesis_comparison?.matches || []).map(esc).join("; ") || "No alignment established."}</p><p><b>Correction:</b> ${esc(review.thesis_comparison?.correction || "No correction returned.")}</p></div><p class="review-focus"><b>Next review focus:</b> ${esc(review.next_review_focus || "Capture the full evidence chain.")}</p></article>`;
+  const evidenceButton = entry?.evidence_saved && Array.isArray(entry.evidence_paths) && entry.evidence_paths.length ? `<button type="button" class="secondary compact" data-open-review-evidence="${entry.id}">Open saved screenshots</button>` : "";
+  const deleteButton = entry?.id ? `<button type="button" class="danger compact" data-delete-review="${entry.id}">Delete review</button>` : "";
+  return `<article class="brain-review-card"><div class="brain-review-card-head"><div><p class="eyebrow blue-text">SYSTEM AUDIT</p><h3>${esc(review.process_grade || "Process review")}</h3></div><span class="review-verdict ${verdictClass}">${esc(review.verdict || "Pending")}</span></div><p>${esc(review.executive_summary || "No summary returned.")}</p><div class="review-columns"><div><h4>Observed evidence</h4><ul>${(review.observed_evidence || []).map((item) => `<li>${esc(item)}</li>`).join("") || "<li>No decisive evidence captured.</li>"}</ul></div><div><h4>Missing evidence</h4><ul>${(review.missing_evidence || []).map((item) => `<li>${esc(item)}</li>`).join("") || "<li>None identified.</li>"}</ul></div></div><div class="review-rules">${audit}</div><div class="thesis-compare"><h4>Thesis comparison</h4><p><b>Where it aligns:</b> ${(review.thesis_comparison?.matches || []).map(esc).join("; ") || "No alignment established."}</p><p><b>Correction:</b> ${esc(review.thesis_comparison?.correction || "No correction returned.")}</p></div><p class="review-focus"><b>Next review focus:</b> ${esc(review.next_review_focus || "Capture the full evidence chain.")}</p><div class="brain-history-actions">${evidenceButton}${deleteButton}</div></article>`;
 }
 
 function renderHistory() {
@@ -67,6 +72,13 @@ function ensureTheoreticalReasonField() {
   const tradeControl = $("#brain-review-trade");
   if (!tradeControl) return;
   tradeControl.closest("label")?.insertAdjacentHTML("afterend", '<label id="brain-no-entry-wrap" hidden>Why was this theoretical trade not entered?<textarea id="brain-no-entry-reason" rows="3" placeholder="e.g. It did not reach my Entry-50, or the price action was not clean enough."></textarea><small>Saved with this review only. It gives context but never changes the independent audit.</small></label>');
+}
+
+function ensureSaveEvidenceChoice() {
+  if ($("#brain-review-save-evidence")) return;
+  const evidence = $(".brain-evidence-grid");
+  if (!evidence) return;
+  evidence.insertAdjacentHTML("afterend", '<label class="brain-save-evidence"><input id="brain-review-save-evidence" type="checkbox" /> Save these screenshots privately with this review <small>Optional. When off, the screenshots are discarded after the audit; the written audit still saves.</small></label>');
 }
 
 function syncTheoreticalReason() {
@@ -105,6 +117,83 @@ async function compressImage(file) {
   return canvas.toDataURL("image/jpeg", 0.72);
 }
 
+function dataUrlToBlob(dataUrl) {
+  const [header, payload] = String(dataUrl).split(",");
+  const mime = header.match(/data:(.*?);base64/i)?.[1] || "image/jpeg";
+  const bytes = Uint8Array.from(atob(payload), (character) => character.charCodeAt(0));
+  return new Blob([bytes], { type: mime });
+}
+
+async function uploadEvidence(screenshots, userId, tradeId) {
+  const basePath = `${userId}/${tradeId}/${crypto.randomUUID()}`;
+  const stored = [];
+  try {
+    for (const [frame, dataUrl] of Object.entries(screenshots)) {
+      const path = `${basePath}/${frame}.jpg`;
+      const { error } = await supabase.storage.from(EVIDENCE_BUCKET).upload(path, dataUrlToBlob(dataUrl), { contentType: "image/jpeg", upsert: false });
+      if (error) throw error;
+      stored.push({ frame, path });
+    }
+    return stored;
+  } catch (error) {
+    if (stored.length) await supabase.storage.from(EVIDENCE_BUCKET).remove(stored.map((item) => item.path));
+    throw new Error(`The audit completed, but private screenshot storage failed: ${error.message}`);
+  }
+}
+
+function evidencePaths(entry) {
+  return (entry?.evidence_paths || []).map((item) => typeof item === "string" ? item : item.path).filter(Boolean);
+}
+
+async function openSavedEvidence(entry) {
+  const paths = evidencePaths(entry);
+  if (!paths.length) return alert("No screenshots were saved with this review.");
+  const { data, error } = await supabase.storage.from(EVIDENCE_BUCKET).createSignedUrls(paths, 3600);
+  if (error) return alert(`Could not open saved screenshots: ${error.message}`);
+  ensureEvidenceDialog();
+  const labels = (entry.evidence_paths || []).map((item, index) => typeof item === "object" ? item.frame : paths[index].split("/").pop().replace(/\.jpg$/i, ""));
+  $("#brain-saved-evidence-grid").innerHTML = data.map((item, index) => `<button type="button" class="brain-saved-evidence" data-brain-image-url="${esc(item.signedUrl)}" data-brain-caption="${esc(labels[index].replaceAll("_", " ").toUpperCase())}"><img src="${esc(item.signedUrl)}" alt="${esc(labels[index])}"><span>${esc(labels[index].replaceAll("_", " ").toUpperCase())}</span></button>`).join("");
+  $("#brain-evidence-dialog").showModal();
+}
+
+function showUndoDelete() {
+  let notice = $("#brain-delete-undo");
+  if (!notice) {
+    document.body.insertAdjacentHTML("beforeend", '<div id="brain-delete-undo" class="brain-delete-undo" role="status">Review deleted. <button type="button" data-undo-review-delete>Undo</button></div>');
+    notice = $("#brain-delete-undo");
+  }
+  notice.hidden = false;
+  clearTimeout(deleteUndoTimer);
+  deleteUndoTimer = setTimeout(async () => {
+    notice.hidden = true;
+    const paths = evidencePaths(lastDeletedReview);
+    if (paths.length) await supabase.storage.from(EVIDENCE_BUCKET).remove(paths);
+    lastDeletedReview = null;
+  }, 15000);
+}
+
+async function deleteReview(entry) {
+  if (!entry || !confirm("Delete this saved AI review? You can undo for 15 seconds.")) return;
+  const { error } = await supabase.from("trade_reviews").delete().eq("id", entry.id);
+  if (error) return alert(`Could not delete the review: ${error.message}`);
+  lastDeletedReview = entry;
+  reviews = reviews.filter((item) => item.id !== entry.id);
+  renderHistory();
+  showUndoDelete();
+}
+
+async function undoDeleteReview() {
+  if (!lastDeletedReview) return;
+  const entry = lastDeletedReview;
+  const { trade_debriefs, ...reviewRecord } = entry;
+  const { error } = await supabase.from("trade_reviews").insert(reviewRecord);
+  if (error) return alert(`Could not restore the review: ${error.message}`);
+  lastDeletedReview = null;
+  clearTimeout(deleteUndoTimer);
+  $("#brain-delete-undo")?.setAttribute("hidden", "");
+  await loadReviewerData();
+}
+
 function reviewWriteup() {
   return {
     thesis: $("#brain-review-thesis")?.value.trim() || "",
@@ -130,10 +219,12 @@ async function runReview(event) {
     const writeup = reviewWriteup();
     const response = await fetch("/api/trade-review", { method: "POST", headers: { "content-type":"application/json", authorization:`Bearer ${sessionData.session.access_token}` }, body: JSON.stringify({ trade, noEntryReason, writeup, screenshots }) });
     const body = await response.json(); if (!response.ok) throw new Error(body.error || "The reviewer did not return an audit.");
-    const reviewPayload = { ...body.review, input_context: { writeup, evidence_frames: Object.keys(screenshots) } };
-    const insert = await supabase.from("trade_reviews").insert({ user_id: sessionData.session.user.id, trade_id: trade.id, trader_thesis: writeup.thesis || null, no_entry_reason: noEntryReason || null, review_payload: reviewPayload, screenshot_count: Object.keys(screenshots).length, course_version: "1.2" });
+    const keepEvidence = Boolean($("#brain-review-save-evidence")?.checked);
+    const storedEvidence = keepEvidence ? await uploadEvidence(screenshots, sessionData.session.user.id, trade.id) : [];
+    const reviewPayload = { ...body.review, input_context: { writeup, evidence_frames: Object.keys(screenshots), evidence_retained: keepEvidence } };
+    const insert = await supabase.from("trade_reviews").insert({ user_id: sessionData.session.user.id, trade_id: trade.id, trader_thesis: writeup.thesis || null, no_entry_reason: noEntryReason || null, review_payload: reviewPayload, screenshot_count: Object.keys(screenshots).length, evidence_saved: keepEvidence, evidence_paths: storedEvidence, course_version: "1.2" });
     if (insert.error) throw new Error(`The audit was completed but could not be saved: ${insert.error.message}`);
-    status.textContent = "Audit complete. Stored in independent review history."; $("#brain-review-form").reset(); await loadReviewerData(); $("#brain-review-dialog").close(); $("#brain-review-history-list")?.scrollIntoView({ behavior:"smooth", block:"center" });
+    status.textContent = keepEvidence ? "Audit complete. Review and private screenshots saved." : "Audit complete. Written review saved; screenshots discarded."; $("#brain-review-form").reset(); await loadReviewerData(); $("#brain-review-dialog").close(); $("#brain-review-history-list")?.scrollIntoView({ behavior:"smooth", block:"center" });
   } catch (error) { status.textContent = error.message || "The audit could not be completed."; } finally { submit.disabled = false; }
 }
 
@@ -168,6 +259,10 @@ function formatCourse(markdown) {
 function ensureImageDialog() {
   if ($("#brain-image-dialog")) return;
   document.body.insertAdjacentHTML("beforeend", '<dialog id="brain-image-dialog" class="dialog-card brain-image-dialog"><button class="dialog-close" type="button" aria-label="Close">×</button><img id="brain-image-large" alt="Course reference" /><p id="brain-image-caption"></p></dialog>');
+}
+function ensureEvidenceDialog() {
+  if ($("#brain-evidence-dialog")) return;
+  document.body.insertAdjacentHTML("beforeend", '<dialog id="brain-evidence-dialog" class="dialog-card brain-evidence-dialog"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow blue-text">PRIVATE REVIEW EVIDENCE</p><h2>Saved chart screenshots</h2><div id="brain-saved-evidence-grid" class="brain-saved-evidence-grid"></div></dialog>');
 }
 function ensureBriefingCss() {
   ["brain-briefing.css", "brain-visuals.css", "brain-visual-accent.css"].forEach((file) => {
@@ -208,6 +303,7 @@ async function loadCourseLibrary() {
 function init() {
   ensureBriefingCss();
   upgradeBrainDom();
+  ensureSaveEvidenceChoice();
   $("#open-trade-review")?.addEventListener("click", () => $("#brain-review-dialog").showModal());
   $("#brain-review-dialog .dialog-close")?.addEventListener("click", () => $("#brain-review-dialog").close());
   $("#brain-review-form")?.addEventListener("submit", runReview);
@@ -220,9 +316,13 @@ function init() {
     if (event.target.closest("[data-chain-back]")) { chainAnswers.pop(); chainStep = Math.max(0, chainAnswers.length); chainTerminal = ""; renderChain(); }
     const slide = event.target.closest("[data-briefing-slide]"); if (slide) { briefingSlide = Number(slide.dataset.briefingSlide); renderBriefing(); }
     const direction = event.target.closest("[data-briefing-direction]"); if (direction) { briefingSlide = (briefingSlide + Number(direction.dataset.briefingDirection) + BRIEFING.length) % BRIEFING.length; renderBriefing(); }
-    const history = event.target.closest("[data-review-id]"); if (history) { const review = reviews.find((entry) => entry.id === history.dataset.reviewId); if (review) $("#brain-review-history-list").innerHTML = renderReview(review.review_payload); }
-    const image = event.target.closest("[data-brain-image]"); if (image) { ensureImageDialog(); $("#brain-image-large").src = image.dataset.brainImage; $("#brain-image-caption").textContent = image.dataset.brainCaption || "Course reference"; $("#brain-image-dialog").showModal(); }
+    const history = event.target.closest("[data-review-id]"); if (history) { const review = reviews.find((entry) => entry.id === history.dataset.reviewId); if (review) $("#brain-review-history-list").innerHTML = renderReview(review.review_payload, review); }
+    const evidence = event.target.closest("[data-open-review-evidence]"); if (evidence) { const review = reviews.find((entry) => entry.id === evidence.dataset.openReviewEvidence); if (review) openSavedEvidence(review); }
+    const deleteReviewButton = event.target.closest("[data-delete-review]"); if (deleteReviewButton) { const review = reviews.find((entry) => entry.id === deleteReviewButton.dataset.deleteReview); deleteReview(review); }
+    if (event.target.closest("[data-undo-review-delete]")) undoDeleteReview();
+    const image = event.target.closest("[data-brain-image],[data-brain-image-url]"); if (image) { ensureImageDialog(); $("#brain-image-large").src = image.dataset.brainImageUrl || image.dataset.brainImage; $("#brain-image-caption").textContent = image.dataset.brainCaption || "Course reference"; $("#brain-image-dialog").showModal(); }
     if (event.target.closest("#brain-image-dialog .dialog-close")) $("#brain-image-dialog").close();
+    if (event.target.closest("#brain-evidence-dialog .dialog-close")) $("#brain-evidence-dialog").close();
   });
   ensureImageDialog(); syncViolationReason(); renderChain(); renderBriefing(); loadCourseLibrary(); loadReviewerData(); supabase?.auth.onAuthStateChange(() => setTimeout(loadReviewerData, 50));
 }
