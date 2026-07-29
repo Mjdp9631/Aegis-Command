@@ -165,6 +165,40 @@
     <dialog id="operations-calendar-dialog"><form method="dialog" class="dialog-card operation-calendar-card"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h2>Mission calendar</h2><div class="calendar-toolbar"><button class="text-button" id="calendar-prev" type="button">←</button><strong id="operations-calendar-label"></strong><button class="text-button" id="calendar-next" type="button">→</button></div><div class="calendar-weekdays"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div><div id="operations-calendar-grid" class="operations-calendar-grid"></div><div class="calendar-agenda"><p class="eyebrow" id="calendar-agenda-label">SELECT A DAY</p><div id="calendar-agenda-list"></div></div></form></dialog>
     <dialog id="scheduled-reminder-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">SCHEDULED OPERATIONS</p><h2>Today’s plan is live.</h2><p class="body-copy">These operations were scheduled for today. Open each brief before you mark it complete.</p><div id="scheduled-reminder-list" class="operation-checklist"></div><button class="primary" value="default">Review the plan</button></form></dialog>
     <script src="config.js"></script>
+    <script>
+      /*
+       * Keep department navigation independent from the data modules.  A failed
+       * dashboard query must never strand the interface on Command Center.
+       */
+      (() => {
+        const titleFor = view => view === "command" ? "COMMAND CENTER" : view.replace(/-/g, " ").toUpperCase();
+        const showView = (view, writeAddress = false) => {
+          const pane = document.getElementById(view);
+          if (!pane) return false;
+          document.querySelectorAll(".view").forEach(item => item.classList.toggle("active", item === pane));
+          document.querySelectorAll(".nav-link[data-view]").forEach(item => item.classList.toggle("active", item.dataset.view === view));
+          const title = document.getElementById("view-title");
+          if (title) title.textContent = titleFor(view);
+          if (writeAddress && location.hash !== `#${view}`) history.pushState(null, "", `#${view}`);
+          return true;
+        };
+        const currentView = () => location.hash.replace(/^#/, "") || "command";
+        const routeFromAddress = () => showView(currentView()) || showView("command");
+        const routeFromClick = event => {
+          const link = (event.composedPath ? event.composedPath() : []).find(node => node && node.matches && node.matches(".nav-link[data-view], [data-view-target]"));
+          if (!link) return;
+          const view = link.dataset.view || link.dataset.viewTarget;
+          if (!document.getElementById(view)) return;
+          event.preventDefault();
+          showView(view, true);
+        };
+        document.addEventListener("click", routeFromClick, true);
+        window.addEventListener("hashchange", routeFromAddress);
+        window.addEventListener("popstate", routeFromAddress);
+        window.AEGIS_ROUTE = showView;
+        routeFromAddress();
+      })();
+    </script>
     <script type="module" src="auth-flow.js"></script>
     <script type="module" src="app.js?v=operations-table-v2"></script>
     <script type="module" src="mission.js?v=phase-template-v1"></script>
