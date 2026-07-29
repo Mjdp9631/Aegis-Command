@@ -15,6 +15,7 @@
     border: 1px solid rgba(118,170,214,.32) !important; border-left: 0 !important; border-radius: 0 5px 5px 0 !important;
     background: linear-gradient(180deg,rgba(3,11,19,.99),rgba(2,10,17,.975)) !important;
     box-shadow: inset -1px 0 rgba(73,144,201,.16), 14px 0 38px rgba(0,0,0,.22) !important; transition: none !important;
+    pointer-events:auto !important;
   }
   .sidebar::before {
     content: "SYSTEM STATUS   ●  ●  ●  ●" !important; display: flex !important; align-items: center !important;
@@ -34,7 +35,7 @@
   .nav-link, .sidebar:hover .nav-link {
     display:flex !important; align-items:center !important; min-width:0 !important; height:65px !important; margin:0 !important; padding:0 16px !important; gap:18px !important;
     box-sizing:border-box !important; color:rgba(226,231,237,.87) !important; border:0 !important; border-bottom:1px solid rgba(120,174,220,.14) !important; border-radius:0 !important;
-    background:transparent !important; box-shadow:none !important; font:600 14px/1 "Orbitron",sans-serif !important; letter-spacing:.035em !important; text-decoration:none !important;
+    background:transparent !important; box-shadow:none !important; font:600 14px/1 "Orbitron",sans-serif !important; letter-spacing:.035em !important; text-decoration:none !important; pointer-events:auto !important; position:relative !important; z-index:2 !important;
   }
   .nav-link > span { display:inline-flex !important; align-items:center !important; justify-content:center !important; width:32px !important; flex:0 0 32px !important; color:#dbe1e7 !important; font:0/1 Arial,sans-serif !important; }
   .nav-link.active {
