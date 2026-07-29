@@ -40,6 +40,7 @@ const starterOperations = () => {
 };
 
 let operations = [];
+let missions = [];
 let cursor = new Date();
 let selectedDay = todayKey();
 let currentUser = null;
@@ -47,6 +48,64 @@ let currentUser = null;
 function normalizedStatus(operation) {
   if (operation.completed) return "Complete";
   return statusOrder.includes(operation.status) ? operation.status : "Queued";
+}
+
+function isCompleteToday(operation) {
+  if (normalizedStatus(operation) !== "Complete") return false;
+  const completedOn = dateOnly(operation.completed_on || operation.local_completed_on);
+  // Older saved operations may not have the new completion stamp yet. Keep a
+  // just-completed item visible for the current browser session in that case.
+  return completedOn ? completedOn === todayKey() : Boolean(operation.local_completed_today);
+}
+
+function checklistFor(operation) {
+  const supplied = String(operation.brief || operation.notes || "").trim();
+  if (supplied) return supplied.split(/\n+/).map((item) => item.replace(/^[-•\s]+/, "").trim()).filter(Boolean);
+  const name = String(operation.title || "").toLowerCase();
+  if (/acl|rehab|physical therapy|pt session|orthopedic/.test(name)) return [
+    "Complete only the exercises your clinician or PT prescribed for this session.",
+    "Use the assigned sets, range, and load; do not add painful or unapproved work.",
+    "Log pain, swelling, or an unusual response after the session.",
+  ];
+  if (/pre-market/.test(name)) return [
+    "Mark the higher-timeframe condition before the active session.",
+    "Identify key liquidity, reaction, and invalidation levels.",
+    "Write the valid setup and risk limits before price reaches the area.",
+  ];
+  if (/review charts|document one lesson/.test(name)) return [
+    "Review the relevant chart or completed trade without changing the result.",
+    "Capture one specific lesson about condition, location, execution, or risk.",
+    "File the lesson in Detective or Self Mastery so it can compound.",
+  ];
+  if (/read one chapter/.test(name)) return [
+    "Read one complete chapter with notifications away.",
+    "Capture one useful idea, quote, or action in Self Mastery.",
+    "Only mark complete after the chapter and note are both finished.",
+  ];
+  if (/mission debrief/.test(name)) return [
+    "Read Jarvis and Alfred's evening reflection for the completed day.",
+    "Compare the feedback with what was actually executed, not intention.",
+    "Record one adjustment or schedule tomorrow's first clear operation.",
+  ];
+  return [
+    "Read the mission this operation advances and define the evidence of completion.",
+    "Do the work deliberately and update the status honestly.",
+    "Log the result or lesson where the mission can use it.",
+  ];
+}
+
+function resolveMission(operation) {
+  if (operation.mission_id) return missions.find((mission) => mission.id === operation.mission_id) || null;
+  const category = String(operation.category || "").toLowerCase();
+  const title = String(operation.title || "").toLowerCase();
+  const candidates = missions.filter((mission) => !mission.completed && String(mission.category || "").toLowerCase() === category);
+  if (!candidates.length) return null;
+  const measured = candidates.filter((mission) => String(mission.completion_type || "").toLowerCase() === "units" && Number(mission.target_count) > 0);
+  const unitMatch = measured.find((mission) => {
+    const unit = String(mission.unit_label || "").toLowerCase();
+    return (/acl|rehab|pt|orthopedic/.test(title) && /session|rehab|pt/.test(unit)) || (/read|chapter/.test(title) && /chapter|page/.test(unit));
+  });
+  return unitMatch || measured[0] || candidates[0];
 }
 
 function priorityClass(priority) {
@@ -63,9 +122,11 @@ function mergeSavedStatus(remote = []) {
     const local = saved.find((item) => String(item.id || item.title) === String(operation.id || operation.title));
     return local ? {
       ...operation,
-      status: local.status,
-      completed: local.completed,
-      scheduled_date: Object.prototype.hasOwnProperty.call(local, "scheduled_date") ? local.scheduled_date : operation.scheduled_date,
+      // Preserve every client-side evidence field while an update is in
+      // flight. The cloud record remains the source of truth on the next
+      // successful fetch, but a completed PT session must not look undone in
+      // the meantime.
+      ...Object.fromEntries(Object.entries(local).filter(([, value]) => value !== undefined)),
     } : operation;
   });
 }
@@ -84,7 +145,7 @@ function queueOperations() {
   horizon.setDate(horizon.getDate() + 7);
   const end = dayKey(horizon);
   const relevant = operations.filter((operation) => {
-    if (normalizedStatus(operation) === "Complete") return false;
+    if (normalizedStatus(operation) === "Complete" && !isCompleteToday(operation)) return false;
     const scheduled = dateOnly(operation.scheduled_date);
     // Recurring routines are a single current-day item, not calendar events.
     if (isDailyOperation(operation)) return true;
@@ -122,7 +183,8 @@ function renderQueue() {
       const priority = operation.priority || priorityFor(operation.category);
       const scheduled = dateOnly(operation.scheduled_date);
       const timing = scheduled ? new Date(`${scheduled}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Schedule";
-      return `<article class="operation operation-table-row operation-table-v2">
+      const doneClass = status === "Complete" ? " done operation-complete" : "";
+      return `<article class="operation operation-table-row operation-table-v2${doneClass}">
         <button type="button" class="operation-status ${status.toLowerCase()}" data-hub-status="${esc(operation.id || operation.title)}"><i></i>${esc(status)}</button>
         <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.id || operation.title)}">${esc(operation.title)}</button>
         <button type="button" class="operation-schedule-control ${scheduled ? "is-scheduled" : ""}" data-hub-schedule="${esc(operation.id || operation.title)}">${esc(timing)}</button>
@@ -133,7 +195,6 @@ function renderQueue() {
   target.querySelectorAll("[data-hub-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.hubStatus)));
   target.querySelectorAll("[data-hub-schedule]").forEach((button) => button.addEventListener("click", () => openScheduleDialog(findOperation(button.dataset.hubSchedule))));
   target.querySelectorAll("[data-hub-detail]").forEach((button) => button.addEventListener("click", () => showOperationDetail(button.dataset.hubDetail)));
-  window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: operations }));
 }
 
 function findOperation(key) {
@@ -143,8 +204,10 @@ function findOperation(key) {
 function showOperationDetail(key) {
   const operation = findOperation(key);
   if (!operation) return;
-  const detail = operation.brief || operation.notes || "No checklist has been defined yet. Open this operation in Mission Control and add the concrete steps required to complete it.";
-  window.alert(`${operation.title}\n\n${detail}`);
+  const mission = resolveMission(operation);
+  const checklist = checklistFor(operation).map((item, index) => `${index + 1}. ${item}`).join("\n");
+  const advances = mission ? `\n\nADVANCES: ${mission.title}${mission.completion_type === "units" ? ` (${Number(mission.completed_count || 0)}/${Number(mission.target_count || 0)} ${mission.unit_label || "units"})` : ""}` : "";
+  window.alert(`${operation.title}${advances}\n\nDEFINITION OF DONE\n${checklist}`);
 }
 
 async function persist(operation) {
@@ -152,6 +215,33 @@ async function persist(operation) {
   const payload = { status: operation.status, completed: operation.completed, scheduled_date: operation.scheduled_date || null };
   const { error } = await client.from("operations").update(payload).eq("id", operation.id).eq("user_id", currentUser.id);
   if (error) console.warn("Could not save operation status", error.message);
+  const evidence = {
+    completed_on: operation.completed_on || null,
+    mission_id: operation.mission_id || null,
+    mission_incremented: Boolean(operation.mission_incremented),
+  };
+  const { error: evidenceError } = await client.from("operations").update(evidence).eq("id", operation.id).eq("user_id", currentUser.id);
+  if (evidenceError) console.warn("Operation evidence columns are not ready yet", evidenceError.message);
+}
+
+async function updateMissionEvidence(operation, direction) {
+  const mission = resolveMission(operation);
+  if (!mission || String(mission.completion_type || "").toLowerCase() !== "units") return;
+  const target = Math.max(1, Number(mission.target_count || 1));
+  const current = Math.max(0, Number(mission.completed_count || 0));
+  const next = Math.max(0, Math.min(target, current + direction));
+  const completed = next >= target;
+  mission.completed_count = next;
+  mission.completed = completed;
+  operation.mission_id = mission.id;
+  if (client && currentUser) {
+    const { error } = await client.from("missions").update({ completed_count: next, completed, progress: Math.round((next / target) * 100) }).eq("id", mission.id).eq("user_id", currentUser.id);
+    if (error) {
+      console.warn("Could not update mission evidence", error.message);
+      return;
+    }
+  }
+  window.dispatchEvent(new CustomEvent("aegis:missions-refresh", { detail: { source: "operations-hub" } }));
 }
 
 async function cycleStatus(key) {
@@ -159,12 +249,30 @@ async function cycleStatus(key) {
   if (!operation) return;
   const index = statusOrder.indexOf(normalizedStatus(operation));
   const next = statusOrder[(index + 1) % statusOrder.length];
+  const wasComplete = normalizedStatus(operation) === "Complete";
   operation.status = next;
   operation.completed = next === "Complete";
+  if (next === "Complete" && !operation.mission_incremented) {
+    operation.completed_on = todayKey();
+    operation.local_completed_on = todayKey();
+    operation.local_completed_today = true;
+    await updateMissionEvidence(operation, 1);
+    operation.mission_incremented = true;
+  } else if (wasComplete && next === "Queued" && operation.mission_incremented) {
+    await updateMissionEvidence(operation, -1);
+    operation.mission_incremented = false;
+    operation.completed_on = null;
+    operation.local_completed_on = null;
+    operation.local_completed_today = false;
+  }
   await persist(operation);
   saveCachedOperations();
   renderQueue();
   renderCalendar();
+  window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "operations-hub", operations } }));
+  // app.js still receives the public change event for calendars and summaries.
+  // It must not get the final paint over this queue.
+  setTimeout(() => { renderQueue(); renderCalendar(); }, 0);
 }
 
 async function seedIfEmpty() {
@@ -182,6 +290,13 @@ async function seedIfEmpty() {
     return seed;
   }
   return inserted || seed;
+}
+
+async function loadMissions() {
+  if (!client || !currentUser) return;
+  const { data, error } = await client.from("missions").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: true });
+  if (error) return console.warn("Could not load linked missions", error.message);
+  missions = data || [];
 }
 
 function ensureScheduleDialog() {
@@ -275,6 +390,7 @@ async function boot() {
   if (currentUser) operations = await seedIfEmpty();
   else operations = local;
   if (!operations.length) operations = local.length ? local : starterOperations();
+  await loadMissions();
   saveCachedOperations();
   renderQueue();
   renderCalendar();
@@ -288,16 +404,31 @@ document.addEventListener("click", (event) => {
   openCalendar();
 });
 const startHub = () => {
+  window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
   boot();
   // Older dashboard modules also render this panel. Reassert the shared queue
   // after their initial pass rather than allowing a blank Mission Control panel.
   setTimeout(renderQueue, 350);
   setTimeout(renderQueue, 1200);
   setTimeout(renderQueue, 3000);
+  setTimeout(renderQueue, 5000);
 };
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startHub, { once: true });
 else startHub();
 window.addEventListener("aegis:auth-ready", boot);
+window.addEventListener("aegis:missions-refresh", async (event) => {
+  if (event.detail?.source === "operations-hub") return;
+  await loadMissions();
+  renderQueue();
+});
+window.addEventListener("aegis:operations-changed", async (event) => {
+  if (event.detail?.source === "operations-hub" || !currentUser) return;
+  operations = await seedIfEmpty();
+  await loadMissions();
+  saveCachedOperations();
+  renderQueue();
+  renderCalendar();
+});
 
 const wireCalendar = () => {
   $("#calendar-prev")?.addEventListener("click", () => { cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1); renderCalendar(); });

@@ -167,3 +167,10 @@ if (cloudReady) {
 }
 
 bindDialogs(); renderMissions(); renderCommandMissions(); renderRecovery();
+
+// Operations can supply measured evidence (for example one completed PT
+// session or one finished chapter). Reload the mission views immediately.
+window.addEventListener("aegis:missions-refresh", async (event) => {
+  if (event.detail?.source !== "operations-hub" || !session) return;
+  await loadData();
+});

@@ -30,6 +30,10 @@ const checklistFor=operation=>String(operation.brief||"").trim().split(/\n+/).ma
 const dateLabel=date=>date?new Date(`${date}T12:00:00`).toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"}):"Unscheduled";
 function populateOperationMissions(){const select=$("#operation-mission"),category=$("#operation-category")?.value;if(!select||!category)return;const eligible=missions.filter(mission=>mission.category===category&&!mission.completed);select.innerHTML=`<option value="">Unlinked operation</option>${eligible.map(mission=>`<option value="${mission.id}">${escape(mission.title)}</option>`).join("")}`;if(eligible.length)select.value=eligible[0].id}
 function renderOperations(){
+  // Operations Hub is the single execution surface. Keeping this legacy
+  // renderer dormant prevents an older async refresh from wiping the richer
+  // linked-operation queue after it has loaded.
+  if(window.AEGIS_OPERATIONS_HUB_ACTIVE)return;
   const target=$("#operations-list");
   if(!target)return;
   // Queue is an execution view: queued and ongoing work stays visible until
