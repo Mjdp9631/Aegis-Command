@@ -45,10 +45,16 @@ function render({ missions, trades, projects, content, recoveryLogs, operations,
   const published = content.filter((item) => item.status === "Published").length;
   const recovery = missions.find((mission) => mission.category === "Recovery");
   const loggedRecovery = recoveryLogs[0];
+  const recoveryValue = recovery && isMeasured(recovery)
+    ? `${Math.min(Number(recovery.completed_count) || 0, Number(recovery.target_count))} / ${recovery.target_count}`
+    : recovery ? missionLabel(recovery) : "Locked";
+  const recoveryNote = recovery && isMeasured(recovery)
+    ? (recovery.unit_label || "units")
+    : loggedRecovery ? `Latest report: ${loggedRecovery.rehab_completed ? "rehab complete" : "rehab pending"}` : "Awaiting first recovery report";
   const completedOperations = operations.filter((operation) => operation.completed).length;
   const mindEntries = masteryEntries.filter((entry) => ["Book", "Quote", "Trading Note", "Psychology", "Space", "Business", "Stoicism"].includes(entry.category)).length;
   const bodyEntries = masteryEntries.filter((entry) => ["Health", "Gym", "Sports", "Performance"].includes(entry.category)).length;
-  target.innerHTML = `${card("missions", "MISSIONS", `${activeMissions.length} active`, priority ? `Next: ${priority.title}` : "No current objective", "missions")}${card("detective", "DETECTIVE", winRate, closed.length ? `${closed.length} closed trade debriefs` : "Log the next trade debrief", "detective")}${card("enterprise", "SPECIAL PROJECTS", `${activeProjects} active`, `${published} published item${published === 1 ? "" : "s"}`, "special-projects")}${card("recovery", "RECOVERY", recovery ? missionLabel(recovery) : "Locked", loggedRecovery ? `Latest report: ${loggedRecovery.rehab_completed ? "rehab complete" : "rehab pending"}` : "Awaiting first recovery report", "recovery")}${card("mastery", "MASTERY", `${mindEntries} mind`, `${bodyEntries} body entries`, "mastery")}${card("character", "CHARACTER", `${completedOperations}/${operations.length || 0}`, "Today's operations completed", "character")}`;
+  target.innerHTML = `${card("missions", "MISSIONS", `${activeMissions.length} active`, priority ? `Next: ${priority.title}` : "No current objective", "missions")}${card("detective", "DETECTIVE", winRate, closed.length ? `${closed.length} closed trade debriefs` : "Log the next trade debrief", "detective")}${card("enterprise", "SPECIAL PROJECTS", `${activeProjects} active`, `${published} published item${published === 1 ? "" : "s"}`, "special-projects")}${card("recovery", "RECOVERY", recoveryValue, recoveryNote, "recovery")}${card("mastery", "MASTERY", `${mindEntries} mind`, `${bodyEntries} body entries`, "mastery")}${card("character", "CHARACTER", `${completedOperations}/${operations.length || 0}`, "Today's operations completed", "character")}`;
 }
 
 async function load() {

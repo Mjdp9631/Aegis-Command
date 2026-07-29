@@ -83,6 +83,7 @@ const phases = [
 ];
 
 let currentPhase = 0;
+let existingMissionTitles = new Set();
 
 function currentLevels() {
   try { return JSON.parse(localStorage.getItem("aegis-character-levels") || "{}"); }
@@ -129,7 +130,7 @@ function render() {
     </div>
     <div class="phase-track" aria-label="Campaign phases">${phases.map((phase) => `<button type="button" class="phase-node ${phase.id === currentPhase ? "active" : ""} ${phase.id < currentPhase ? "complete" : ""}" data-phase-info="${phase.id}"><small>${phase.code}</small><strong>${phase.title}</strong></button>`).join("")}</div>
     ${next ? `<div class="phase-level-gate"><span>LEVEL GATE FOR ${next.code}</span><div>${gateRows(next)}</div></div>` : ""}
-    <div class="phase-unlocks"><article><span>MISSION TEMPLATES</span>${active.missions.map(([title, category, priority, definition]) => `<button type="button" data-phase-mission="${active.id}" data-phase-mission-title="${title}" data-phase-mission-category="${category}" data-phase-mission-priority="${priority}" data-phase-mission-definition="${definition}">+ ${title}</button>`).join("")}</article><article><span>ACTIVE SYSTEMS</span>${active.systems.map((system) => `<p>◇ ${system}</p>`).join("")}</article></div>
+    <div class="phase-unlocks"><article><span>MISSION TEMPLATES</span>${(() => { const remaining = active.missions.filter(([title]) => !existingMissionTitles.has(String(title).trim().toLowerCase())); return remaining.length ? remaining.map(([title, category, priority, definition]) => `<button type="button" data-phase-mission="${active.id}" data-phase-mission-title="${title}" data-phase-mission-category="${category}" data-phase-mission-priority="${priority}" data-phase-mission-definition="${definition}">+ ${title}</button>`).join("") : "<p>All current phase templates are already active.</p>"; })()}</article><article><span>ACTIVE SYSTEMS</span>${active.systems.map((system) => `<p>◇ ${system}</p>`).join("")}</article></div>
     <div class="phase-actions"><button class="text-button" type="button" data-phase-info="${currentPhase}">View current evidence</button>${next ? `<button class="primary compact" type="button" data-phase-review>Review for ${next.code}</button>` : `<span class="phase-complete">Long-term protocol active</span>`}</div>`;
 }
 
@@ -171,6 +172,8 @@ async function load() {
       const { data, error } = await db.from("phase_protocols").select("active_phase").eq("user_id", userId).maybeSingle();
       if (!error && data) currentPhase = Number(data.active_phase) || 0;
       if (!error && !data) await db.from("phase_protocols").insert({ user_id: userId, active_phase: 0 });
+      const { data: missions } = await db.from("missions").select("title").eq("user_id", userId);
+      existingMissionTitles = new Set((missions || []).map((mission) => String(mission.title || "").trim().toLowerCase()));
     }
   }
   dispatchPhase(); render();
@@ -200,3 +203,4 @@ document.addEventListener("click", (event) => {
 load();
 if (db) db.auth.onAuthStateChange(() => setTimeout(load, 100));
 window.addEventListener("aegis:character-levels-changed", render);
+window.addEventListener("aegis:missions-changed", () => setTimeout(load, 100));

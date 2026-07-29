@@ -51,7 +51,19 @@ function normalizedStatus(operation) {
 }
 
 function priorityClass(priority) {
-  return String(priority).toLowerCase() === "high" ? "priority-high" : "priority-medium";
+  const value = String(priority || "").toLowerCase();
+  return value === "high" ? "priority-high" : value === "low" ? "priority-low" : "priority-medium";
+}
+
+// The database is the source of record, but a just-changed status must never
+// be replaced by an older cloud response during an auth refresh.
+function mergeSavedStatus(remote = []) {
+  const saved = cachedOperations();
+  if (!saved.length) return remote;
+  return remote.map((operation) => {
+    const local = saved.find((item) => String(item.id || item.title) === String(operation.id || operation.title));
+    return local ? { ...operation, status: local.status, completed: local.completed, scheduled_date: local.scheduled_date || operation.scheduled_date } : operation;
+  });
 }
 
 function queueTarget() {
@@ -108,6 +120,10 @@ async function cycleStatus(key) {
   if (!operation) return;
   const index = statusOrder.indexOf(normalizedStatus(operation));
   const next = statusOrder[(index + 1) % statusOrder.length];
+  if (next === "Scheduled") {
+    openScheduleDialog(operation);
+    return;
+  }
   operation.status = next;
   operation.completed = next === "Complete";
   await persist(operation);
@@ -123,7 +139,7 @@ async function seedIfEmpty() {
     console.warn("Could not load operations", error.message);
     return starterOperations();
   }
-  if (data?.length) return data;
+  if (data?.length) return mergeSavedStatus(data);
   const seed = starterOperations().map((operation) => ({ ...operation, user_id: currentUser.id }));
   const { data: inserted, error: insertError } = await client.from("operations").insert(seed).select();
   if (insertError) {
@@ -131,6 +147,39 @@ async function seedIfEmpty() {
     return seed;
   }
   return inserted || seed;
+}
+
+function ensureScheduleDialog() {
+  let dialog = $("#operation-schedule-dialog");
+  if (dialog) return dialog;
+  dialog = document.createElement("dialog");
+  dialog.id = "operation-schedule-dialog";
+  dialog.className = "dialog-card operation-schedule-card";
+  dialog.innerHTML = `<form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h2>Set the next operation date.</h2><p class="schedule-copy">This creates one calendar slot. For a multi-session plan such as PT, schedule the next session after each completed session.</p><label>Date<input id="operation-schedule-date" type="date" required></label><div class="dialog-actions"><button value="cancel" type="submit" class="text-button">Cancel</button><button value="schedule" type="submit" class="primary">Schedule operation</button></div></form>`;
+  document.body.append(dialog);
+  dialog.addEventListener("close", async () => {
+    if (dialog.returnValue !== "schedule") return;
+    const operation = findOperation(dialog.dataset.operationKey);
+    const date = $("#operation-schedule-date")?.value;
+    if (!operation || !date) return;
+    operation.status = "Scheduled";
+    operation.completed = false;
+    operation.scheduled_date = date;
+    await persist(operation);
+    saveCachedOperations();
+    selectedDay = date;
+    renderQueue();
+    renderCalendar();
+  });
+  return dialog;
+}
+
+function openScheduleDialog(operation) {
+  const dialog = ensureScheduleDialog();
+  dialog.dataset.operationKey = String(operation.id || operation.title);
+  const input = $("#operation-schedule-date");
+  if (input) input.value = dateOnly(operation.scheduled_date) || todayKey();
+  if (!dialog.open) dialog.showModal();
 }
 
 function monthTitle(date) {
