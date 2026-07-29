@@ -243,11 +243,12 @@ function renderQueue() {
       const priority = operation.priority || priorityFor(operation.category);
       const scheduled = dateOnly(operation.scheduled_date);
       const time = operation.scheduled_time ? ` · ${String(operation.scheduled_time).slice(0, 5)}` : "";
-      const timing = scheduled ? `${new Date(`${scheduled}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}${time}` : "Schedule";
+      const timing = scheduled ? `${new Date(`${scheduled}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}${time}` : "+ Schedule";
       const doneClass = status === "Complete" ? " done operation-complete" : "";
       return `<article class="operation operation-table-row operation-table-v2${doneClass}">
         <button type="button" class="operation-status ${status.toLowerCase()}" data-hub-status="${esc(operation.id || operation.title)}"><i></i>${esc(status)}</button>
-        <span class="hub-operation-stack"><button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.id || operation.title)}">${esc(operation.title)}</button><button type="button" class="operation-schedule-control ${scheduled ? "is-scheduled" : ""}" data-hub-schedule="${esc(operation.id || operation.title)}">${esc(timing)}</button></span>
+        <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.id || operation.title)}">${esc(operation.title)}</button>
+        <button type="button" class="operation-schedule-control ${scheduled ? "is-scheduled" : ""}" data-hub-schedule="${esc(operation.id || operation.title)}">${esc(timing)}</button>
         <span>${esc(operation.category || "Mission")}</span>
         <b class="${priorityClass(priority)}">${esc(priority)}</b>
       </article>`;
@@ -257,7 +258,7 @@ function renderQueue() {
     return;
   }
   target.innerHTML = `
-    <div class="operation-table-head operation-table-v2"><span>STATUS</span><span>OPERATION</span><span>CATEGORY</span><span>PRIORITY</span></div>
+    <div class="operation-table-head operation-table-v2"><span>STATUS</span><span>OPERATION</span><span>SCHEDULE</span><span>CATEGORY</span><span>PRIORITY</span></div>
     ${rows(active.today)}
     ${active.upcoming.length ? `<p class="operations-upcoming-label">UPCOMING / NEXT 14 DAYS</p>${rows(active.upcoming, "upcoming")}` : ""}`;
   target.querySelectorAll("[data-hub-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.hubStatus)));
