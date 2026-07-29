@@ -1071,7 +1071,7 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   #command > .command-stage > .content-grid .operations-panel { min-width: 0; }
   #command > .command-stage > .content-grid .operation-table-head.operation-table-v2,
   #command > .command-stage > .content-grid .operation-table-row.operation-table-v2 {
-    grid-template-columns: 112px minmax(0, 1fr) 105px 88px;
+    grid-template-columns: 112px minmax(220px, 1fr) 104px minmax(94px, .44fr) 88px;
   }
 }
 
