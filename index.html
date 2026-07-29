@@ -193,6 +193,19 @@
           showView(view, true);
         };
         document.addEventListener("click", routeFromClick, true);
+        // Calendar remains available even if a later dashboard module has a
+        // temporary error. The module takes over to populate the schedule.
+        document.addEventListener("click", event => {
+          const calendarButton = (event.composedPath ? event.composedPath() : []).find(node => node?.id === "open-operations-calendar");
+          if (!calendarButton) return;
+          event.preventDefault();
+          if (typeof window.AEGIS_OPEN_CALENDAR === "function") {
+            window.AEGIS_OPEN_CALENDAR();
+          } else {
+            const dialog = document.getElementById("operations-calendar-dialog");
+            if (dialog && !dialog.open) dialog.showModal();
+          }
+        }, true);
         window.addEventListener("hashchange", routeFromAddress);
         window.addEventListener("popstate", routeFromAddress);
         window.AEGIS_ROUTE = showView;
@@ -200,7 +213,7 @@
       })();
     </script>
     <script type="module" src="auth-flow.js"></script>
-    <script type="module" src="app.js?v=operations-table-v2"></script>
+    <script type="module" src="app.js?v=operations-recovery-v1"></script>
     <script type="module" src="mission.js?v=phase-template-v1"></script>
     <script type="module" src="phase-protocol.js?v=phase-protocol-v6"></script>
     <script type="module" src="detective.js"></script>
