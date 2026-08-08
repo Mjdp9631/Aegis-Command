@@ -52,13 +52,35 @@ window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
 const statusOrder = ["Queued", "Scheduled", "Ongoing", "Complete"];
 const priorityFor = (category) => category === "Recovery" || category === "Trading" ? "High" : category === "Body" ? "High" : "Medium";
 const dateOnly = (value) => value ? String(value).slice(0, 10) : "";
+const newYorkWeekday = (date = new Date()) => new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York", weekday: "short",
+}).format(date);
+const isPreMarketDay = (date = new Date()) => !["Fri", "Sat"].includes(newYorkWeekday(date));
+
+// Forex preparation is deliberate calendar work, not a generic everyday
+// placeholder.  It belongs at 18:00 ET Sunday through Thursday only.
+const preMarketOperationForToday = () => isPreMarketDay() ? ({
+  title: "Pre-market analysis",
+  category: "Trading",
+  priority: "High",
+  brief: "Mark the higher-timeframe condition, key liquidity/reaction levels, and the valid setup before active price reaches the area.",
+  status: "Scheduled",
+  completed: false,
+  is_daily: true,
+  operation_date: todayKey(),
+  scheduled_date: todayKey(),
+  scheduled_time: "18:00",
+  schedule_mode: "recurring",
+}) : null;
 
 const starterOperations = () => {
   return [
-    ["Pre-market analysis", "Trading"],
+    ...(preMarketOperationForToday() ? [["Pre-market analysis", "Trading"]] : []),
     ["Review charts and document one lesson", "Trading"],
     ["Read one chapter", "Mind"],
-  ].map(([title, category]) => ({ title, category, completed: false, scheduled_date: null, scheduled_time: null, operation_date: todayKey(), is_daily: true, status: "Queued" }));
+  ].map(([title, category]) => title === "Pre-market analysis"
+    ? preMarketOperationForToday()
+    : ({ title, category, completed: false, scheduled_date: null, scheduled_time: null, operation_date: todayKey(), is_daily: true, status: "Queued" }));
 };
 
 const gymSplitForToday = () => {
@@ -199,34 +221,35 @@ function mergeSavedStatus(remote = []) {
   return Array.isArray(remote) ? remote : [];
 }
 
-  function ensureLiveQueueHost() {
-    // Reuse the queue surface already present in the command layout.  The
-    // earlier sibling-host experiment left the live rows outside the panel's
-    // sizing rules, which is why a populated queue could look completely
-    // blank.  A mutation repair below now protects this same, visible node
-    // from legacy paints instead.
+function ensureLiveQueueHost() {
+    // Keep one stable queue host. A second sibling can land in an implicit
+    // grid row and appear blank even when it contains the correct operations.
     const panel = document.querySelector("#command .operations-panel");
     if (!panel) return null;
 
-    let host = panel.querySelector("#operations-list") || panel.querySelector("[data-aegis-operations-live]");
+    let host = panel.querySelector("#operations-list") || panel.querySelector("#aegis-operations-list");
     if (!host) {
       host = document.createElement("div");
       host.id = "operations-list";
-      host.className = "operations-list";
+      host.className = "operations-list aegis-operations-live";
       panel.append(host);
     }
     host.hidden = false;
     host.removeAttribute("aria-hidden");
     host.classList.add("aegis-operations-live");
     host.dataset.aegisOperationsLive = "true";
+    // Do not reset this marker every time the command layout is observed.
+    // Resetting it made the repair observer repaint the same queue forever,
+    // which could leave the panel looking blank after a navigation/refresh.
+    if (!host.dataset.aegisQueueMounted) host.dataset.aegisQueueMounted = "false";
     return host;
   }
 
-  function queueTargets() {
+function queueTargets() {
     const liveHost = ensureLiveQueueHost();
     if (liveHost?.isConnected) return [liveHost];
 
-    const selectors = ["#operations-list", "#command-operations-list", "#operations-queue-list"];
+    const selectors = ["#aegis-operations-list", "#command-operations-list", "#operations-queue-list"];
     return [...new Set(selectors.flatMap((selector) => [...document.querySelectorAll(selector)]))]
       .filter((target) => target.isConnected);
   }
@@ -247,7 +270,9 @@ function queueOperations() {
     // A dated schedule wins over the daily template. Without this guard a
     // future scheduled recurring task appeared both in TODAY and UPCOMING.
     if (scheduled && scheduled !== start) return false;
-    if (isDailyOperation(operation)) return !operationDay || operationDay === start;
+    // Daily rows written by the old system without a date belong to no day.
+    // They must not masquerade as today's work or suppress today's fresh plan.
+    if (isDailyOperation(operation)) return operationDay === start || scheduled === start;
     if (scheduled === start) return true;
     return !scheduled && (!operationDay || operationDay === start);
   });
@@ -278,13 +303,46 @@ function queueOperations() {
   return { today: todayItems, upcoming: upcomingItems };
 }
 
+// This is deliberately display-only insurance.  A legacy record with an old
+// date must never produce a blank Command Center while the current-day rows
+// are being written.  boot()/ensureTodayOperations still create the durable
+// rows; this simply gives the director a usable queue during that hand-off.
+function queueFallback() {
+  const planned = starterOperations()
+    .filter((operation) => !operation.scheduled_date || dateOnly(operation.scheduled_date) === todayKey());
+  const gym = gymOperationForToday();
+  if (gym) planned.push(gym);
+  return { today: planned, upcoming: [] };
+}
+
+// This intentionally does not depend on Supabase, missions, or calendar
+// state.  It is the last-resort queue paint used if a non-critical renderer
+// throws during a refresh.  Command Center must always show the day's work.
+function emergencyQueueMarkup() {
+  const fallback = queueFallback().today;
+  const rows = fallback.map((operation) => {
+    const priority = operation.priority || priorityFor(operation.category);
+    return `<article class="operation operation-table-row operation-table-v2">
+      <button type="button" class="operation-status queued" data-hub-status="${esc(operation.title)}"><i></i>Queued</button>
+      <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.title)}">${esc(operation.title)}</button>
+      <button type="button" class="operation-schedule-control" data-hub-schedule="${esc(operation.title)}">+ Schedule</button>
+      <span>${esc(operation.category || "Mission")}</span>
+      <b class="${priorityClass(priority)}">${esc(priority)}</b>
+    </article>`;
+  }).join("");
+  return `<div class="operation-table-head operation-table-v2"><span>STATUS</span><span>OPERATION</span><span>SCHEDULE</span><span>CATEGORY</span><span>PRIORITY</span></div>${rows}`;
+}
+
 function renderQueue() {
   const targets = queueTargets();
   if (!targets.length) return;
-  if (!operations.length) operations = cachedOperations();
-  if (!operations.length) operations = starterOperations();
-  const active = queueOperations();
-  const rows = (items, kind = "today") => items.map((operation) => {
+  try {
+    syncSystemDate();
+    if (!operations.length) operations = cachedOperations();
+    if (!operations.length) operations = starterOperations();
+    const calculated = queueOperations();
+    const active = (!calculated.today.length && !calculated.upcoming.length) ? queueFallback() : calculated;
+    const rows = (items) => items.map((operation) => {
       const status = normalizedStatus(operation);
       const priority = operation.priority || priorityFor(operation.category);
       const scheduled = dateOnly(operation.scheduled_date);
@@ -299,21 +357,34 @@ function renderQueue() {
         <b class="${priorityClass(priority)}">${esc(priority)}</b>
       </article>`;
     }).join("");
-  if (!active.today.length && !active.upcoming.length) {
-    targets.forEach((target) => { target.innerHTML = '<p class="empty-operations">No operations for today or the next seven days. Schedule the next deliberate move from Mission Control.</p>'; });
-    return;
+    if (!active.today.length && !active.upcoming.length) {
+      targets.forEach((target) => {
+        target.innerHTML = '<p class="empty-operations">No operations for today or the next seven days. Schedule the next deliberate move from Mission Control.</p>';
+        target.dataset.aegisQueueMounted = "true";
+      });
+      return;
+    }
+    const markup = `
+      <div class="operation-table-head operation-table-v2"><span>STATUS</span><span>OPERATION</span><span>SCHEDULE</span><span>CATEGORY</span><span>PRIORITY</span></div>
+      ${rows(active.today)}
+      ${active.upcoming.length ? `<p class="operations-upcoming-label">UPCOMING / NEXT 14 DAYS</p>${rows(active.upcoming)}` : ""}`;
+    targets.forEach((target) => {
+      target.innerHTML = markup;
+      target.dataset.aegisQueueMounted = "true";
+      target.querySelectorAll("[data-hub-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.hubStatus)));
+      target.querySelectorAll("[data-hub-schedule]").forEach((button) => button.addEventListener("click", () => openScheduleDialog(findOperation(button.dataset.hubSchedule))));
+      target.querySelectorAll("[data-hub-detail]").forEach((button) => button.addEventListener("click", () => showOperationDetail(button.dataset.hubDetail)));
+    });
+  } catch (error) {
+    console.warn("Operations Queue failed its normal render; applying local safety feed.", error);
+    targets.forEach((target) => {
+      target.innerHTML = emergencyQueueMarkup();
+      target.dataset.aegisQueueMounted = "true";
+      target.querySelectorAll("[data-hub-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.hubStatus)));
+      target.querySelectorAll("[data-hub-schedule]").forEach((button) => button.addEventListener("click", () => openScheduleDialog(findOperation(button.dataset.hubSchedule))));
+      target.querySelectorAll("[data-hub-detail]").forEach((button) => button.addEventListener("click", () => showOperationDetail(button.dataset.hubDetail)));
+    });
   }
-  const markup = `
-    <div class="operation-table-head operation-table-v2"><span>STATUS</span><span>OPERATION</span><span>SCHEDULE</span><span>CATEGORY</span><span>PRIORITY</span></div>
-    ${rows(active.today)}
-    ${active.upcoming.length ? `<p class="operations-upcoming-label">UPCOMING / NEXT 14 DAYS</p>${rows(active.upcoming, "upcoming")}` : ""}`;
-  targets.forEach((target) => {
-    target.innerHTML = markup;
-    target.dataset.aegisQueueMounted = "true";
-    target.querySelectorAll("[data-hub-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.hubStatus)));
-    target.querySelectorAll("[data-hub-schedule]").forEach((button) => button.addEventListener("click", () => openScheduleDialog(findOperation(button.dataset.hubSchedule))));
-    target.querySelectorAll("[data-hub-detail]").forEach((button) => button.addEventListener("click", () => showOperationDetail(button.dataset.hubDetail)));
-  });
 }
 
 function findOperation(key) {
@@ -412,8 +483,9 @@ async function cycleStatus(key) {
     return;
   }
   saveCachedOperations();
-  // Mission progress is written by the shared database trigger.  Re-read it
-  // after the operation save rather than maintaining a second local counter.
+  // Database progress triggers are the one source of truth for linked
+  // missions.  Do not apply a second browser-side increment here: doing so
+  // created duplicate chapter/PT progress after a refresh.
   if (currentUser) {
     await loadMissions();
     operations = await seedIfEmpty();
@@ -448,20 +520,27 @@ async function seedIfEmpty() {
 
 async function ensureTodayOperations(records = []) {
   const daily = [
-    ["Pre-market analysis", "Trading", "Mark higher-timeframe condition, key liquidity/reaction levels, and the valid setup before active price reaches the area."],
     ["Review charts and document one lesson", "Trading", "Review one relevant chart or completed trade, capture one process lesson, and file it in Detective or Self Mastery."],
     ["Read one chapter", "Mind", "Read one chapter without notifications, then capture one useful idea, quote, or action in Self Mastery."],
   ].map(([title, category, brief]) => ({ title, category, brief, priority: priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: todayKey(), metric_key: title === "Read one chapter" ? "chapters_read" : null }));
+  const preMarket = preMarketOperationForToday();
+  if (preMarket) daily.unshift(preMarket);
   daily.push(gymOperationForToday());
 
-  const additions = daily.filter((planned) => !records.some((operation) => dateOnly(operation.operation_date) === todayKey() && String(operation.title || "").toLowerCase() === planned.title.toLowerCase()));
-  const recovery = resolveMission({ title: "Orthopedic PT session", category: "Recovery" });
-  const completedSessions = Number(recovery?.completed_count || 0);
-  const targetSessions = Number(recovery?.target_count || 10);
-  if (recovery && completedSessions < targetSessions) {
-    const hasOpenPt = records.some((operation) => !operation.completed && /orthopedic pt session|prescribed acl rehab|pt session/.test(String(operation.title || "").toLowerCase()));
-    if (!hasOpenPt) additions.push({ title: `Orthopedic PT session ${completedSessions + 1} of ${targetSessions}`, category: "Recovery", priority: "High", status: "Queued", completed: false, is_daily: false, mission_id: recovery.id, brief: "Complete only your clinician/PT-prescribed work. Log pain, swelling, range-of-motion changes, and the next session date after you finish." });
-  }
+  const hasTodayPlan = (planned) => records.some((operation) => {
+    const sameTitle = String(operation.title || "").trim().toLowerCase() === planned.title.toLowerCase();
+    if (!sameTitle) return false;
+    const operationDay = dateOnly(operation.operation_date);
+    const scheduledDay = dateOnly(operation.scheduled_date);
+    // Only a row explicitly assigned to today can satisfy today's plan.  The
+    // legacy system created undated daily rows, which caused old July work to
+    // block the new day and produced an empty queue on later dates.
+    return operationDay === todayKey() || scheduledDay === todayKey();
+  });
+  const additions = daily.filter((planned) => !hasTodayPlan(planned));
+  // Measured work such as PT sessions is deliberately scheduled from Mission
+  // Control.  Auto-creating an undated next session made the calendar invent
+  // appointments and caused duplicate recovery operations.
   if (!additions.length) return records;
   if (!client || !currentUser) return [...records, ...additions.map((item, index) => ({ ...item, id: `local-${todayKey()}-${index}-${item.title}` }))];
   const prepared = additions.map((item) => {
@@ -532,6 +611,7 @@ function monthTitle(date) {
 }
 
 function renderCalendar() {
+  syncSystemDate();
   const label = $("#operations-calendar-label");
   const grid = $("#operations-calendar-grid");
   const agendaLabel = $("#calendar-agenda-label");
@@ -610,6 +690,11 @@ function renderCalendar() {
 }
 
 function openCalendar() {
+  // Opening the schedule always starts from the real current month in New York.
+  // A previous legacy cursor must never reopen July after the calendar has moved
+  // into a later month.
+  cursor = newYorkTodayDate();
+  selectedDay = todayKey();
   renderCalendar();
   const dialog = $("#operations-calendar-dialog");
   if (dialog && !dialog.open) dialog.showModal();
@@ -658,8 +743,11 @@ document.addEventListener("click", (event) => {
   const button = event.target.closest("#open-operations-calendar");
   if (!button) return;
   event.preventDefault();
+  // The old app.js calendar handler is still present.  Letting it receive the
+  // same click opens its outdated dialog after this current-month calendar.
+  event.stopImmediatePropagation();
   openCalendar();
-});
+}, true);
 const startHub = () => {
   window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
   syncSystemDate();
@@ -673,11 +761,15 @@ const startHub = () => {
   }
   // The staged paints protect against another module replacing the
   // command-center panel after this one has loaded.
-  boot().finally(() => [0, 250, 1000, 2500].forEach((delay) => setTimeout(renderQueue, delay)));
+  boot().finally(() => [0, 250, 1000, 2500, 5000, 9000, 14000].forEach((delay) => setTimeout(renderQueue, delay)));
 };
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startHub, { once: true });
 else startHub();
 window.addEventListener("aegis:auth-ready", boot);
+// A full refresh and a route transition each recreate parts of the Command
+// Center.  These last-resort paints make the queue independent of render
+// order, while the durable Supabase rows remain the source of truth.
+window.addEventListener("load", () => [0, 300, 1200, 3500].forEach((delay) => setTimeout(renderQueue, delay)));
 window.addEventListener("aegis:missions-refresh", async (event) => {
   if (event.detail?.source === "operations-hub") return;
   await loadMissions();
@@ -702,14 +794,32 @@ const wireCalendar = () => {
     cursor = new Date(Date.UTC(Number(values.year), Number(values.month) - 1 + delta, 1, 17));
     renderCalendar();
   };
-  $("#calendar-prev")?.addEventListener("click", () => moveMonth(-1));
-  $("#calendar-next")?.addEventListener("click", () => moveMonth(1));
+  // app.js still has legacy calendar listeners. Capture these controls before
+  // they reach that code so there is one calendar renderer and one cursor.
+  const captureCalendarMove = (selector, delta) => {
+    document.addEventListener("click", (event) => {
+      const control = event.target.closest(selector);
+      if (!control) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      moveMonth(delta);
+    }, true);
+  };
+  captureCalendarMove("#calendar-prev", -1);
+  captureCalendarMove("#calendar-next", 1);
   wireCalendarPanels();
   if (!window.MutationObserver) return;
   let repairing = false;
   const repaintIfNeeded = () => {
     const targets = queueTargets();
-    if (repairing || !operations.length || !targets.length || targets.every((target) => target.dataset.aegisQueueMounted === "true" && target.querySelector("[data-hub-status]"))) return;
+    // A queue can legitimately be empty while records are loading.  It still
+    // needs its own mounted placeholder; otherwise an older renderer can
+    // reclaim the panel and leave it blank after a tab change or refresh.
+    const needsPaint = targets.some((target) => (
+      target.dataset.aegisQueueMounted !== "true"
+      || (!target.querySelector(".operation-table-v2") && !target.querySelector(".empty-operations"))
+    ));
+    if (repairing || !targets.length || !needsPaint) return;
     repairing = true;
     requestAnimationFrame(() => { renderQueue(); repairing = false; });
   };
@@ -717,7 +827,18 @@ const wireCalendar = () => {
   // replaces queue markup after auth and after tab transitions.
   const observer = new MutationObserver(repaintIfNeeded);
   observer.observe(document.body, { childList: true, subtree: true });
-  [100, 500, 1500, 3000].forEach((delay) => setTimeout(repaintIfNeeded, delay));
+  [100, 500, 1500, 3000, 6000, 10000].forEach((delay) => setTimeout(repaintIfNeeded, delay));
+
+  // Navigation swaps the active view without a full page reload. Repaint the
+  // durable queue after the new Command Center surface is in the DOM instead
+  // of relying on a stale July-era placeholder from the legacy script.
+  const refreshCommandSurface = () => setTimeout(() => {
+    syncSystemDate();
+    renderQueue();
+    renderCalendar();
+  }, 0);
+  window.addEventListener("hashchange", refreshCommandSurface);
+  window.addEventListener("aegis:navigation", refreshCommandSurface);
 };
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wireCalendar, { once: true });
 else wireCalendar();
