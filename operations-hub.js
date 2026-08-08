@@ -62,13 +62,18 @@ const isPreMarketDay = (date = new Date()) => !["Fri", "Sat"].includes(newYorkWe
 // Keeping the interpretation here means the queue and calendar cannot drift
 // apart when a row was created by an older version of the app.
 function scheduleMode(operation) {
-  const mode = String(operation?.schedule_mode || "one_time").toLowerCase();
+  const source = operation?._series || operation;
+  const mode = String(source?.schedule_mode || "one_time").toLowerCase();
   if (mode === "daily") return "daily";
   if (mode === "weekly" || mode === "recurring") return "weekly";
   return "one_time";
 }
 
 function isScheduledOn(operation, key) {
+  // A recurring series is materialized into independent occurrence rows. Each
+  // occurrence is only valid for its own date; never let the parent status
+  // bleed across the rest of the series.
+  if (operation?._occurrence) return dateOnly(operation.scheduled_date) === key;
   const start = dateOnly(operation?.scheduled_date);
   if (!start || !key || key < start) return false;
   const end = dateOnly(operation?.scheduled_end_date);
@@ -158,9 +163,109 @@ const gymOperationForToday = () => {
 };
 
 let operations = [];
+let operationOccurrences = [];
 let missions = [];
 let cursor = newYorkTodayDate();
 let selectedDay = todayKey();
+
+const occurrenceCacheKey = () => `aegis-operation-occurrences:${currentUser?.id || "anonymous"}`;
+const cachedOccurrences = () => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(occurrenceCacheKey()) || "[]");
+    return Array.isArray(stored) ? stored : [];
+  } catch {
+    return [];
+  }
+};
+const saveCachedOccurrences = () => localStorage.setItem(occurrenceCacheKey(), JSON.stringify(operationOccurrences));
+
+function recurringDateKeys(operation, maxDays = 370) {
+  const start = dateOnly(operation?.scheduled_date);
+  if (!start) return [];
+  // Repeating schedules remain active until an explicit end date. Materialize
+  // a bounded horizon so weekly/daily instances are independently trackable
+  // without creating an unbounded insert.
+  let end = dateOnly(operation?.scheduled_end_date);
+  if (!end && scheduleMode(operation) !== "one_time") {
+    const horizon = dateForKey(start);
+    horizon.setUTCDate(horizon.getUTCDate() + maxDays);
+    end = dayKey(horizon);
+  }
+  end = end || start;
+  const startDate = dateForKey(start);
+  const endDate = dateForKey(end);
+  if (!startDate || !endDate || endDate < startDate) return [];
+  const keys = [];
+  const cursor = new Date(startDate);
+  for (let index = 0; index <= maxDays && cursor <= endDate; index += 1) {
+    const key = dayKey(cursor);
+    if (isScheduledOn({ ...operation, _occurrence: null }, key)) keys.push(key);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return keys;
+}
+
+function operationInstances() {
+  const instances = [];
+  operations.forEach((operation) => {
+    if (scheduleMode(operation) === "one_time" || !operation.id || String(operation.id).startsWith("local-")) {
+      instances.push(operation);
+      return;
+    }
+    const rows = operationOccurrences.filter((row) => String(row.operation_id) === String(operation.id));
+    if (!rows.length) {
+      // Before migration 044 is run, retain a safe single display instance;
+      // after it runs, every scheduled date gets its own durable row.
+      const first = recurringDateKeys(operation, 0)[0];
+      if (first) instances.push({ ...operation, id: `virtual:${operation.id}:${first}`, _series: operation, _occurrence: { occurrence_date: first }, scheduled_date: first, status: operation.status, completed: operation.completed });
+      return;
+    }
+    rows.forEach((row) => instances.push({
+      ...operation,
+      id: `occurrence:${row.id}`,
+      _series: operation,
+      _occurrence: row,
+      scheduled_date: row.occurrence_date,
+      scheduled_time: row.scheduled_time || operation.scheduled_time,
+      status: row.status || "Scheduled",
+      completed: Boolean(row.completed),
+      completed_on: row.completed_on || null,
+    }));
+  });
+  return instances;
+}
+
+async function loadOccurrences() {
+  if (!client || !currentUser) {
+    operationOccurrences = cachedOccurrences();
+    return;
+  }
+  const { data, error } = await client.from("operation_occurrences").select("*").eq("user_id", currentUser.id);
+  if (error) {
+    // Migration 044 may not have been run yet. Keep the legacy view usable and
+    // avoid replacing valid operations with an empty queue.
+    console.warn("Could not load operation occurrences", error.message);
+    operationOccurrences = cachedOccurrences();
+    return;
+  }
+  operationOccurrences = data || [];
+  saveCachedOccurrences();
+}
+
+async function ensureRecurringOccurrences() {
+  if (!client || !currentUser || !operationOccurrences) return;
+  const desired = [];
+  operations.filter((operation) => scheduleMode(operation) !== "one_time" && operation.id && !String(operation.id).startsWith("local-")).forEach((operation) => {
+    recurringDateKeys(operation).forEach((date) => desired.push({ user_id: currentUser.id, operation_id: operation.id, occurrence_date: date, scheduled_time: operation.scheduled_time || null }));
+  });
+  if (!desired.length) return;
+  const existing = new Set(operationOccurrences.map((row) => `${row.operation_id}|${dateOnly(row.occurrence_date)}`));
+  const missing = desired.filter((row) => !existing.has(`${row.operation_id}|${row.occurrence_date}`));
+  if (!missing.length) return;
+  const { data, error } = await client.from("operation_occurrences").insert(missing).select();
+  if (!error && data?.length) operationOccurrences = [...operationOccurrences, ...data];
+  saveCachedOccurrences();
+}
 
 function normalizedStatus(operation) {
   if (operation.completed) return "Complete";
@@ -315,7 +420,8 @@ function queueOperations() {
   const horizon = newYorkTodayDate();
   horizon.setUTCDate(horizon.getUTCDate() + 14);
   const end = dayKey(horizon);
-  const today = operations.filter((operation) => {
+  const displayOperations = operationInstances();
+  const today = displayOperations.filter((operation) => {
     if (normalizedStatus(operation) === "Complete" && !isCompleteToday(operation)) return false;
     const scheduled = dateOnly(operation.scheduled_date);
     const operationDay = dateOnly(operation.operation_date);
@@ -327,10 +433,10 @@ function queueOperations() {
     if (isDailyOperation(operation)) return operationDay === start;
     return !scheduled && (!operationDay || operationDay === start);
   });
-  const upcoming = operations.filter((operation) => {
+  const upcoming = displayOperations.filter((operation) => {
     if (normalizedStatus(operation) === "Complete") return false;
     const next = nextScheduledDate(operation, start, false);
-    return Boolean(next && next <= end);
+    return Boolean(next && next >= start && next <= end);
   });
   const sort = (items) => items.slice().sort((a, b) => {
     const aDate = nextScheduledDate(a, start, true) || dateOnly(a.operation_date) || "9999-12-31";
@@ -340,7 +446,9 @@ function queueOperations() {
   const uniqueItems = (items) => {
     const unique = new Map();
     items.forEach((operation) => {
-      const key = `${String(operation.title || "").trim().toLowerCase()}|${scheduleMode(operation)}|${dateOnly(operation.scheduled_date) || dateOnly(operation.operation_date) || "standing"}`;
+      const key = operation._occurrence?.id
+        ? `occurrence:${operation._occurrence.id}`
+        : `${String(operation.title || "").trim().toLowerCase()}|${scheduleMode(operation)}|${dateOnly(operation.scheduled_date) || dateOnly(operation.operation_date) || "standing"}`;
       const existing = unique.get(key);
       const timestamp = Date.parse(operation.updated_at || operation.created_at || 0) || 0;
       const existingTimestamp = Date.parse(existing?.updated_at || existing?.created_at || 0) || 0;
@@ -439,7 +547,8 @@ function renderQueue() {
 }
 
 function findOperation(key) {
-  return operations.find((operation) => String(operation.id || operation.title) === String(key));
+  return operationInstances().find((operation) => String(operation.id || operation.title) === String(key))
+    || operations.find((operation) => String(operation.id || operation.title) === String(key));
 }
 
 function showOperationDetail(key) {
@@ -453,6 +562,23 @@ function showOperationDetail(key) {
 
 async function persist(operation) {
   if (!client || !currentUser) return true;
+  if (operation?._occurrence?.id) {
+    const { data, error } = await client.from("operation_occurrences")
+      .update({
+        status: operation.status,
+        completed: Boolean(operation.completed),
+        completed_on: operation.completed_on || null,
+        scheduled_time: operation.scheduled_time || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", operation._occurrence.id)
+      .eq("user_id", currentUser.id)
+      .select()
+      .single();
+    if (error) { console.warn("Could not save operation occurrence", error.message); return false; }
+    if (data) Object.assign(operation._occurrence, data);
+    return true;
+  }
   const payload = {
     user_id: currentUser.id,
     title: operation.title,
@@ -525,7 +651,12 @@ async function cycleStatus(key) {
   } else if (wasComplete) {
     operation.completed_on = null;
   }
-  attachMissionLink(operation);
+  const series = operation._series || operation;
+  attachMissionLink(series);
+  if (series !== operation) {
+    operation.mission_id = series.mission_id;
+    operation.metric_key = series.metric_key;
+  }
   // Preserve the director's update locally before the network round trip.
   // A refresh can no longer turn a just-clicked Ongoing/Complete operation
   // back into Queued simply because the database is temporarily unavailable.
@@ -538,12 +669,21 @@ async function cycleStatus(key) {
     return;
   }
   saveCachedOperations();
+  // Occurrences are independent rows and therefore bypass the legacy
+  // operations-table progress trigger. Advance (or reverse) the linked
+  // measured mission exactly once for this occurrence.
+  if (operation._occurrence) {
+    if (next === "Complete" && !wasComplete) await updateMissionEvidence(series, 1);
+    if (next !== "Complete" && wasComplete) await updateMissionEvidence(series, -1);
+  }
   // Database progress triggers are the one source of truth for linked
   // missions.  Do not apply a second browser-side increment here: doing so
   // created duplicate chapter/PT progress after a refresh.
   if (currentUser) {
     await loadMissions();
     operations = await seedIfEmpty();
+    await loadOccurrences();
+    await ensureRecurringOccurrences();
     saveCachedOperations();
   }
   renderQueue();
@@ -644,7 +784,8 @@ function ensureScheduleDialog() {
   scheduleMode?.addEventListener("change", syncScheduleEnd);
   syncScheduleEnd();
   dialog.addEventListener("close", async () => {
-    const operation = findOperation(dialog.dataset.operationKey);
+    const found = findOperation(dialog.dataset.operationKey);
+    const operation = found?._series || found;
     if (!operation || dialog.returnValue === "cancel") return;
     const date = dialog.returnValue === "clear" ? "" : $("#operation-schedule-date")?.value;
     const time = dialog.returnValue === "clear" ? "" : $("#operation-schedule-time")?.value;
@@ -658,6 +799,8 @@ function ensureScheduleDialog() {
     if (date && normalizedStatus(operation) === "Queued") operation.status = "Scheduled";
     const saved = await persist(operation);
     if (!saved) return;
+    await loadOccurrences();
+    await ensureRecurringOccurrences();
     saveCachedOperations();
     if (date) selectedDay = date;
     renderQueue();
@@ -668,6 +811,7 @@ function ensureScheduleDialog() {
 
 function openScheduleDialog(operation) {
   if (!operation) return;
+  operation = operation._series || operation;
   const dialog = ensureScheduleDialog();
   dialog.dataset.operationKey = String(operation.id || operation.title);
   const input = $("#operation-schedule-date");
@@ -686,6 +830,23 @@ function monthTitle(date) {
   return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "long", year: "numeric" }).format(date);
 }
 
+// Count scheduled instances, not parent series rows.  The date/title key also
+// collapses legacy duplicate records that were created by the old scheduler,
+// so a measured mission cannot report false "remaining to schedule" units.
+function scheduledCountForMission(missionId) {
+  const seen = new Set();
+  operationInstances().forEach((operation) => {
+    if (String(operation.mission_id || "") !== String(missionId)) return;
+    const scheduledDate = dateOnly(operation.scheduled_date);
+    if (!scheduledDate) return;
+    const key = operation._occurrence?.id
+      ? `occurrence:${operation._occurrence.id}`
+      : `${String(operation.mission_id)}|${String(operation.title || "").trim().toLowerCase()}|${scheduledDate}|${operation.scheduled_time || ""}`;
+    seen.add(key);
+  });
+  return seen.size;
+}
+
 function renderCalendar() {
   syncSystemDate();
   const label = $("#operations-calendar-label");
@@ -694,6 +855,7 @@ function renderCalendar() {
   const agenda = $("#calendar-agenda-list");
   const needsScheduling = $("#calendar-needs-scheduling");
   if (!grid) return;
+  const displayOperations = operationInstances();
   if (label) label.textContent = monthTitle(cursor);
   const year = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric" }).format(cursor));
   const month = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "numeric" }).format(cursor)) - 1;
@@ -709,7 +871,7 @@ function renderCalendar() {
     }
     const date = new Date(Date.UTC(year, month, day, 17));
     const key = dayKey(date);
-    const scheduled = operations.filter((operation) => isScheduledOn(operation, key));
+    const scheduled = displayOperations.filter((operation) => isScheduledOn(operation, key));
     const complete = scheduled.filter((operation) => normalizedStatus(operation) === "Complete").length;
     const classes = ["calendar-day", key === todayKey() ? "today" : "", key === selectedDay ? "selected" : ""].filter(Boolean).join(" ");
     cells.push(`<button type="button" class="${classes}" data-calendar-day="${key}"><b>${day}</b>${scheduled.length ? `<small>${complete}/${scheduled.length} OPS</small>` : '<small>—</small>'}</button>`);
@@ -719,7 +881,7 @@ function renderCalendar() {
     selectedDay = button.dataset.calendarDay;
     renderCalendar();
   }));
-  const selected = operations.filter((operation) => isScheduledOn(operation, selectedDay));
+  const selected = displayOperations.filter((operation) => isScheduledOn(operation, selectedDay));
   if (agendaLabel) agendaLabel.textContent = selectedDay ? formatKey(selectedDay, { weekday: "long", month: "long", day: "numeric" }) : "Select a day";
   if (agenda) {
     agenda.innerHTML = selected.length ? `<div class="calendar-agenda-list">${selected.map((operation) => `<button type="button" class="calendar-agenda-item" data-calendar-status="${esc(operation.id || operation.title)}"><span class="operation-status ${normalizedStatus(operation).toLowerCase()}"><i></i>${esc(normalizedStatus(operation))}</span><strong>${esc(operation.title)}</strong><small>${esc(operation.category || "Mission")} · advance status</small></button>`).join("")}</div>` : '<p class="calendar-empty">No operations scheduled. Select another day or schedule an operation in Mission Control.</p>';
@@ -730,7 +892,7 @@ function renderCalendar() {
       .filter((mission) => String(mission.completion_type || "").toLowerCase() === "units" && !mission.completed)
       .map((mission) => {
         const target = Math.max(0, Number(mission.target_count || 0));
-        const scheduledCount = operations.filter((operation) => String(operation.mission_id || "") === String(mission.id) && Boolean(operation.scheduled_date)).length;
+        const scheduledCount = scheduledCountForMission(mission.id);
         return { mission, remaining: Math.max(0, target - scheduledCount) };
       })
       .filter(({ remaining }) => remaining > 0);
@@ -744,7 +906,7 @@ function renderCalendar() {
       if (!operation) {
         const target = Math.max(1, Number(mission.target_count || 1));
         const done = Math.max(0, Number(mission.completed_count || 0));
-        const scheduledCount = operations.filter((item) => String(item.mission_id || "") === String(mission.id) && Boolean(item.scheduled_date)).length;
+        const scheduledCount = scheduledCountForMission(mission.id);
         const nextNumber = Math.min(target, Math.max(done, scheduledCount) + 1);
         operation = {
           id: `local-${Date.now()}-${mission.id}`,
@@ -795,8 +957,14 @@ async function boot() {
   // session is available.
   const local = cachedOperations();
   if (currentUser) await loadMissions();
-  if (currentUser) operations = await seedIfEmpty();
-  else operations = local;
+  if (currentUser) {
+    operations = await seedIfEmpty();
+    await loadOccurrences();
+    await ensureRecurringOccurrences();
+  } else {
+    operations = local;
+    operationOccurrences = cachedOccurrences();
+  }
   if (!operations.length) operations = local.length ? local : starterOperations();
     saveCachedOperations();
     renderQueue();
