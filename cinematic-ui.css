@@ -1147,6 +1147,7 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
 .hub-operation-title{width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .operation-schedule-control{justify-self:start;min-width:112px;border:1px solid rgba(103,191,255,.2);border-radius:4px;background:rgba(8,28,47,.62);color:#8ba9c6;font:inherit;font-size:10px;padding:6px 8px;cursor:pointer;text-align:left;white-space:nowrap}
 .operation-schedule-control:hover,.operation-schedule-control.is-scheduled{color:#efb54f;border-color:rgba(239,181,79,.5);background:rgba(97,63,18,.2)}
+.operation-schedule-card #operation-schedule-end-wrap.is-disabled{opacity:.45}.operation-schedule-card #operation-schedule-end-date:disabled{cursor:not-allowed}
 
 /* Queue v5 â€” final authority over older Command Center styles. */
 #command .operations-panel #operations-list.aegis-operations-live,

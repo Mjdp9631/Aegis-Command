@@ -57,6 +57,58 @@ const newYorkWeekday = (date = new Date()) => new Intl.DateTimeFormat("en-US", {
 }).format(date);
 const isPreMarketDay = (date = new Date()) => !["Fri", "Sat"].includes(newYorkWeekday(date));
 
+// Scheduling uses one durable start date plus an optional repeat rule. The
+// database keeps the historical value "recurring"; the UI calls it weekly.
+// Keeping the interpretation here means the queue and calendar cannot drift
+// apart when a row was created by an older version of the app.
+function scheduleMode(operation) {
+  const mode = String(operation?.schedule_mode || "one_time").toLowerCase();
+  if (mode === "daily") return "daily";
+  if (mode === "weekly" || mode === "recurring") return "weekly";
+  return "one_time";
+}
+
+function isScheduledOn(operation, key) {
+  const start = dateOnly(operation?.scheduled_date);
+  if (!start || !key || key < start) return false;
+  const end = dateOnly(operation?.scheduled_end_date);
+  if (end && key > end) return false;
+  const mode = scheduleMode(operation);
+  if (mode === "one_time") return key === start;
+  if (mode === "daily") return true;
+  const startDate = dateForKey(start);
+  const keyDate = dateForKey(key);
+  return Boolean(startDate && keyDate && startDate.getUTCDay() === keyDate.getUTCDay());
+}
+
+function nextScheduledDate(operation, fromKey = todayKey(), includeFrom = true, maxDays = 370) {
+  if (!dateOnly(operation?.scheduled_date)) return "";
+  const cursor = dateForKey(fromKey);
+  if (!cursor) return "";
+  if (!includeFrom) cursor.setUTCDate(cursor.getUTCDate() + 1);
+  for (let index = 0; index <= maxDays; index += 1) {
+    const key = dayKey(cursor);
+    if (isScheduledOn(operation, key)) return key;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return "";
+}
+
+function scheduleLabel(operation, fromKey = todayKey()) {
+  const mode = scheduleMode(operation);
+  const next = nextScheduledDate(operation, fromKey, true);
+  if (!next) return "+ Schedule";
+  const date = mode === "weekly"
+    ? formatKey(next, { weekday: "short", month: "short", day: "numeric" })
+    : formatKey(next);
+  const repeat = mode === "daily" ? "Daily" : mode === "weekly" ? "Weekly" : "Once";
+  const time = operation.scheduled_time ? ` · ${String(operation.scheduled_time).slice(0, 5)}` : "";
+  const end = mode !== "one_time" && dateOnly(operation.scheduled_end_date)
+    ? ` → ${formatKey(operation.scheduled_end_date)}`
+    : "";
+  return `${repeat} · ${date}${time}${end}`;
+}
+
 // Forex preparation is deliberate calendar work, not a generic everyday
 // placeholder.  It belongs at 18:00 ET Sunday through Thursday only.
 const preMarketOperationForToday = () => isPreMarketDay() ? ({
@@ -267,29 +319,28 @@ function queueOperations() {
     if (normalizedStatus(operation) === "Complete" && !isCompleteToday(operation)) return false;
     const scheduled = dateOnly(operation.scheduled_date);
     const operationDay = dateOnly(operation.operation_date);
-    // A dated schedule wins over the daily template. Without this guard a
-    // future scheduled recurring task appeared both in TODAY and UPCOMING.
-    if (scheduled && scheduled !== start) return false;
+    // A dated schedule wins over the daily template. Recurring rows are
+    // included on each valid occurrence, not only on their start date.
+    if (scheduled) return isScheduledOn(operation, start);
     // Daily rows written by the old system without a date belong to no day.
     // They must not masquerade as today's work or suppress today's fresh plan.
-    if (isDailyOperation(operation)) return operationDay === start || scheduled === start;
-    if (scheduled === start) return true;
+    if (isDailyOperation(operation)) return operationDay === start;
     return !scheduled && (!operationDay || operationDay === start);
   });
   const upcoming = operations.filter((operation) => {
     if (normalizedStatus(operation) === "Complete") return false;
-    const scheduled = dateOnly(operation.scheduled_date);
-    return scheduled > start && scheduled <= end;
+    const next = nextScheduledDate(operation, start, false);
+    return Boolean(next && next <= end);
   });
   const sort = (items) => items.slice().sort((a, b) => {
-    const aDate = dateOnly(a.scheduled_date) || "9999-12-31";
-    const bDate = dateOnly(b.scheduled_date) || "9999-12-31";
+    const aDate = nextScheduledDate(a, start, true) || dateOnly(a.operation_date) || "9999-12-31";
+    const bDate = nextScheduledDate(b, start, true) || dateOnly(b.operation_date) || "9999-12-31";
     return aDate.localeCompare(bDate) || String(a.title).localeCompare(String(b.title));
   });
   const uniqueItems = (items) => {
     const unique = new Map();
     items.forEach((operation) => {
-      const key = `${String(operation.title || "").trim().toLowerCase()}|${dateOnly(operation.scheduled_date) || dateOnly(operation.operation_date) || "standing"}`;
+      const key = `${String(operation.title || "").trim().toLowerCase()}|${scheduleMode(operation)}|${dateOnly(operation.scheduled_date) || dateOnly(operation.operation_date) || "standing"}`;
       const existing = unique.get(key);
       const timestamp = Date.parse(operation.updated_at || operation.created_at || 0) || 0;
       const existingTimestamp = Date.parse(existing?.updated_at || existing?.created_at || 0) || 0;
@@ -347,7 +398,7 @@ function renderQueue() {
       const priority = operation.priority || priorityFor(operation.category);
       const scheduled = dateOnly(operation.scheduled_date);
       const time = operation.scheduled_time ? ` · ${String(operation.scheduled_time).slice(0, 5)}` : "";
-      const timing = scheduled ? `${formatKey(scheduled)}${time}` : "+ Schedule";
+      const timing = scheduleLabel(operation, todayKey());
       const doneClass = status === "Complete" ? " done operation-complete" : "";
       return `<article class="operation operation-table-row operation-table-v2${doneClass}">
         <button type="button" class="operation-status ${status.toLowerCase()}" data-hub-status="${esc(operation.id || operation.title)}"><i></i>${esc(status)}</button>
@@ -413,7 +464,11 @@ async function persist(operation) {
     completed_on: operation.completed_on || null,
     scheduled_date: operation.scheduled_date || null,
     scheduled_time: operation.scheduled_time || null,
-    schedule_mode: operation.schedule_mode || "one_time",
+    scheduled_end_date: operation.scheduled_end_date || null,
+    // The database stores recurring schedules as `recurring`; the UI also
+    // accepts the clearer `weekly` label. Normalize before every write so a
+    // status change cannot fail the schedule constraint for older rows.
+    schedule_mode: scheduleMode(operation) === "weekly" ? "recurring" : scheduleMode(operation),
     operation_date: operation.operation_date || null,
     is_daily: Boolean(operation.is_daily),
     mission_id: operation.mission_id || null,
@@ -570,18 +625,36 @@ function ensureScheduleDialog() {
   dialog.className = "dialog-card operation-schedule-card";
   dialog.innerHTML = `<form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h2>Plan this operation.</h2><p class="schedule-copy">Scheduling is optional. A scheduled operation stays on the calendar until you complete it.</p><div class="schedule-input-grid"><label>Date<input id="operation-schedule-date" type="date" required></label><label>Time <span class="field-optional">optional</span><input id="operation-schedule-time" type="time"></label></div><label>Schedule type<select id="operation-schedule-mode"><option value="one_time">One-time</option><option value="weekly">Repeat weekly</option></select></label><div class="dialog-actions"><button value="clear" type="submit" class="text-button">Remove from calendar</button><button value="cancel" type="submit" class="text-button">Cancel</button><button value="schedule" type="submit" class="primary">Add to calendar</button></div></form>`;
   document.body.append(dialog);
-  // Older markup used the label "weekly" while the database stores the
-  // durable value "recurring". Normalize the UI option before it can write.
-  dialog.querySelector('#operation-schedule-mode option[value="weekly"]')?.setAttribute('value', 'recurring');
+  const scheduleDate = dialog.querySelector("#operation-schedule-date");
+  scheduleDate?.removeAttribute("required");
+  const scheduleMode = dialog.querySelector("#operation-schedule-mode");
+  if (scheduleMode) {
+    scheduleMode.innerHTML = '<option value="one_time">One-time</option><option value="daily">Repeat daily</option><option value="weekly">Repeat weekly</option>';
+  }
+  const endWrap = document.createElement("label");
+  endWrap.id = "operation-schedule-end-wrap";
+  endWrap.innerHTML = 'End date <span class="field-optional">optional for repeats</span><input id="operation-schedule-end-date" type="date">';
+  dialog.querySelector(".dialog-actions")?.before(endWrap);
+  const syncScheduleEnd = () => {
+    const mode = scheduleMode?.value || "one_time";
+    const end = dialog.querySelector("#operation-schedule-end-date");
+    if (end) end.disabled = mode === "one_time";
+    endWrap.classList.toggle("is-disabled", mode === "one_time");
+  };
+  scheduleMode?.addEventListener("change", syncScheduleEnd);
+  syncScheduleEnd();
   dialog.addEventListener("close", async () => {
     const operation = findOperation(dialog.dataset.operationKey);
     if (!operation || dialog.returnValue === "cancel") return;
     const date = dialog.returnValue === "clear" ? "" : $("#operation-schedule-date")?.value;
     const time = dialog.returnValue === "clear" ? "" : $("#operation-schedule-time")?.value;
-    if (dialog.returnValue === "schedule" && !date) return;
+    const selectedMode = dialog.returnValue === "clear" ? "one_time" : ($("#operation-schedule-mode")?.value || "one_time");
+    const endDate = dialog.returnValue === "clear" || selectedMode === "one_time" ? "" : ($("#operation-schedule-end-date")?.value || "");
+    if (dialog.returnValue === "schedule" && (!date || (endDate && endDate < date))) return;
     operation.scheduled_date = date || null;
     operation.scheduled_time = time || null;
-    operation.schedule_mode = dialog.returnValue === "clear" ? "one_time" : ($("#operation-schedule-mode")?.value || "one_time");
+    operation.scheduled_end_date = endDate || null;
+    operation.schedule_mode = selectedMode === "weekly" ? "recurring" : selectedMode;
     if (date && normalizedStatus(operation) === "Queued") operation.status = "Scheduled";
     const saved = await persist(operation);
     if (!saved) return;
@@ -602,7 +675,10 @@ function openScheduleDialog(operation) {
   const time = $("#operation-schedule-time");
   if (time) time.value = operation.scheduled_time || "";
   const mode = $("#operation-schedule-mode");
-  if (mode) mode.value = operation.schedule_mode === "weekly" ? "recurring" : (operation.schedule_mode || "one_time");
+  if (mode) mode.value = scheduleMode(operation);
+  const end = $("#operation-schedule-end-date");
+  if (end) end.value = dateOnly(operation.scheduled_end_date) || "";
+  mode?.dispatchEvent(new Event("change"));
   if (!dialog.open) dialog.showModal();
 }
 
@@ -633,7 +709,7 @@ function renderCalendar() {
     }
     const date = new Date(Date.UTC(year, month, day, 17));
     const key = dayKey(date);
-    const scheduled = operations.filter((operation) => dateOnly(operation.scheduled_date) === key);
+    const scheduled = operations.filter((operation) => isScheduledOn(operation, key));
     const complete = scheduled.filter((operation) => normalizedStatus(operation) === "Complete").length;
     const classes = ["calendar-day", key === todayKey() ? "today" : "", key === selectedDay ? "selected" : ""].filter(Boolean).join(" ");
     cells.push(`<button type="button" class="${classes}" data-calendar-day="${key}"><b>${day}</b>${scheduled.length ? `<small>${complete}/${scheduled.length} OPS</small>` : '<small>—</small>'}</button>`);
@@ -643,7 +719,7 @@ function renderCalendar() {
     selectedDay = button.dataset.calendarDay;
     renderCalendar();
   }));
-  const selected = operations.filter((operation) => dateOnly(operation.scheduled_date) === selectedDay);
+  const selected = operations.filter((operation) => isScheduledOn(operation, selectedDay));
   if (agendaLabel) agendaLabel.textContent = selectedDay ? formatKey(selectedDay, { weekday: "long", month: "long", day: "numeric" }) : "Select a day";
   if (agenda) {
     agenda.innerHTML = selected.length ? `<div class="calendar-agenda-list">${selected.map((operation) => `<button type="button" class="calendar-agenda-item" data-calendar-status="${esc(operation.id || operation.title)}"><span class="operation-status ${normalizedStatus(operation).toLowerCase()}"><i></i>${esc(normalizedStatus(operation))}</span><strong>${esc(operation.title)}</strong><small>${esc(operation.category || "Mission")} · advance status</small></button>`).join("")}</div>` : '<p class="calendar-empty">No operations scheduled. Select another day or schedule an operation in Mission Control.</p>';
