@@ -19,6 +19,22 @@ const dayKey = (date = new Date()) => {
   return `${parts.year}-${parts.month}-${parts.day}`;
 };
 const todayKey = () => dayKey();
+// Use an instant that is safely inside the New York calendar day.  Parsing a
+// bare YYYY-MM-DD string otherwise lets the browser timezone move labels back
+// a day for some visitors.
+const dateForKey = (key) => key ? new Date(`${key}T17:00:00.000Z`) : null;
+const formatKey = (key, options = { month: "short", day: "numeric" }) => {
+  const date = dateForKey(key);
+  return date ? new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", ...options }).format(date) : "";
+};
+const newYorkTodayDate = () => dateForKey(todayKey());
+const syncSystemDate = () => {
+  const label = $("#system-date");
+  if (!label) return;
+  label.textContent = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", weekday: "long", month: "long", day: "numeric",
+  }).format(new Date()).toUpperCase().replace(",", " ·");
+};
 let currentUser = null;
 const operationsCacheKey = () => `aegis-operations:${currentUser?.id || "anonymous"}`;
 const cachedOperations = () => {
@@ -69,7 +85,7 @@ const gymOperationForToday = () => {
 
 let operations = [];
 let missions = [];
-let cursor = new Date();
+let cursor = newYorkTodayDate();
 let selectedDay = todayKey();
 
 function normalizedStatus(operation) {
@@ -221,45 +237,44 @@ function isDailyOperation(operation) {
 
 function queueOperations() {
   const start = todayKey();
-  const horizon = new Date();
-  horizon.setDate(horizon.getDate() + 14);
+  const horizon = newYorkTodayDate();
+  horizon.setUTCDate(horizon.getUTCDate() + 14);
   const end = dayKey(horizon);
   const today = operations.filter((operation) => {
     if (normalizedStatus(operation) === "Complete" && !isCompleteToday(operation)) return false;
     const scheduled = dateOnly(operation.scheduled_date);
     const operationDay = dateOnly(operation.operation_date);
-    if (isDailyOperation(operation) && operationDay && operationDay !== start) return false;
-    if (isDailyOperation(operation)) return true;
+    // A dated schedule wins over the daily template. Without this guard a
+    // future scheduled recurring task appeared both in TODAY and UPCOMING.
+    if (scheduled && scheduled !== start) return false;
+    if (isDailyOperation(operation)) return !operationDay || operationDay === start;
     if (scheduled === start) return true;
-    return !scheduled;
+    return !scheduled && (!operationDay || operationDay === start);
   });
   const upcoming = operations.filter((operation) => {
     if (normalizedStatus(operation) === "Complete") return false;
     const scheduled = dateOnly(operation.scheduled_date);
     return scheduled > start && scheduled <= end;
   });
-  const sort = (items) => items.sort((a, b) => {
+  const sort = (items) => items.slice().sort((a, b) => {
     const aDate = dateOnly(a.scheduled_date) || "9999-12-31";
     const bDate = dateOnly(b.scheduled_date) || "9999-12-31";
     return aDate.localeCompare(bDate) || String(a.title).localeCompare(String(b.title));
   });
-  const unique = new Map();
-  const uniqueItems = (items) => items.filter((operation) => {
-    const key = `${String(operation.title || "").trim().toLowerCase()}|${dateOnly(operation.operation_date) || dateOnly(operation.scheduled_date) || "standing"}`;
-    if (!unique.has(key)) unique.set(key, operation);
-    else return false;
-    return true;
-  });
+  const uniqueItems = (items) => {
+    const unique = new Map();
+    items.forEach((operation) => {
+      const key = `${String(operation.title || "").trim().toLowerCase()}|${dateOnly(operation.scheduled_date) || dateOnly(operation.operation_date) || "standing"}`;
+      const existing = unique.get(key);
+      const timestamp = Date.parse(operation.updated_at || operation.created_at || 0) || 0;
+      const existingTimestamp = Date.parse(existing?.updated_at || existing?.created_at || 0) || 0;
+      // Keep the most recently saved record when older duplicate rows exist.
+      if (!existing || timestamp >= existingTimestamp) unique.set(key, operation);
+    });
+    return [...unique.values()];
+  };
   const todayItems = uniqueItems(sort(today));
   const upcomingItems = uniqueItems(sort(upcoming));
-  // Never show an empty command queue solely because a legacy record has a
-  // malformed or stale date. Keep a compact operational fallback visible.
-  if (!todayItems.length && operations.length) {
-    const fallback = operations
-      .filter((operation) => normalizedStatus(operation) !== "Complete" || isCompleteToday(operation))
-      .slice(0, 8);
-    return { today: uniqueItems(fallback), upcoming: upcomingItems };
-  }
   return { today: todayItems, upcoming: upcomingItems };
 }
 
@@ -274,7 +289,7 @@ function renderQueue() {
       const priority = operation.priority || priorityFor(operation.category);
       const scheduled = dateOnly(operation.scheduled_date);
       const time = operation.scheduled_time ? ` · ${String(operation.scheduled_time).slice(0, 5)}` : "";
-      const timing = scheduled ? `${new Date(`${scheduled}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}${time}` : "+ Schedule";
+      const timing = scheduled ? `${formatKey(scheduled)}${time}` : "+ Schedule";
       const doneClass = status === "Complete" ? " done operation-complete" : "";
       return `<article class="operation operation-table-row operation-table-v2${doneClass}">
         <button type="button" class="operation-status ${status.toLowerCase()}" data-hub-status="${esc(operation.id || operation.title)}"><i></i>${esc(status)}</button>
@@ -513,7 +528,7 @@ function openScheduleDialog(operation) {
 }
 
 function monthTitle(date) {
-  return date.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "long", year: "numeric" }).format(date);
 }
 
 function renderCalendar() {
@@ -524,9 +539,11 @@ function renderCalendar() {
   const needsScheduling = $("#calendar-needs-scheduling");
   if (!grid) return;
   if (label) label.textContent = monthTitle(cursor);
-  const start = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
-  const first = start.getDay();
-  const days = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+  const year = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric" }).format(cursor));
+  const month = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "numeric" }).format(cursor)) - 1;
+  const start = new Date(Date.UTC(year, month, 1, 17));
+  const first = start.getUTCDay();
+  const days = new Date(Date.UTC(year, month + 1, 0, 17)).getUTCDate();
   const cells = [];
   for (let cell = 0; cell < 42; cell += 1) {
     const day = cell - first + 1;
@@ -534,7 +551,7 @@ function renderCalendar() {
       cells.push('<button type="button" class="calendar-day blank" aria-hidden="true"></button>');
       continue;
     }
-    const date = new Date(cursor.getFullYear(), cursor.getMonth(), day);
+    const date = new Date(Date.UTC(year, month, day, 17));
     const key = dayKey(date);
     const scheduled = operations.filter((operation) => dateOnly(operation.scheduled_date) === key);
     const complete = scheduled.filter((operation) => normalizedStatus(operation) === "Complete").length;
@@ -547,7 +564,7 @@ function renderCalendar() {
     renderCalendar();
   }));
   const selected = operations.filter((operation) => dateOnly(operation.scheduled_date) === selectedDay);
-  if (agendaLabel) agendaLabel.textContent = selectedDay ? new Date(`${selectedDay}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }) : "Select a day";
+  if (agendaLabel) agendaLabel.textContent = selectedDay ? formatKey(selectedDay, { weekday: "long", month: "long", day: "numeric" }) : "Select a day";
   if (agenda) {
     agenda.innerHTML = selected.length ? `<div class="calendar-agenda-list">${selected.map((operation) => `<button type="button" class="calendar-agenda-item" data-calendar-status="${esc(operation.id || operation.title)}"><span class="operation-status ${normalizedStatus(operation).toLowerCase()}"><i></i>${esc(normalizedStatus(operation))}</span><strong>${esc(operation.title)}</strong><small>${esc(operation.category || "Mission")} · advance status</small></button>`).join("")}</div>` : '<p class="calendar-empty">No operations scheduled. Select another day or schedule an operation in Mission Control.</p>';
     agenda.querySelectorAll("[data-calendar-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.calendarStatus)));
@@ -645,6 +662,7 @@ document.addEventListener("click", (event) => {
 });
 const startHub = () => {
   window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
+  syncSystemDate();
   // Paint a usable queue before any cloud request. A slow auth/database round
   // trip must never leave Command Center looking empty; boot() will replace
   // this safety feed with the authenticated records as soon as they arrive.
@@ -675,8 +693,17 @@ window.addEventListener("aegis:operations-changed", async (event) => {
 });
 
 const wireCalendar = () => {
-  $("#calendar-prev")?.addEventListener("click", () => { cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1); renderCalendar(); });
-  $("#calendar-next")?.addEventListener("click", () => { cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1); renderCalendar(); });
+  const moveMonth = (delta) => {
+    const values = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "numeric",
+    }).formatToParts(cursor).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
+    cursor = new Date(Date.UTC(Number(values.year), Number(values.month) - 1 + delta, 1, 17));
+    renderCalendar();
+  };
+  $("#calendar-prev")?.addEventListener("click", () => moveMonth(-1));
+  $("#calendar-next")?.addEventListener("click", () => moveMonth(1));
   wireCalendarPanels();
   if (!window.MutationObserver) return;
   let repairing = false;

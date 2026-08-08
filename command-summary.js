@@ -3,7 +3,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const $ = (selector) => document.querySelector(selector);
-const today = new Date().toLocaleDateString("en-CA");
+const today = (() => {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" })
+    .formatToParts(new Date()).reduce((out, part) => ({ ...out, [part.type]: part.value }), {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+})();
 
 function normalizedOutcome(value) {
   const supplied = String(value || "").trim().toLowerCase();
