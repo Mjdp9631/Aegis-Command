@@ -179,6 +179,19 @@ const cachedOccurrences = () => {
 };
 const saveCachedOccurrences = () => localStorage.setItem(occurrenceCacheKey(), JSON.stringify(operationOccurrences));
 
+function occurrenceIdentity(row) {
+  return `${String(row?.operation_id || "")}|${dateOnly(row?.occurrence_date)}`;
+}
+
+function cachedOccurrenceIsCurrent(row) {
+  const key = dateOnly(row?.occurrence_date);
+  if (!key) return false;
+  const series = operations.find((operation) => String(operation.id) === String(row.operation_id));
+  if (!series) return key >= todayKey();
+  const end = dateOnly(series.scheduled_end_date);
+  return key >= todayKey() && (!end || key <= end);
+}
+
 function recurringDateKeys(operation, maxDays = 370) {
   const start = dateOnly(operation?.scheduled_date);
   if (!start) return [];
@@ -248,7 +261,15 @@ async function loadOccurrences() {
     operationOccurrences = cachedOccurrences();
     return;
   }
-  operationOccurrences = data || [];
+  // Keep locally-created current/future rows while Supabase catches up. This
+  // prevents scheduled dates from disappearing after leaving/reopening the
+  // calendar, while deliberately dropping stale past one-time rows.
+  const merged = new Map((Array.isArray(data) ? data : []).map((row) => [occurrenceIdentity(row), row]));
+  cachedOccurrences().filter(cachedOccurrenceIsCurrent).forEach((row) => {
+    const key = occurrenceIdentity(row);
+    if (!merged.has(key)) merged.set(key, row);
+  });
+  operationOccurrences = [...merged.values()];
   saveCachedOccurrences();
 }
 
@@ -322,13 +343,17 @@ function checklistFor(operation) {
   ];
 }
 
-function resolveMission(operation) {
-  if (operation.mission_id) return missions.find((mission) => mission.id === operation.mission_id) || null;
+function resolveMission(operation, includeCompleted = false) {
+  if (operation.mission_id) return missions.find((mission) => String(mission.id) === String(operation.mission_id)) || null;
+  if (operation.metric_key) {
+    const metricMatch = missions.find((mission) => (includeCompleted || !mission.completed) && String(mission.metric_key || "") === String(operation.metric_key));
+    if (metricMatch) return metricMatch;
+  }
   const title = String(operation.title || "").toLowerCase();
   // These are intentionally exact enough to keep daily evidence attached to
   // the right Phase 0 mission instead of whichever mission happens to share a
   // category.
-  const byPhrase = (phrases) => missions.find((mission) => !mission.completed && phrases.some((phrase) => `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().includes(phrase)));
+  const byPhrase = (phrases) => missions.find((mission) => (includeCompleted || !mission.completed) && phrases.some((phrase) => `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().includes(phrase)));
   if (/pt session|orthopedic|acl rehab/.test(title)) return byPhrase(["orthopedic recovery", "pt sessions", "return to sports"]);
   if (/gym|legs|push|pull|upper body|lower body|rest and reset/.test(title)) return byPhrase(["training baseline", "recovery-safe"]);
   if (/review charts|trade review/.test(title)) return byPhrase(["evidence-based trade reviews", "process review"]);
@@ -336,7 +361,7 @@ function resolveMission(operation) {
   if (/read one chapter|read chapter/.test(title)) return byPhrase(["learning rhythm", "chapters"]);
   if (/pre-market/.test(title)) return byPhrase(["trading preparation rhythm", "execution playbook", "pre-market"]);
   const category = String(operation.category || "").toLowerCase();
-  const candidates = missions.filter((mission) => !mission.completed && String(mission.category || "").toLowerCase() === category);
+  const candidates = missions.filter((mission) => (includeCompleted || !mission.completed) && String(mission.category || "").toLowerCase() === category);
   if (!candidates.length) return null;
   const measured = candidates.filter((mission) => String(mission.completion_type || "").toLowerCase() === "units" && Number(mission.target_count) > 0);
   const unitMatch = measured.find((mission) => {
@@ -371,11 +396,31 @@ function priorityClass(priority) {
 // The database is the source of record, but a just-changed status must never
 // be replaced by an older cloud response during an auth refresh.
 function mergeSavedStatus(remote = []) {
-  // Supabase is the source of truth.  The old version copied every cached
-  // property over the fresh row, which was exactly why a status could appear
-  // to save until the next page refresh and why old scheduled dates resurfaced.
-  // Cache is now only an offline fallback when Supabase cannot be reached.
-  return Array.isArray(remote) ? remote : [];
+  const merged = Array.isArray(remote) ? [...remote] : [];
+  const identity = (operation) => [
+    String(operation?.title || "").trim().toLowerCase(),
+    dateOnly(operation?.scheduled_date),
+    String(operation?.scheduled_time || "").slice(0, 5),
+    dateOnly(operation?.operation_date),
+    scheduleMode(operation),
+    String(operation?.mission_id || ""),
+  ].join("|");
+  const currentOrUpcoming = (operation) => {
+    const start = dateOnly(operation?.scheduled_date);
+    if (!start) return scheduleMode(operation) !== "one_time";
+    const end = dateOnly(operation?.scheduled_end_date);
+    if (end && end < todayKey()) return false;
+    return scheduleMode(operation) !== "one_time" || start >= todayKey();
+  };
+  const known = new Set(merged.map(identity));
+  cachedOperations().filter((candidate) => candidate?.title && currentOrUpcoming(candidate)).forEach((candidate) => {
+    const key = identity(candidate);
+    if (!known.has(key)) {
+      merged.push(candidate);
+      known.add(key);
+    }
+  });
+  return merged;
 }
 
 function ensureLiveQueueHost() {
@@ -638,6 +683,51 @@ async function updateMissionEvidence(operation, direction) {
   window.dispatchEvent(new CustomEvent("aegis:missions-refresh", { detail: { source: "operations-hub" } }));
 }
 
+// Reconcile every measured mission from completed operation instances. This
+// shared path covers PT sessions, chapters, workouts, reviews, and future
+// unit-based missions while deduplicating recurring occurrence rows.
+async function reconcileMeasuredMissionCounts() {
+  if (!missions.length) return;
+  const completedByMission = new Map();
+  operationInstances().forEach((operation) => {
+    if (normalizedStatus(operation) !== "Complete") return;
+    if (/evening\s+mission\s+debrief/i.test(String(operation.title || ""))) return;
+    const linkedMissionId = operation.mission_id || resolveMission(operation, true)?.id;
+    if (!linkedMissionId) return;
+    // Occurrence rows are already unique by their durable occurrence id.
+    // Legacy/one-time rows need a semantic key instead of their database id,
+    // otherwise duplicate rows from the old scheduler inflate every measured
+    // mission (PT, chapters, gym, reviews, and future unit-based missions).
+    const occurrenceDate = dateOnly(operation._occurrence?.occurrence_date || operation.completed_on || operation.operation_date || operation.scheduled_date);
+    const key = operation._occurrence?.id
+      ? `occurrence:${operation._occurrence.id}`
+      : `operation:${String(linkedMissionId)}|${String(operation.title || "").trim().toLowerCase()}|${occurrenceDate}|${String(operation.scheduled_time || "").slice(0, 5)}`;
+    const missionKey = String(linkedMissionId);
+    if (!completedByMission.has(missionKey)) completedByMission.set(missionKey, new Set());
+    completedByMission.get(missionKey).add(key);
+  });
+  const updates = [];
+  missions.forEach((mission) => {
+    if (String(mission.completion_type || "").toLowerCase() !== "units") return;
+    const target = Math.max(0, Number(mission.target_count || 0));
+    if (!target) return;
+    const observed = Math.min(target, completedByMission.get(String(mission.id))?.size || 0);
+    const current = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
+    // Preserve a deliberate/manual count; only repair an observed undercount.
+    if (observed <= current) return;
+    mission.completed_count = observed;
+    mission.completed = observed >= target;
+    mission.progress = Math.round((observed / target) * 100);
+    updates.push({ mission, completed_count: observed, completed: mission.completed, progress: mission.progress });
+  });
+  if (client && currentUser && updates.length) {
+    await Promise.all(updates.map(({ mission, ...payload }) =>
+      client.from("missions").update(payload).eq("id", mission.id).eq("user_id", currentUser.id)
+    ));
+  }
+  if (updates.length) window.dispatchEvent(new CustomEvent("aegis:missions-refresh", { detail: { source: "operations-hub-reconcile" } }));
+}
+
 async function cycleStatus(key) {
   const operation = findOperation(key);
   if (!operation) return;
@@ -684,6 +774,7 @@ async function cycleStatus(key) {
     operations = await seedIfEmpty();
     await loadOccurrences();
     await ensureRecurringOccurrences();
+    await reconcileMeasuredMissionCounts();
     saveCachedOperations();
   }
   renderQueue();
@@ -836,7 +927,8 @@ function monthTitle(date) {
 function scheduledCountForMission(missionId) {
   const seen = new Set();
   operationInstances().forEach((operation) => {
-    if (String(operation.mission_id || "") !== String(missionId)) return;
+    const linkedMissionId = operation.mission_id || resolveMission(operation)?.id;
+    if (String(linkedMissionId || "") !== String(missionId)) return;
     const scheduledDate = dateOnly(operation.scheduled_date);
     if (!scheduledDate) return;
     const key = operation._occurrence?.id
@@ -892,13 +984,22 @@ function renderCalendar() {
       .filter((mission) => String(mission.completion_type || "").toLowerCase() === "units" && !mission.completed)
       .map((mission) => {
         const target = Math.max(0, Number(mission.target_count || 0));
+        const completedCount = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
         const scheduledCount = scheduledCountForMission(mission.id);
-        return { mission, remaining: Math.max(0, target - scheduledCount) };
+        const remaining = Math.max(0, target - completedCount);
+        const unscheduled = Math.max(0, target - scheduledCount);
+        return { mission, completedCount, remaining, unscheduled };
       })
-      .filter(({ remaining }) => remaining > 0);
+      .filter(({ unscheduled }) => unscheduled > 0);
     needsScheduling.innerHTML = measured.length
       ? measured.map(({ mission, remaining }) => `<article class="calendar-needs-item"><div><strong>${esc(mission.title)}</strong><small>${remaining} remaining to schedule · ${esc(mission.unit_label || "units")}</small></div><button type="button" class="primary compact" data-schedule-mission="${esc(mission.id)}">Schedule next</button></article>`).join("")
       : '<p class="calendar-empty">Every measured mission has its remaining operations placed on the calendar.</p>';
+    needsScheduling.querySelectorAll(".calendar-needs-item small").forEach((small, index) => {
+      const item = measured[index];
+      if (!item) return;
+      const target = Math.max(0, Number(item.mission.target_count || 0));
+      small.textContent = `${item.completedCount}/${target} complete · ${item.remaining} remaining to complete · ${item.unscheduled} unscheduled · ${item.mission.unit_label || "units"}`;
+    });
     needsScheduling.querySelectorAll("[data-schedule-mission]").forEach((button) => button.addEventListener("click", () => {
       const mission = missions.find((item) => String(item.id) === String(button.dataset.scheduleMission));
       if (!mission) return;
@@ -961,6 +1062,7 @@ async function boot() {
     operations = await seedIfEmpty();
     await loadOccurrences();
     await ensureRecurringOccurrences();
+    await reconcileMeasuredMissionCounts();
   } else {
     operations = local;
     operationOccurrences = cachedOccurrences();
