@@ -967,6 +967,7 @@ function ensureScheduleDialog() {
   dialog.className = "dialog-card operation-schedule-card";
   dialog.innerHTML = `<form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h2>Plan this operation.</h2><p class="schedule-copy">Scheduling is optional. A scheduled operation stays on the calendar until you complete it.</p><div class="schedule-input-grid"><label>Date<input id="operation-schedule-date" type="date" required></label><label>Time <span class="field-optional">optional</span><input id="operation-schedule-time" type="time"></label></div><label>Schedule type<select id="operation-schedule-mode"><option value="one_time">One-time</option><option value="weekly">Repeat weekly</option></select></label><div class="dialog-actions"><button value="clear" type="submit" class="text-button">Remove from calendar</button><button value="cancel" type="submit" class="text-button">Cancel</button><button value="schedule" type="submit" class="primary">Add to calendar</button></div></form>`;
   dialog.querySelector("form")?.insertAdjacentHTML("afterbegin", '<label id="operation-schedule-choice-wrap" hidden>Unscheduled operation<select id="operation-schedule-operation"></select></label>');
+  dialog.querySelector("#operation-schedule-choice-wrap")?.insertAdjacentHTML("afterend", '<div id="operation-schedule-create-fields" hidden><label>New operation<input id="operation-schedule-new-title" placeholder="What needs to happen?" /></label><label>Department<select id="operation-schedule-new-category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Mind</option></select></label></div>');
   document.body.append(dialog);
   const scheduleDate = dialog.querySelector("#operation-schedule-date");
   scheduleDate?.removeAttribute("required");
@@ -989,7 +990,13 @@ function ensureScheduleDialog() {
   dialog.querySelector("#operation-schedule-operation")?.addEventListener("change", (event) => {
     removePickerCreatedOperation(dialog);
     const value = event.target.value;
+    const createFields = dialog.querySelector("#operation-schedule-create-fields");
+    if (createFields) createFields.hidden = value !== "__create__";
     if (!value) {
+      dialog.dataset.operationKey = "";
+      return;
+    }
+    if (value === "__create__") {
       dialog.dataset.operationKey = "";
       return;
     }
@@ -1019,8 +1026,38 @@ function ensureScheduleDialog() {
     dialog.dataset.operationKey = value;
   });
   dialog.addEventListener("close", async () => {
-    const found = findOperation(dialog.dataset.operationKey);
-    const operation = found?._series || found;
+    const choice = dialog.querySelector("#operation-schedule-operation");
+    const createFields = dialog.querySelector("#operation-schedule-create-fields");
+    let found = findOperation(dialog.dataset.operationKey);
+    let operation = found?._series || found;
+    if (!operation && dialog.returnValue === "schedule" && choice?.value === "__create__") {
+      const title = dialog.querySelector("#operation-schedule-new-title")?.value.trim();
+      if (!title) {
+        window.alert("Enter an operation before adding it to the calendar.");
+        setTimeout(() => dialog.showModal(), 0);
+        return;
+      }
+      const category = dialog.querySelector("#operation-schedule-new-category")?.value || "Mind";
+      operation = {
+        id: `local-${Date.now()}-new-operation`,
+        title,
+        category,
+        priority: priorityFor(category),
+        status: "Queued",
+        completed: false,
+        is_daily: false,
+        scheduled_date: null,
+        scheduled_time: null,
+        scheduled_end_date: null,
+        schedule_mode: "one_time",
+        operation_date: null,
+      };
+      attachMissionLink(operation);
+      operations.push(operation);
+      dialog.dataset.createdOperationId = operation.id;
+      dialog.dataset.operationKey = operation.id;
+      found = operation;
+    }
     if (!operation || dialog.returnValue === "cancel") {
       removePickerCreatedOperation(dialog);
       return;
@@ -1054,6 +1091,7 @@ function ensureScheduleDialog() {
     renderQueue();
     renderCalendar();
     delete dialog.dataset.createdOperationId;
+    if (createFields) createFields.hidden = true;
   });
   return dialog;
 }
@@ -1084,12 +1122,14 @@ function openDaySchedulePicker(date) {
   if (!choiceWrap || !choice) return;
   removePickerCreatedOperation(dialog);
   const items = unscheduledPickerItems();
-  choice.innerHTML = items.length
-    ? `<option value="">Choose an operation</option>${items.map((item) => `<option value="${esc(item.value)}">${esc(item.label)}</option>`).join("")}`
-    : '<option value="">No unscheduled operations available</option>';
+  choice.innerHTML = `<option value="">Choose an operation</option>${items.map((item) => `<option value="${esc(item.value)}">${esc(item.label)}</option>`).join("")}<option value="__create__">Create an operation…</option>`;
   choiceWrap.hidden = false;
   choice.value = "";
   dialog.dataset.operationKey = "";
+  const createFields = dialog.querySelector("#operation-schedule-create-fields");
+  if (createFields) createFields.hidden = true;
+  const newTitle = dialog.querySelector("#operation-schedule-new-title");
+  if (newTitle) newTitle.value = "";
   const dateInput = dialog.querySelector("#operation-schedule-date");
   if (dateInput) dateInput.value = date;
   const mode = dialog.querySelector("#operation-schedule-mode");
@@ -1106,6 +1146,8 @@ function openScheduleDialog(operation) {
   delete dialog.dataset.createdOperationId;
   const choiceWrap = dialog.querySelector("#operation-schedule-choice-wrap");
   if (choiceWrap) choiceWrap.hidden = true;
+  const createFields = dialog.querySelector("#operation-schedule-create-fields");
+  if (createFields) createFields.hidden = true;
   const input = $("#operation-schedule-date");
   if (input) input.value = dateOnly(operation.scheduled_date) || todayKey();
   const time = $("#operation-schedule-time");
