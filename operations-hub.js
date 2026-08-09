@@ -74,7 +74,10 @@ function isScheduledOn(operation, key) {
   // occurrence is only valid for its own date; never let the parent status
   // bleed across the rest of the series.
   if (operation?._occurrence) return dateOnly(operation.scheduled_date) === key;
-  const start = dateOnly(operation?.scheduled_date);
+  // Daily command-center rows are durable per-day records and historically
+  // used operation_date without scheduled_date. Treat that date as the
+  // calendar anchor so completed prior-day daily work remains visible.
+  const start = dateOnly(operation?.scheduled_date || (operation?.is_daily ? operation?.operation_date : ""));
   if (!start || !key || key < start) return false;
   const end = dateOnly(operation?.scheduled_end_date);
   if (end && key > end) return false;
