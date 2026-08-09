@@ -95,7 +95,7 @@ document.addEventListener("click", async (event) => {
 
 if (supabase) {
   load();
-  supabase.auth.onAuthStateChange(() => setTimeout(load, 80));
+  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 80); });
   document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(load, 700); });
   window.addEventListener("aegis:mastery-changed", () => setTimeout(load, 120));
 }

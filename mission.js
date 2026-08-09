@@ -219,7 +219,13 @@ if (cloudReady) {
   client = createClient(config.supabaseUrl, config.supabaseAnonKey);
   ({ data: { session } } = await client.auth.getSession());
   if (session) await loadData();
-  client.auth.onAuthStateChange(async (_event, nextSession) => { session = nextSession; if (session) await loadData(); });
+  client.auth.onAuthStateChange((_event, nextSession) => {
+    session = nextSession;
+    if (!session || _event === "INITIAL_SESSION") return;
+    // Never await Supabase work inside its auth callback. Supabase can hold
+    // the auth lock while dispatching this event, which can freeze refreshes.
+    setTimeout(() => loadData(), 0);
+  });
 }
 
 bindDialogs(); renderMissions(); renderCommandMissions(); renderRecovery();

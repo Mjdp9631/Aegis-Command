@@ -41,7 +41,7 @@ async function load() {
 
 if (supabase) {
   load();
-  supabase.auth.onAuthStateChange(() => setTimeout(load, 80));
+  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 80); });
   window.addEventListener("aegis:missions-changed", () => setTimeout(load, 80));
   document.addEventListener("click", (event) => { if (event.target.closest("#save-mission, #mission-editor-dialog .primary")) setTimeout(load, 1200); });
   document.addEventListener("click", (event) => {

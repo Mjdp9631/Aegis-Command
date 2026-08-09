@@ -222,7 +222,7 @@ document.addEventListener("keydown", (event) => { if ((event.key === "Enter" || 
 
 if (supabase) {
   load();
-  supabase.auth.onAuthStateChange(() => setTimeout(load, 100));
+  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 100); });
   window.addEventListener("aegis:missions-changed", () => setTimeout(load, 120));
   window.addEventListener("aegis:operations-changed", () => setTimeout(load, 120));
   window.addEventListener("aegis:mastery-changed", () => setTimeout(load, 120));

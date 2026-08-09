@@ -324,6 +324,6 @@ function init() {
     if (event.target.closest("#brain-image-dialog .dialog-close")) $("#brain-image-dialog").close();
     if (event.target.closest("#brain-evidence-dialog .dialog-close")) $("#brain-evidence-dialog").close();
   });
-  ensureImageDialog(); syncViolationReason(); renderChain(); renderBriefing(); loadCourseLibrary(); loadReviewerData(); supabase?.auth.onAuthStateChange(() => setTimeout(loadReviewerData, 50));
+  ensureImageDialog(); syncViolationReason(); renderChain(); renderBriefing(); loadCourseLibrary(); loadReviewerData(); supabase?.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(loadReviewerData, 50); });
 }
 init();

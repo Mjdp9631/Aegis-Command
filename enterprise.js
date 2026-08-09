@@ -37,5 +37,5 @@ function buildDialogs() {
 if (supabase) {
   buildDialogs(); render(); load();
   document.addEventListener("click", (event) => { const action = event.target.closest("[data-enterprise-action]")?.dataset.enterpriseAction; if (action) $(action === "project" ? "#project-dialog" : "#content-dialog").showModal(); });
-  supabase.auth.onAuthStateChange(() => setTimeout(load, 50));
+  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 50); });
 }

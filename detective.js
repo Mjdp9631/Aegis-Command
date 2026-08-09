@@ -526,7 +526,7 @@ function init() {
   if (supabase) {
     loadTrades();
     loadAccountBalances();
-    supabase.auth.onAuthStateChange(() => setTimeout(loadTrades, 50));
+    supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(loadTrades, 50); });
   }
 }
 

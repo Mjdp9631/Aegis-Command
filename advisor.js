@@ -76,7 +76,7 @@ async function loadAdvisory() {
 
 if (supabase) {
   loadAdvisory();
-  supabase.auth.onAuthStateChange(() => setTimeout(loadAdvisory, 100));
+  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(loadAdvisory, 100); });
   window.addEventListener("aegis:missions-changed", () => setTimeout(loadAdvisory, 100));
   document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(loadAdvisory, 700); });
 }

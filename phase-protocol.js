@@ -201,6 +201,6 @@ document.addEventListener("click", (event) => {
 });
 
 load();
-if (db) db.auth.onAuthStateChange(() => setTimeout(load, 100));
+if (db) db.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 100); });
 window.addEventListener("aegis:character-levels-changed", render);
 window.addEventListener("aegis:missions-changed", () => setTimeout(load, 100));

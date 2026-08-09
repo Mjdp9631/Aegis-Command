@@ -413,8 +413,19 @@ document.addEventListener("click", (event) => {
 });
 
 if (supabase) {
-  supabase.auth.getSession().then(async ({ data: { session } }) => { if (!session) return; mount(); await loadLatestAdvisory(); await loadSuggestions(); await loadRoadmap(); try { latestContext = await gather(); setFocusStreak(latestContext.streaks.execution); } catch {} });
-  supabase.auth.onAuthStateChange((_event, session) => { if (session) setTimeout(async () => { mount(); await loadLatestAdvisory(); await loadSuggestions(); await loadRoadmap(); }, 150); });
+  // Refresh must only restore the last debrief. The expensive evidence gather
+  // belongs to the explicit Going to bed action, not page bootstrap.
+  const restoreAdvisory = async () => {
+    mount();
+    await loadLatestAdvisory();
+    await loadSuggestions();
+    await loadRoadmap();
+  };
+  supabase.auth.getSession().then(({ data: { session } }) => { if (session) restoreAdvisory(); });
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (!session || event === "INITIAL_SESSION") return;
+    setTimeout(() => restoreAdvisory(), 150);
+  });
   window.addEventListener("aegis:navigation", () => { mount(); paintLatestAdvisory(); });
   window.addEventListener("load", () => { mount(); paintLatestAdvisory(); }, { once: true });
 }

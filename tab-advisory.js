@@ -61,6 +61,6 @@ async function loadSectionAdvice() {
 window.addEventListener("aegis:advisory-updated", (event) => renderFooters(event.detail?.sections));
 if (supabase) {
   supabase.auth.getSession().then(loadSectionAdvice);
-  supabase.auth.onAuthStateChange((_event, session) => { if (session) setTimeout(loadSectionAdvice, 120); });
+  supabase.auth.onAuthStateChange((event, session) => { if (event === "INITIAL_SESSION") return; if (session) setTimeout(loadSectionAdvice, 120); });
 }
 window.addEventListener("load", () => { styleCommandBriefing(); renderFooters(); }, { once: true });
