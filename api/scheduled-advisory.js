@@ -217,8 +217,12 @@ async function rolloverOperations(serviceKey, userId, date) {
     const key = operationIdentity(operation);
     if (!latestDaily.has(key)) latestDaily.set(key, operation);
   });
+  const currentTitles = new Set(current.map((operation) => String(operation.title || "").trim().toLowerCase()).filter(Boolean));
   latestDaily.forEach((source, key) => {
-    if (currentKeys.has(key) || inserts.some((operation) => operationIdentity(operation) === key)) return;
+    // Rollover is append-only. If the director already has a same-title row
+    // for today, leave its status and every calendar field untouched even if
+    // its saved time differs from the older daily template.
+    if (currentTitles.has(String(source.title || "").trim().toLowerCase()) || currentKeys.has(key) || inserts.some((operation) => operationIdentity(operation) === key)) return;
     inserts.push({
       user_id: userId,
       title: source.title,

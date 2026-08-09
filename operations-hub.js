@@ -521,6 +521,27 @@ function isDailyOperation(operation) {
   return Boolean(operation.is_daily) || /pre-market|review charts|conquer the morning|read one chapter|^journal$|mission debrief|daily|^gym|rest and reset/i.test(String(operation.title || ""));
 }
 
+function operationStateSignature(operation) {
+  return JSON.stringify({
+    id: operation?.id || null,
+    status: operation?.status || null,
+    completed: Boolean(operation?.completed),
+    completed_on: operation?.completed_on || null,
+    scheduled_date: operation?.scheduled_date || null,
+    scheduled_time: operation?.scheduled_time || null,
+    scheduled_end_date: operation?.scheduled_end_date || null,
+    schedule_mode: operation?.schedule_mode || null,
+  });
+}
+
+function appendOperationsWithoutTouchingExisting(existing, additions) {
+  const before = new Map(existing.map((operation) => [String(operation.id || `${operation.title}|${operation.created_at || ""}`), operationStateSignature(operation)]));
+  const combined = [...existing, ...additions];
+  const changed = existing.some((operation) => before.get(String(operation.id || `${operation.title}|${operation.created_at || ""}`)) !== operationStateSignature(operation));
+  if (changed) console.warn("Operation seeding attempted to change an existing status or schedule; preserving the existing record.");
+  return combined;
+}
+
 function queueOperations() {
   const start = todayKey();
   const horizon = newYorkTodayDate();
@@ -897,7 +918,7 @@ async function ensureTodayOperations(records = []) {
   // Control.  Auto-creating an undated next session made the calendar invent
   // appointments and caused duplicate recovery operations.
   if (!additions.length) return records;
-  if (!client || !currentUser) return [...records, ...additions.map((item, index) => ({ ...item, id: `local-${todayKey()}-${index}-${item.title}` }))];
+  if (!client || !currentUser) return appendOperationsWithoutTouchingExisting(records, additions.map((item, index) => ({ ...item, id: `local-${todayKey()}-${index}-${item.title}` })));
   const prepared = additions.map((item) => {
     const mission = item.mission_id ? missions.find((candidate) => candidate.id === item.mission_id) : resolveMission(item);
     return { ...item, user_id: currentUser.id, mission_id: mission?.id || null, metric_key: item.metric_key || mission?.metric_key || null };
@@ -905,9 +926,9 @@ async function ensureTodayOperations(records = []) {
   const { data, error } = await client.from("operations").insert(prepared).select();
   if (error) {
     console.warn("Could not create today's operations", error.message);
-    return [...records, ...prepared.map((item, index) => ({ ...item, id: `local-${todayKey()}-${index}-${item.title}` }))];
+    return appendOperationsWithoutTouchingExisting(records, prepared.map((item, index) => ({ ...item, id: `local-${todayKey()}-${index}-${item.title}` })));
   }
-  return [...records, ...(data || prepared)];
+  return appendOperationsWithoutTouchingExisting(records, data || prepared);
 }
 
 async function loadMissions() {
