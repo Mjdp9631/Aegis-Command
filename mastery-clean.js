@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const config = window.AEGIS_CONFIG || {};
 const db = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const root = document.querySelector("#mastery");
+window.addEventListener("aegis:mastery-changed", () => window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "mastery" } })));
 const mindTypes = ["Book", "Quote", "Trading Note", "Psychology", "Space", "Philosophy", "Business", "Stoicism", "Leadership", "Communication", "History", "Systems Thinking"];
 // Body is deliberately broad enough to hold the full capability campaign, without
 // confusing a rehabilitation log with a sport, combat session, or outdoor skill.

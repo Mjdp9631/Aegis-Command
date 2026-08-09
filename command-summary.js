@@ -105,5 +105,6 @@ if (supabase) {
   window.addEventListener("aegis:missions-changed", () => setTimeout(load, 100));
   window.addEventListener("aegis:operations-changed", () => setTimeout(load, 100));
   window.addEventListener("aegis:mastery-changed", () => setTimeout(load, 100));
+  window.addEventListener("aegis:data-changed", (event) => { if (["mastery", "missions", "operation-status"].includes(event.detail?.source)) return; setTimeout(load, 100); });
   document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(load, 700); });
 }

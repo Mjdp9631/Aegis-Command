@@ -8,6 +8,7 @@ let latestContext = null;
 let latestAdvisory = null;
 let scanStageTimer = null;
 let scanInFlight = false;
+window.addEventListener("aegis:data-changed", () => { latestContext = null; });
 
 function dateKey(value) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return String(value);
@@ -84,7 +85,13 @@ function missionProgress(mission) {
   return mission.completed ? 100 : 0;
 }
 
-function buildContext({ operations, missions, trades, recovery, mastery, projects, phase, directives = [], roadmap = [], deepWork = [], challenges = [], directorReviews = [] }, operatingDate = operatingDayKey()) {
+function buildContext({ operations, occurrences = [], missions, trades, recovery, mastery, projects, contentItems = [], tradeReviews = [], progressEvents = [], phase, directives = [], roadmap = [], deepWork = [], challenges = [], directorReviews = [], trainingSessions = [], trainingSets = [], weightLogs = [], foodLogs = [], activityEvents = [], accounts = [], advisoryHistory = [], campaign = null }, operatingDate = operatingDayKey()) {
+  const recurringIds = new Set(operations.filter(operation => ["daily", "weekly", "recurring"].includes(String(operation.schedule_mode || "").toLowerCase())).map(operation => String(operation.id)));
+  const occurrenceRows = occurrences.map(occurrence => {
+    const parent = operations.find(operation => String(operation.id) === String(occurrence.operation_id)) || {};
+    return { ...parent, id: `occurrence:${occurrence.id}`, operation_date: occurrence.occurrence_date, scheduled_date: occurrence.occurrence_date, completed_on: occurrence.completed_on, completed: occurrence.completed, status: occurrence.completed ? "Complete" : parent.status || "Queued" };
+  });
+  const effectiveOperations = [...operations.filter(operation => !recurringIds.has(String(operation.id)) || !occurrences.some(occurrence => String(occurrence.operation_id) === String(operation.id))), ...occurrenceRows];
   const liveTrades = trades.filter((trade) => String(trade.account || "").trim().toLowerCase() !== "theoretical");
   const closed = liveTrades.filter((trade) => outcome(trade) !== "open");
   const wins = closed.filter((trade) => outcome(trade) === "win").length;
@@ -93,9 +100,10 @@ function buildContext({ operations, missions, trades, recovery, mastery, project
   const currentMonth = new Date().getMonth();
   const monthPnl = closed.filter((trade) => new Date(trade.traded_at || trade.created_at).getMonth() === currentMonth).reduce((sum, trade) => sum + Number(trade.pnl_percent || 0), 0);
   const tradeStreak = tradeStreaks(closed);
-  const todayOps = operations.filter((operation) => dateKey(operation.scheduled_date) === operatingDate || dateKey(operation.operation_date) === operatingDate);
+  const todayOps = effectiveOperations.filter((operation) => dateKey(operation.scheduled_date) === operatingDate || dateKey(operation.operation_date) === operatingDate);
   const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
-  const operationStreak = streakFor(operations.filter((operation) => operation.completed || operation.status === "Complete").map((operation) => operation.scheduled_date || operation.updated_at || operation.created_at));
+  const operationStreak = streakFor(effectiveOperations.filter((operation) => operation.completed || operation.status === "Complete").map((operation) => operation.scheduled_date || operation.updated_at || operation.created_at));
+  const activityByMetric = activityEvents.reduce((result, event) => { const key = event.metric_key || "unclassified"; result[key] = (result[key] || 0) + Number(event.quantity || 1); return result; }, {});
   const tradingStreak = streakFor(liveTrades.map((trade) => trade.traded_at || trade.created_at));
   const masteryStreak = streakFor(mastery.map((entry) => entry.created_at));
   return {
@@ -103,14 +111,20 @@ function buildContext({ operations, missions, trades, recovery, mastery, project
     operating_date: operatingDate,
     active_phase: `Phase ${phase?.active_phase ?? 0}`,
     streaks: { execution: operationStreak, trading_journal: tradingStreak, mastery: masteryStreak },
-    operations: { today_total: todayOps.length, today_complete: todayOps.filter((operation) => operation.completed || operation.status === "Complete").length, open_total: operations.filter((operation) => !operation.completed && operation.status !== "Complete").length, next: operations.filter((operation) => !operation.completed && operation.status !== "Complete").slice(0, 8).map((operation) => ({ title: operation.title, category: operation.category, status: operation.status || "Queued" })) },
+    operations: { today_total: todayOps.length, today_complete: todayOps.filter((operation) => operation.completed || operation.status === "Complete").length, open_total: effectiveOperations.filter((operation) => !operation.completed && operation.status !== "Complete").length, next: effectiveOperations.filter((operation) => !operation.completed && operation.status !== "Complete").slice(0, 8).map((operation) => ({ title: operation.title, category: operation.category, status: operation.status || "Queued", scheduled_date: operation.scheduled_date || operation.operation_date || null, scheduled_time: operation.scheduled_time || null })) },
     missions: activeMissions.slice(0, 8).map((mission) => ({ title: mission.title, category: mission.category, priority: mission.priority, progress: missionProgress(mission), definition: mission.completion_definition || null })),
-    trading: { closed_trades: closed.length, wins, losses, breakeven: closed.length - wins - losses, win_rate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : null, plan_violations: violations, month_pnl_percent: Number(monthPnl.toFixed(2)), streaks: tradeStreak, authoritative_summary: `${closed.length} closed trades: ${wins} wins, ${losses} losses, ${closed.length - wins - losses} break-even; win rate ${wins + losses ? Math.round((wins / (wins + losses)) * 100) : "N/A"}%.`, recent: closed.slice(-12).map((trade) => ({ date: dateKey(trade.traded_at || trade.created_at), pair: trade.pair, outcome: outcome(trade), r: Number(trade.r_multiple || 0), pnl_percent: trade.pnl_percent == null ? null : Number(trade.pnl_percent), violation: Boolean(trade.plan_violation), setup: trade.setup || null })) },
+    trading: { closed_trades: closed.length, wins, losses, breakeven: closed.length - wins - losses, win_rate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : null, plan_violations: violations, month_pnl_percent: Number(monthPnl.toFixed(2)), streaks: tradeStreak, authoritative_summary: `${closed.length} closed trades: ${wins} wins, ${losses} losses, ${closed.length - wins - losses} break-even; win rate ${wins + losses ? Math.round((wins / (wins + losses)) * 100) : "N/A"}%.`, recent: closed.slice(-12).map((trade) => ({ date: dateKey(trade.traded_at || trade.created_at), pair: trade.pair, outcome: outcome(trade), r: Number(trade.r_multiple || 0), pnl_percent: trade.pnl_percent == null ? null : Number(trade.pnl_percent), violation: Boolean(trade.plan_violation), setup: trade.setup || null })), recent_reviews: tradeReviews.slice(0, 8).map((review) => ({ created_at: review.created_at, review: review.review || review.summary || review.notes || null })) },
     recovery: recovery.slice(0, 5).map((item) => ({ date: item.logged_on, pain: item.pain, swelling: item.swelling, rehab_completed: item.rehab_completed })),
     mastery: { total_entries: mastery.length, recent: mastery.slice(0, 8).map((entry) => ({ category: entry.category, title: entry.title, date: dateKey(entry.created_at) })), deep_work: { recent_minutes: deepWork.filter((item) => Date.now() - new Date(item.created_at || item.logged_on).getTime() < 7 * 86400000).reduce((sum, item) => sum + Number(item.duration_minutes || 0), 0), recent: deepWork.slice(0, 8).map((item) => ({ area: item.area, focus: item.focus, minutes: item.duration_minutes, output: item.output, date: dateKey(item.created_at || item.logged_on) })) }, transmissions: { active: challenges.filter((item) => item.status === "accepted" && !item.completed_at).slice(0, 5).map((item) => ({ lane: item.lane, category: item.category, title: item.title, type: item.challenge_type, difficulty: item.difficulty })), recent_completed: challenges.filter((item) => item.completed_at).slice(0, 5).map((item) => ({ lane: item.lane, category: item.category, title: item.title, date: dateKey(item.completed_at) })) }, director_review: directorReviews[0] ? { quarter: directorReviews[0].quarter_key, wins: directorReviews[0].wins, bottlenecks: directorReviews[0].bottlenecks, standards: directorReviews[0].standards, next_focus: directorReviews[0].next_focus } : null },
-    special_projects: projects.map((project) => ({ title: project.title, status: project.status, priority: project.priority })).slice(0, 8),
+    fitness: { sessions: trainingSessions.slice(0, 12).map(item => ({ date: item.logged_on, split: item.workout_split || item.session_type, title: item.title, notes: item.notes || null })), recent_sets: trainingSets.slice(0, 60).map(item => ({ date: item.logged_on, exercise: item.exercise_name, resistance_type: item.resistance_type || "Weights", weight_lbs: item.weight_lbs, band_resistance: item.band_resistance || null, reps: item.reps, set_number: item.set_number || 1 })), bodyweight: weightLogs.slice(0, 20).map(item => ({ date: item.logged_on, time: item.measured_at, weight_lbs: item.weight_lbs })), nutrition: foodLogs.slice(0, 30).map(item => ({ date: item.logged_on, food: item.food_name, quantity: item.quantity_text || null, calories: item.calories, protein_g: item.protein_g, carbs_g: item.carbs_g, fat_g: item.fat_g, fiber_g: item.fiber_g, sugar_g: item.sugar_g, estimate_source: item.estimate_source || null })) },
+    activity_ledger: { total_events: activityEvents.length, by_metric: activityByMetric, recent: activityEvents.slice(0, 24).map(event => ({ source: event.source_type, metric: event.metric_key, quantity: event.quantity || 1, occurred_at: event.occurred_at, metadata: event.metadata || {} })) },
+    accounts: accounts.slice(0, 8).map(account => ({ name: account.account_name, starting_balance: account.starting_balance, current_balance: account.current_balance, is_primary: Boolean(account.is_primary) })),
+    special_projects: { projects: projects.map((project) => ({ title: project.title, status: project.status, priority: project.priority })).slice(0, 8), content: contentItems.slice(0, 12).map((item) => ({ title: item.title, platform: item.platform, status: item.status })) },
+    mission_progress_events: progressEvents.slice(0, 24).map((event) => ({ mission_id: event.mission_id, metric: event.metric_key, quantity: event.quantity, occurred_at: event.occurred_at, source: event.source_type })),
+    xp_campaign: campaign ? { started_at: campaign.started_at } : null,
     roadmap_state: { pending_or_active: roadmap.filter((item) => ["pending", "accepted"].includes(item.status)).map((item) => ({ title: item.title, phase: item.phase, category: item.category, status: item.status })), recent: roadmap.slice(0, 8).map((item) => ({ title: item.title, status: item.status, created_at: item.created_at })) },
-    directive_history: directives.slice(0, 18).map((item) => ({ kind: item.mission_kind, title: item.title, status: item.status, escalation_level: item.escalation_level || 1, cadence_key: item.cadence_key || null, created_at: item.created_at, resolved_at: item.resolved_at }))
+    directive_history: directives.slice(0, 18).map((item) => ({ kind: item.mission_kind, title: item.title, status: item.status, escalation_level: item.escalation_level || 1, cadence_key: item.cadence_key || null, created_at: item.created_at, resolved_at: item.resolved_at })),
+    advisory_history: advisoryHistory.slice(0, 6).map(item => ({ type: item.advisory_type, created_at: item.created_at, signal: item.payload?.signal ? { jarvis: item.payload.signal.jarvis, alfred: item.payload.signal.alfred } : null, focus: item.payload?.evening?.tomorrow_focus || null }))
   };
 }
 
@@ -257,7 +271,8 @@ function showTransmissionQueue() {
 }
 
 async function gather(operatingDate = operatingDayKey()) {
-  const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews] = await Promise.all([
+  const optionalQuery = (query) => query.then((result) => result.error ? { data: [], error: null } : result);
+  const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews, occurrences, trainingSessions, trainingSets, weightLogs, foodLogs, activityEvents, accounts, advisoryHistory, contentItems, tradeReviews, progressEvents, campaign] = await Promise.all([
     supabase.from("operations").select("*").order("scheduled_date", { ascending: false }).limit(180),
     supabase.from("missions").select("*").order("created_at", { ascending: false }).limit(180),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }).limit(1000),
@@ -269,11 +284,23 @@ async function gather(operatingDate = operatingDayKey()) {
     supabase.from("ai_roadmap_missions").select("*").order("created_at", { ascending: false }).limit(12),
     supabase.from("deep_work_logs").select("*").order("created_at", { ascending: false }).limit(60),
     supabase.from("mastery_challenges").select("*").order("created_at", { ascending: false }).limit(30),
-    supabase.from("director_reviews").select("*").order("updated_at", { ascending: false }).limit(4)
+    supabase.from("director_reviews").select("*").order("updated_at", { ascending: false }).limit(4),
+    optionalQuery(supabase.from("operation_occurrences").select("*").order("occurrence_date", { ascending: false }).limit(240)),
+    optionalQuery(supabase.from("training_sessions").select("*").order("logged_on", { ascending: false }).limit(18)),
+    optionalQuery(supabase.from("training_sets").select("*").order("logged_on", { ascending: false }).limit(120)),
+    optionalQuery(supabase.from("health_weight_logs").select("*").order("logged_on", { ascending: false }).limit(28)),
+    optionalQuery(supabase.from("health_food_logs").select("*").order("logged_on", { ascending: false }).limit(60)),
+    optionalQuery(supabase.from("activity_events").select("*").order("occurred_at", { ascending: false }).limit(240)),
+    optionalQuery(supabase.from("account_balances").select("*").order("is_primary", { ascending: false }).limit(8)),
+    optionalQuery(supabase.from("ai_advisories").select("id, advisory_type, payload, created_at").order("created_at", { ascending: false }).limit(6)),
+    optionalQuery(supabase.from("content_items").select("*").order("created_at", { ascending: false }).limit(12)),
+    optionalQuery(supabase.from("trade_reviews").select("*").order("created_at", { ascending: false }).limit(8)),
+    optionalQuery(supabase.from("mission_progress_events").select("*").order("occurred_at", { ascending: false }).limit(24)),
+    optionalQuery(supabase.from("xp_campaigns").select("started_at").maybeSingle())
   ]);
   const values = [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews];
   if (values.some((result) => result.error)) throw new Error(values.find((result) => result.error)?.error.message || "Could not load command data.");
-  return buildContext({ operations: operations.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], phase: phase.data, directives: directives.data || [], roadmap: roadmap.data || [], deepWork: deepWork.data || [], challenges: challenges.data || [], directorReviews: directorReviews.data || [] }, operatingDate);
+  return buildContext({ operations: operations.data || [], occurrences: occurrences.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], contentItems: contentItems.data || [], tradeReviews: tradeReviews.data || [], progressEvents: progressEvents.data || [], campaign: campaign.data && !Array.isArray(campaign.data) ? campaign.data : null, phase: phase.data, directives: directives.data || [], roadmap: roadmap.data || [], deepWork: deepWork.data || [], challenges: challenges.data || [], directorReviews: directorReviews.data || [], trainingSessions: trainingSessions.data || [], trainingSets: trainingSets.data || [], weightLogs: weightLogs.data || [], foodLogs: foodLogs.data || [], activityEvents: activityEvents.data || [], accounts: accounts.data || [], advisoryHistory: advisoryHistory.data || [] }, operatingDate);
 }
 
 function ensureScanOverlay() {

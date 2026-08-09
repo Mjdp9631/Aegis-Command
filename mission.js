@@ -61,7 +61,8 @@ function renderCommandMissions() {
 
 window.AEGIS_RENDER_COMMAND_MISSIONS = renderCommandMissionBoard;
 
-function publishMissionChange() { window.dispatchEvent(new Event("aegis:missions-changed")); }
+function publishDataChange(source) { window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source } })); }
+function publishMissionChange() { window.dispatchEvent(new Event("aegis:missions-changed")); publishDataChange("missions"); }
 
 function syncRecoveryVisibility() {
   const recoveryNav = document.querySelector("[data-recovery-nav]");
@@ -177,7 +178,7 @@ function bindDialogs() {
   });
   document.querySelectorAll('[data-action="add-mission"]').forEach((button) => button.addEventListener("click", () => { if (!session) return alert("Sign in before opening a mission."); $("#mission-dialog").showModal(); }));
   document.querySelectorAll('[data-action="log-recovery"]').forEach((button) => button.addEventListener("click", () => { if (!session) return alert("Sign in before logging recovery."); $("#recovery-dialog").showModal(); }));
-  $("#save-recovery").addEventListener("click", async (event) => { const pain = Number($("#recovery-pain").value), swelling = Number($("#recovery-swelling").value); if (!Number.isInteger(pain) || !Number.isInteger(swelling) || pain < 0 || pain > 10 || swelling < 0 || swelling > 10) return event.preventDefault(); const { data, error } = await client.from("recovery_logs").insert({ pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single(); if (error) { event.preventDefault(); return console.error(error); } renderRecovery(data); $("#recovery-notes").value = ""; });
+  $("#save-recovery").addEventListener("click", async (event) => { const pain = Number($("#recovery-pain").value), swelling = Number($("#recovery-swelling").value); if (!Number.isInteger(pain) || !Number.isInteger(swelling) || pain < 0 || pain > 10 || swelling < 0 || swelling > 10) return event.preventDefault(); const { data, error } = await client.from("recovery_logs").insert({ pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single(); if (error) { event.preventDefault(); return console.error(error); } renderRecovery(data); $("#recovery-notes").value = ""; publishDataChange("recovery"); });
 }
 
 window.addEventListener("aegis:phase-mission-template", (event) => {

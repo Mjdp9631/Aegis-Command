@@ -463,6 +463,7 @@ async function saveTrade(event) {
   clearForm();
   $("#save-detective-trade").textContent = "Save debrief";
   await loadTrades();
+  window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "trade-debrief" } }));
 }
 
 function init() {
