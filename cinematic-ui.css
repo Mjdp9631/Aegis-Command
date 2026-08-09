@@ -1338,3 +1338,33 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
 #command .command-mission-empty strong,
 #command .command-mission-empty small { display: block; }
 #command .command-mission-empty small { margin-top: 5px; font-size: 11px; }
+
+/* Keep the active mission inventory in the same restrained console lane as
+   the operations queue: narrow blue rail, quiet track, and a pinned tab bar. */
+#command .command-mission-board {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(89,180,255,.45) transparent;
+}
+#command .command-mission-board::-webkit-scrollbar { width: 5px; }
+#command .command-mission-board::-webkit-scrollbar-track { background: transparent; }
+#command .command-mission-board::-webkit-scrollbar-thumb {
+  background: rgba(89,180,255,.45);
+  border-radius: 99px;
+}
+#command .command-mission-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 2px 0 8px;
+  background: linear-gradient(180deg, rgba(7,20,34,.98) 72%, rgba(7,20,34,0));
+}
+#command .command-mission-tab {
+  min-height: 34px;
+  padding: 0 14px;
+  font: 700 12px/1 "Rajdhani", sans-serif;
+  letter-spacing: .04em;
+  transition: border-color .2s ease, color .2s ease, background .2s ease, box-shadow .2s ease;
+}

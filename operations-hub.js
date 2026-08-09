@@ -100,18 +100,11 @@ function nextScheduledDate(operation, fromKey = todayKey(), includeFrom = true, 
 }
 
 function scheduleLabel(operation, fromKey = todayKey()) {
-  const mode = scheduleMode(operation);
   const next = nextScheduledDate(operation, fromKey, true);
   if (!next) return "+ Schedule";
-  const date = mode === "weekly"
-    ? formatKey(next, { weekday: "short", month: "short", day: "numeric" })
-    : formatKey(next);
-  const repeat = mode === "daily" ? "Daily" : mode === "weekly" ? "Weekly" : "Once";
+  const date = formatKey(next);
   const time = operation.scheduled_time ? ` · ${String(operation.scheduled_time).slice(0, 5)}` : "";
-  const end = mode !== "one_time" && dateOnly(operation.scheduled_end_date)
-    ? ` → ${formatKey(operation.scheduled_end_date)}`
-    : "";
-  return `${repeat} · ${date}${time}${end}`;
+  return `${date}${time}`;
 }
 
 // Forex preparation is deliberate calendar work, not a generic everyday
