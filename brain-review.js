@@ -44,27 +44,48 @@ function renderChain() {
 function renderReview(review, entry = null) {
   const verdictClass = String(review.verdict || "").toLowerCase().replaceAll(" ", "-");
   const audit = (review.rule_audit || []).map((item) => `<article class="review-rule"><strong>${esc(item.rule)}</strong><span class="review-status ${esc(String(item.status || "").toLowerCase().replaceAll(" ", "-"))}">${esc(item.status)}</span><p>${esc(item.evidence)}</p><small>${esc(item.source_reference)}</small></article>`).join("");
+  const scenario = review.blind_scenario || review.independent_pre_trade_read;
+  const scenarioMarkup = scenario?.scenario_action ? `<div class="brain-scenario-readout"><h4>BLIND AI SCENARIO</h4><p><b>${esc(scenario.scenario_action)}</b> · ${esc(scenario.scenario_bias || "No directional bias established.")}</p><p>${esc(scenario.scenario_reason || "No scenario rationale returned.")}</p><small>Simulated PnL is tracked after review against the logged result; it never changes the blind call.</small></div>` : "";
   const evidenceButton = entry?.evidence_saved && Array.isArray(entry.evidence_paths) && entry.evidence_paths.length ? `<button type="button" class="secondary compact" data-open-review-evidence="${entry.id}">Open saved screenshots</button>` : "";
   const deleteButton = entry?.id ? `<button type="button" class="danger compact" data-delete-review="${entry.id}">Delete review</button>` : "";
-  return `<article class="brain-review-card"><div class="brain-review-card-head"><div><p class="eyebrow blue-text">SYSTEM AUDIT</p><h3>${esc(review.process_grade || "Process review")}</h3></div><span class="review-verdict ${verdictClass}">${esc(review.verdict || "Pending")}</span></div><p>${esc(review.executive_summary || "No summary returned.")}</p><div class="review-columns"><div><h4>Observed evidence</h4><ul>${(review.observed_evidence || []).map((item) => `<li>${esc(item)}</li>`).join("") || "<li>No decisive evidence captured.</li>"}</ul></div><div><h4>Missing evidence</h4><ul>${(review.missing_evidence || []).map((item) => `<li>${esc(item)}</li>`).join("") || "<li>None identified.</li>"}</ul></div></div><div class="review-rules">${audit}</div><div class="thesis-compare"><h4>Thesis comparison</h4><p><b>Where it aligns:</b> ${(review.thesis_comparison?.matches || []).map(esc).join("; ") || "No alignment established."}</p><p><b>Correction:</b> ${esc(review.thesis_comparison?.correction || "No correction returned.")}</p></div><p class="review-focus"><b>Next review focus:</b> ${esc(review.next_review_focus || "Capture the full evidence chain.")}</p><div class="brain-history-actions">${evidenceButton}${deleteButton}</div></article>`;
+  return `<article class="brain-review-card"><div class="brain-review-card-head"><div><p class="eyebrow blue-text">SYSTEM AUDIT</p><h3>${esc(review.process_grade || "Process review")}</h3></div><span class="review-verdict ${verdictClass}">${esc(review.verdict || "Pending")}</span></div><p>${esc(review.executive_summary || "No summary returned.")}</p>${scenarioMarkup}<div class="review-columns"><div><h4>Observed evidence</h4><ul>${(review.observed_evidence || []).map((item) => `<li>${esc(item)}</li>`).join("") || "<li>No decisive evidence captured.</li>"}</ul></div><div><h4>Missing evidence</h4><ul>${(review.missing_evidence || []).map((item) => `<li>${esc(item)}</li>`).join("") || "<li>None identified.</li>"}</ul></div></div><div class="review-rules">${audit}</div><div class="thesis-compare"><h4>Thesis comparison</h4><p><b>Where it aligns:</b> ${(review.thesis_comparison?.matches || []).map(esc).join("; ") || "No alignment established."}</p><p><b>Correction:</b> ${esc(review.thesis_comparison?.correction || "No correction returned.")}</p></div><p class="review-focus"><b>Next review focus:</b> ${esc(review.next_review_focus || "Review the full evidence chain.")}</p><div class="brain-history-actions">${evidenceButton}${deleteButton}</div></article>`;
 }
 
 function renderHistory() {
   const list = $("#brain-review-history-list"); const count = $("#brain-review-count");
   if (!list || !count) return;
   count.textContent = `${reviews.length} REVIEW${reviews.length === 1 ? "" : "S"}`;
-  list.innerHTML = reviews.length ? reviews.map((entry) => `<button class="brain-history-item" data-review-id="${entry.id}"><span>${esc(entry.review_payload?.verdict || "Review")}</span><strong>${esc(entry.trade_debriefs ? tradeLabel(entry.trade_debriefs) : "Trade review")}</strong><small>${new Date(entry.created_at).toLocaleString()}</small></button>`).join("") : "No AI reviews yet. Select a trade, provide the screenshots, then let the system audit it.";
+  list.innerHTML = reviews.length ? reviews.map((entry) => `<button class="brain-history-item" data-review-id="${entry.id}"><span>${esc(entry.review_payload?.verdict || "Review")}</span><strong>${esc(entry.trade_debriefs ? tradeLabel(entry.trade_debriefs) : "Trade review")}</strong><small>${new Date(entry.created_at).toLocaleString()}</small></button>`).join("") : "No AI reviews yet. Select a trade and provide one post-trade chart image per timeframe.";
 }
 
 async function loadReviewerData() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession(); if (!sessionData.session) return;
-  const [tradeResult, reviewResult] = await Promise.all([supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }), supabase.from("trade_reviews").select("*, trade_debriefs(*)").order("created_at", { ascending: false }).limit(24)]);
+  const [tradeResult, reviewResult, scenarioResult] = await Promise.all([supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }), supabase.from("trade_reviews").select("*, trade_debriefs(*)").order("created_at", { ascending: false }).limit(24), supabase.from("ai_trade_scenarios").select("*").order("created_at", { ascending: false }).limit(100)]);
   trades = tradeResult.data || []; reviews = reviewResult.data || [];
+  renderScenarioSummary(scenarioResult.error ? [] : (scenarioResult.data || []));
   const control = $("#brain-review-trade");
   if (control) control.innerHTML = '<option value="">Choose a journal trade number</option>' + trades.map((trade) => `<option value="${trade.id}">${esc(tradeLabel(trade))}</option>`).join("");
   syncTheoreticalReason();
   renderHistory();
+}
+
+function ensureScenarioSummary() {
+  if ($("#brain-scenario-summary")) return;
+  const history = $(".brain-review-history");
+  if (!history) return;
+  history.insertAdjacentHTML("afterend", '<section class="brain-scenario-summary panel" id="brain-scenario-summary"><div><p class="eyebrow blue-text">BLIND AI LEDGER</p><h3>Scenario performance</h3></div><div class="brain-scenario-metrics"><article><span>AI PNL</span><strong id="brain-ai-pnl">0R</strong></article><article><span>SCENARIOS</span><strong id="brain-ai-scenarios">0</strong></article><article><span>WIN / LOSS / BE</span><strong id="brain-ai-record">0 / 0 / 0</strong></article></div><small>The AI account records what its blind pre-entry call would have earned or lost after the complete post-trade review. Misses and wrong calls remain in the ledger.</small></section>');
+}
+
+function renderScenarioSummary(scenarios) {
+  ensureScenarioSummary();
+  const pnl = scenarios.reduce((sum, row) => sum + Number(row.simulated_r_multiple || 0), 0);
+  const wins = scenarios.filter((row) => row.scenario_result === "correct_win").length;
+  const losses = scenarios.filter((row) => row.scenario_result === "wrong_loss").length;
+  const breakeven = scenarios.filter((row) => row.scenario_result === "break_even").length;
+  if ($("#brain-ai-pnl")) $("#brain-ai-pnl").textContent = `${pnl >= 0 ? "+" : ""}${pnl.toFixed(2).replace(/\.00$/, "")}R`;
+  if ($("#brain-ai-scenarios")) $("#brain-ai-scenarios").textContent = String(scenarios.length);
+  if ($("#brain-ai-record")) $("#brain-ai-record").textContent = `${wins} / ${losses} / ${breakeven}`;
 }
 
 function ensureTheoreticalReasonField() {
@@ -79,6 +100,12 @@ function ensureSaveEvidenceChoice() {
   const evidence = $(".brain-evidence-grid");
   if (!evidence) return;
   evidence.insertAdjacentHTML("afterend", '<label class="brain-save-evidence"><input id="brain-review-save-evidence" type="checkbox" /> Save these screenshots privately with this review <small>Optional. When off, the screenshots are discarded after the audit; the written audit still saves.</small></label>');
+}
+
+function normalizeAutomaticEvidenceUi() {
+  const evidence = $(".brain-evidence-grid");
+  if (!evidence) return;
+  evidence.innerHTML = '<legend>Post-trade chart snapshots — one per timeframe</legend><p>Capture one image per timeframe after the trade. The AI first reads only the pre-entry portion of these same images, then performs a complete post-trade review. No separate pre-chart or post-chart upload is required.</p><div class="brain-evidence-columns"><section><h3>Automatic two-pass analysis</h3><label>4H <input data-review-frame="chart_4h" type="file" accept="image/png,image/jpeg,image/webp" required /></label><label>1H <input data-review-frame="chart_1h" type="file" accept="image/png,image/jpeg,image/webp" required /></label><label>15m <input data-review-frame="chart_15m" type="file" accept="image/png,image/jpeg,image/webp" required /></label><label>5m <input data-review-frame="chart_5m" type="file" accept="image/png,image/jpeg,image/webp" required /></label><label>1m <input data-review-frame="chart_1m" type="file" accept="image/png,image/jpeg,image/webp" required /></label></section><section><h3>Bias protection</h3><p class="body-copy">The blind pass cannot use post-entry candles, outcome, management, or your explanation. It records what it would have done, even if that call would have lost. The full pass then reviews everything after entry.</p><p class="body-copy">If you dismiss optional post-entry commentary, the blind scenario is unchanged.</p></section></div><small>Images are used for this audit and are not retained unless an existing evidence-retention option is enabled.</small>';
 }
 
 function syncTheoreticalReason() {
@@ -209,7 +236,7 @@ async function runReview(event) {
   const { data: sessionData } = await supabase.auth.getSession(); if (!sessionData.session) return alert("Sign in before requesting a trade review.");
   const trade = trades.find((item) => item.id === $("#brain-review-trade").value);
   const evidenceControls = Array.from(document.querySelectorAll("[data-review-frame]"));
-  const missing = evidenceControls.filter((input) => !input.files?.[0]).map((input) => input.dataset.reviewFrame.replace("_", " ").toUpperCase());
+  const missing = evidenceControls.filter((input) => !input.files?.[0]).map((input) => input.dataset.reviewFrame.replace("chart_", "").toUpperCase());
   if (!trade) return alert("Choose a journal trade number first.");
   if (missing.length) return alert("Add every required frame before the audit: " + missing.join(", ") + ".");
   const status = $("#brain-review-status"); const submit = $("#brain-review-submit"); submit.disabled = true; status.textContent = "Reading chart evidence against the Clarified Chaos FX system...";
@@ -219,12 +246,19 @@ async function runReview(event) {
     const writeup = reviewWriteup();
     const response = await fetch("/api/trade-review", { method: "POST", headers: { "content-type":"application/json", authorization:`Bearer ${sessionData.session.access_token}` }, body: JSON.stringify({ trade, noEntryReason, writeup, screenshots }) });
     const body = await response.json(); if (!response.ok) throw new Error(body.error || "The reviewer did not return an audit.");
-    const keepEvidence = Boolean($("#brain-review-save-evidence")?.checked);
-    const storedEvidence = keepEvidence ? await uploadEvidence(screenshots, sessionData.session.user.id, trade.id) : [];
-    const reviewPayload = { ...body.review, input_context: { writeup, evidence_frames: Object.keys(screenshots), evidence_retained: keepEvidence } };
-    const insert = await supabase.from("trade_reviews").insert({ user_id: sessionData.session.user.id, trade_id: trade.id, trader_thesis: writeup.thesis || null, no_entry_reason: noEntryReason || null, review_payload: reviewPayload, screenshot_count: Object.keys(screenshots).length, evidence_saved: keepEvidence, evidence_paths: storedEvidence, course_version: "1.2" });
+    const scenario = body.scenario || {};
+    const actualR = Number(trade.r_multiple || 0);
+    const actualPnl = Number(trade.pnl_percent || 0);
+    const wouldEnter = scenario.scenario_action === "Would enter";
+    const simulatedR = wouldEnter ? actualR : 0;
+    const simulatedPnl = wouldEnter ? actualPnl : 0;
+    const scenarioResult = wouldEnter ? (actualR > 0 ? "correct_win" : actualR < 0 ? "wrong_loss" : "break_even") : scenario.scenario_action === "Would pass" ? (actualR < 0 ? "avoided_loss" : actualR > 0 ? "missed_winner" : "no_position") : "no_position";
+    const reviewPayload = { ...body.review, blind_scenario: scenario, scenario_result: scenarioResult, simulated_r_multiple: simulatedR, simulated_pnl_percent: simulatedPnl, input_context: { writeup, evidence_frames: Object.keys(screenshots), evidence_retained: false, post_trade_commentary_dismissed: !Object.values(writeup).some(Boolean) } };
+    const insert = await supabase.from("trade_reviews").insert({ user_id: sessionData.session.user.id, trade_id: trade.id, trader_thesis: writeup.thesis || null, no_entry_reason: noEntryReason || null, review_payload: reviewPayload, screenshot_count: Object.keys(screenshots).length, evidence_saved: false, evidence_paths: [], course_version: "1.3" });
     if (insert.error) throw new Error(`The audit was completed but could not be saved: ${insert.error.message}`);
-    status.textContent = keepEvidence ? "Audit complete. Review and private screenshots saved." : "Audit complete. Written review saved; screenshots discarded."; $("#brain-review-form").reset(); await loadReviewerData(); $("#brain-review-dialog").close(); $("#brain-review-history-list")?.scrollIntoView({ behavior:"smooth", block:"center" });
+    const scenarioInsert = await supabase.from("ai_trade_scenarios").insert({ user_id: sessionData.session.user.id, trade_id: trade.id, scenario_payload: scenario, scenario_action: scenario.scenario_action || "Insufficient evidence", simulated_r_multiple: simulatedR, simulated_pnl_percent: simulatedPnl, actual_r_multiple: actualR, actual_pnl_percent: actualPnl, scenario_result: scenarioResult, screenshot_count: Object.keys(screenshots).length });
+    if (scenarioInsert.error) console.warn("AI scenario ledger is unavailable until migration 051 is applied.", scenarioInsert.error.message);
+    status.textContent = "Blind scenario recorded. Full post-trade review saved."; $("#brain-review-form").reset(); await loadReviewerData(); $("#brain-review-dialog").close(); $("#brain-review-history-list")?.scrollIntoView({ behavior:"smooth", block:"center" });
   } catch (error) { status.textContent = error.message || "The audit could not be completed."; } finally { submit.disabled = false; }
 }
 
@@ -265,7 +299,7 @@ function ensureEvidenceDialog() {
   document.body.insertAdjacentHTML("beforeend", '<dialog id="brain-evidence-dialog" class="dialog-card brain-evidence-dialog"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow blue-text">PRIVATE REVIEW EVIDENCE</p><h2>Saved chart screenshots</h2><div id="brain-saved-evidence-grid" class="brain-saved-evidence-grid"></div></dialog>');
 }
 function ensureBriefingCss() {
-  ["brain-briefing.css", "brain-visuals.css", "brain-visual-accent.css"].forEach((file) => {
+  ["brain-briefing.css", "brain-visuals.css", "brain-visual-accent.css", "brain-scenario.css"].forEach((file) => {
     if (!document.querySelector(`link[href="${file}"]`)) document.head.insertAdjacentHTML("beforeend", `<link rel="stylesheet" href="${file}">`);
   });
 }
@@ -303,7 +337,8 @@ async function loadCourseLibrary() {
 function init() {
   ensureBriefingCss();
   upgradeBrainDom();
-  ensureSaveEvidenceChoice();
+  normalizeAutomaticEvidenceUi();
+  ensureScenarioSummary();
   $("#open-trade-review")?.addEventListener("click", () => $("#brain-review-dialog").showModal());
   $("#brain-review-dialog .dialog-close")?.addEventListener("click", () => $("#brain-review-dialog").close());
   $("#brain-review-form")?.addEventListener("submit", runReview);
