@@ -174,7 +174,7 @@ function healthCard() {
   const todayWeights = weightLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today);
   const todayFoods = foodLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today);
   const sum = field => Math.round(todayFoods.reduce((total, item) => total + Number(item[field] || 0), 0));
-  return `<article class="mastery-entry health-entry"><div class="entry-meta"><span>HEALTH PULSE · TODAY</span></div><h3>${todayWeights.length ? todayWeights.map(item => `${item.measured_at}: ${item.weight_lbs} lb`).join(" · ") : "No weigh-ins logged today"}</h3><p>${todayFoods.length ? `${todayFoods.length} foods · ~${sum("calories")} kcal · ${sum("protein_g")}g protein · ${sum("fiber_g")}g fiber · ${sum("fat_g")}g fat · ${sum("sugar_g")}g sugar` : "Add food as a rough estimate—precision is optional; consistency is the point."}</p></article>`;
+  return `<article class="mastery-entry health-entry"><div class="entry-meta"><span>HEALTH PULSE · TODAY</span></div><h3>${todayWeights.length ? todayWeights.map(item => `${item.measured_at}: ${item.weight_lbs} lb`).join(" · ") : "No weigh-ins logged today"}</h3><p>${todayFoods.length ? `${todayFoods.length} foods · ~${sum("calories")} kcal · ${sum("protein_g")}g protein · ${sum("carbs_g")}g carbs · ${sum("fiber_g")}g fiber · ${sum("fat_g")}g fat · ${sum("sugar_g")}g sugar` : "Add a food and quantity for an automatic rough estimate; precision is optional, consistency is the point."}</p></article>`;
 }
 
 function challengeCard(challenge) {
@@ -267,22 +267,56 @@ function syncResistanceFields(row) {
 }
 
 function foodRow() {
-  return `<div class="nutrition-row"><label>Food<input name="food_name" required placeholder="e.g. Chicken rice bowl" /></label><label>Calories<input name="calories" type="number" min="0" placeholder="rough" /></label><label>Protein g<input name="protein_g" type="number" min="0" step="0.1" /></label><label>Fiber g<input name="fiber_g" type="number" min="0" step="0.1" /></label><label>Fat g<input name="fat_g" type="number" min="0" step="0.1" /></label><label>Sugar g<input name="sugar_g" type="number" min="0" step="0.1" /></label><button class="ghost compact" type="button" data-remove-food>Remove</button></div>`;
+  return `<div class="nutrition-row" data-nutrition-row data-estimated="false"><div class="nutrition-food-fields"><label>Food<input name="food_name" required placeholder="e.g. Chicken rice bowl" /></label><label>Quantity<input name="quantity_text" required placeholder="e.g. 1 bowl, 8 oz, 2 eggs" /></label></div><div class="nutrition-estimate-grid"><label>Calories<input name="calories" type="number" min="0" readonly placeholder="—" /></label><label>Protein g<input name="protein_g" type="number" min="0" step="0.1" readonly placeholder="—" /></label><label>Carbs g<input name="carbs_g" type="number" min="0" step="0.1" readonly placeholder="—" /></label><label>Fat g<input name="fat_g" type="number" min="0" step="0.1" readonly placeholder="—" /></label><label>Fiber g<input name="fiber_g" type="number" min="0" step="0.1" readonly placeholder="—" /></label><label>Sugar g<input name="sugar_g" type="number" min="0" step="0.1" readonly placeholder="—" /></label></div><div class="nutrition-row-actions"><button class="ghost compact" type="button" data-estimate-food>Estimate</button><button class="ghost compact" type="button" data-remove-food>Remove</button></div><p class="nutrition-estimate-status" data-estimate-status aria-live="polite">Enter the food and quantity, then estimate.</p></div>`;
+}
+
+async function estimateFoodRow(row) {
+  if (!row) return;
+  const foodName = String(row.querySelector('[name="food_name"]')?.value || "").trim();
+  const quantity = String(row.querySelector('[name="quantity_text"]')?.value || "").trim();
+  const status = row.querySelector("[data-estimate-status]");
+  const button = row.querySelector("[data-estimate-food]");
+  if (!foodName || !quantity) { if (status) status.textContent = "Add a food name and quantity first."; return; }
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { if (status) status.textContent = "Your session has expired. Please sign in again."; return; }
+  if (button) { button.disabled = true; button.textContent = "Estimating…"; }
+  if (status) status.textContent = "Looking up a reasonable estimate…";
+  try {
+    const response = await fetch("/api/nutrition-estimate", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ food_name: foodName, quantity }) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "The nutrition estimator is unavailable.");
+    const estimate = payload.estimate || {};
+    ["calories", "protein_g", "carbs_g", "fat_g", "fiber_g", "sugar_g"].forEach(field => {
+      const input = row.querySelector(`[name="${field}"]`);
+      if (input) input.value = estimate[field] ?? "";
+    });
+    row.dataset.estimated = "true";
+    row.dataset.estimateSource = "AI";
+    row.dataset.estimatedAt = new Date().toISOString();
+    if (status) status.textContent = `${String(estimate.confidence || "medium").toUpperCase()} confidence · ${estimate.assumptions || "Rough estimate based on the stated quantity."}`;
+  } catch (error) {
+    row.dataset.estimated = "false";
+    if (status) status.textContent = error.message || "Could not estimate this food.";
+  } finally {
+    if (button) { button.disabled = false; button.textContent = "Estimate"; }
+  }
 }
 
 function openFitnessDialog(type) {
   const dialog = document.querySelector("#mastery-fitness-dialog");
   if (type === "Gym") dialog.innerHTML = `<form class="dialog-card mastery-form fitness-form" data-fitness-mode="gym"><button class="dialog-close" type="button">×</button><p class="eyebrow green-text">GYM LOG</p><h2>Record the work.</h2><p class="schedule-copy">Each line becomes training evidence. AEGIS compares the same exercise over time for load, reps, and total volume.</p><label>Workout split<select name="workout_split" required><option>Legs</option><option>Push</option><option>Pull</option><option>Upper Body</option><option>Lower Body</option><option>Recovery-safe mobility</option></select></label><label>Session note <span class="field-optional">optional</span><textarea name="notes" placeholder="Energy, pain, form cue, or anything worth tracking."></textarea></label><div class="form-subhead"><b>Exercise sets</b><button class="ghost compact" type="button" data-add-exercise>+ Add exercise</button></div><div class="exercise-list">${gymSetRow()}</div><button class="primary" type="submit">Save gym session</button></form>`;
-  else dialog.innerHTML = `<form class="dialog-card mastery-form fitness-form" data-fitness-mode="health"><button class="dialog-close" type="button">×</button><p class="eyebrow green-text">HEALTH LOG</p><h2>Capture the signal.</h2><p class="schedule-copy">Use rough estimates. The trend matters more than pretending every macro is exact.</p><div class="health-weight-grid"><label>AM weight (lb) <span class="field-optional">optional</span><input name="am_weight" type="number" min="1" step="0.1" /></label><label>PM weight (lb) <span class="field-optional">optional</span><input name="pm_weight" type="number" min="1" step="0.1" /></label></div><div class="form-subhead"><b>Food intake · rough estimates</b><button class="ghost compact" type="button" data-add-food>+ Add food</button></div><div class="food-list">${foodRow()}</div><label>Health note <span class="field-optional">optional</span><textarea name="notes" placeholder="Sleep, hydration, appetite, recovery, or a pattern worth remembering."></textarea></label><button class="primary" type="submit">Save health log</button></form>`;
+  else dialog.innerHTML = `<form class="dialog-card mastery-form fitness-form" data-fitness-mode="health"><button class="dialog-close" type="button">×</button><p class="eyebrow green-text">HEALTH LOG</p><h2>Capture the signal.</h2><p class="schedule-copy">Enter a food and quantity. AEGIS will estimate calories and macros; review the assumptions before saving.</p><div class="health-weight-grid"><label>AM weight (lb) <span class="field-optional">optional</span><input name="am_weight" type="number" min="1" step="0.1" /></label><label>PM weight (lb) <span class="field-optional">optional</span><input name="pm_weight" type="number" min="1" step="0.1" /></label></div><div class="form-subhead"><b>Food intake · auto-estimated</b><button class="ghost compact" type="button" data-add-food>+ Add food</button></div><div class="food-list">${foodRow()}</div><label>Health note <span class="field-optional">optional</span><textarea name="notes" placeholder="Sleep, hydration, appetite, recovery, or a pattern worth remembering."></textarea></label><button class="primary" type="submit">Save health log</button></form>`;
   dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
   dialog.querySelector("[data-add-exercise]")?.addEventListener("click", () => dialog.querySelector(".exercise-list").insertAdjacentHTML("beforeend", gymSetRow()));
   dialog.querySelector("[data-add-food]")?.addEventListener("click", () => dialog.querySelector(".food-list").insertAdjacentHTML("beforeend", foodRow()));
-   dialog.onclick = event => {
+  dialog.onclick = event => {
      const removeExercise = event.target.closest("[data-remove-exercise]");
      const removeFood = event.target.closest("[data-remove-food]");
+     const estimateFood = event.target.closest("[data-estimate-food]");
      const addSet = event.target.closest("[data-add-set]");
      if (removeExercise) removeExercise.closest(".exercise-row")?.remove();
      if (removeFood) removeFood.closest(".nutrition-row")?.remove();
+     if (estimateFood) { estimateFoodRow(estimateFood.closest(".nutrition-row")); return; }
      if (addSet) {
        const source = addSet.closest(".exercise-row");
        const list = source?.closest(".exercise-list");
@@ -297,6 +331,14 @@ function openFitnessDialog(type) {
        syncResistanceFields(clone);
      }
    };
+  dialog.querySelector(".food-list")?.addEventListener("input", event => {
+    if (!event.target.matches('[name="food_name"], [name="quantity_text"]')) return;
+    const row = event.target.closest(".nutrition-row");
+    if (!row || row.dataset.estimated !== "true") return;
+    row.dataset.estimated = "false";
+    const status = row.querySelector("[data-estimate-status]");
+    if (status) status.textContent = "Food or quantity changed. Estimate again before saving.";
+  });
   dialog.querySelector(".exercise-list")?.addEventListener("change", event => { if (event.target.matches("[data-resistance-type]")) syncResistanceFields(event.target.closest(".exercise-row")); });
   dialog.querySelector("form").addEventListener("submit", saveFitnessLog);
   dialog.showModal();
@@ -352,13 +394,20 @@ async function saveFitnessLog(event) {
       const weights = [["AM", data.get("am_weight")], ["PM", data.get("pm_weight")]]
         .filter(([, value]) => value !== null && String(value).trim() !== "")
         .map(([measured_at, value]) => ({ user_id: userId, measured_at, weight_lbs: Number(value), logged_on: loggedOn }));
-      const foods = [...form.querySelectorAll(".nutrition-row")].map(row => ({
+      const foodRows = [...form.querySelectorAll(".nutrition-row")];
+      const namedFoodRows = foodRows.filter(row => String(row.querySelector('[name="food_name"]')?.value || "").trim());
+      if (namedFoodRows.some(row => row.dataset.estimated !== "true")) return alert("Estimate each food after entering its quantity.");
+      const foods = foodRows.map(row => ({
         food_name: String(row.querySelector('[name="food_name"]')?.value || "").trim(),
+        quantity_text: String(row.querySelector('[name="quantity_text"]')?.value || "").trim(),
         calories: Number(row.querySelector('[name="calories"]')?.value || 0) || null,
         protein_g: Number(row.querySelector('[name="protein_g"]')?.value || 0) || null,
+        carbs_g: Number(row.querySelector('[name="carbs_g"]')?.value || 0) || null,
         fiber_g: Number(row.querySelector('[name="fiber_g"]')?.value || 0) || null,
         fat_g: Number(row.querySelector('[name="fat_g"]')?.value || 0) || null,
         sugar_g: Number(row.querySelector('[name="sugar_g"]')?.value || 0) || null,
+        estimate_source: row.dataset.estimateSource || "AI",
+        estimated_at: row.dataset.estimatedAt || new Date().toISOString(),
         user_id: userId, logged_on: loggedOn
       })).filter(row => row.food_name);
       if (weights.length) { const { error } = await db.from("health_weight_logs").insert(weights); if (error) throw error; }

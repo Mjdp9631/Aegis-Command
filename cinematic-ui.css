@@ -1393,6 +1393,15 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
 .fitness-form .set-number-label { color: #efb54f; text-align: center; }
 .fitness-form .set-number-label b { display: block; margin-top: 8px; font: 700 13px/1 "Space Mono", ui-monospace, monospace; }
 .fitness-form .form-subhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.fitness-form .nutrition-row { display: grid; grid-template-columns: 1fr; align-items: stretch; }
+.fitness-form .nutrition-food-fields,
+.fitness-form .nutrition-estimate-grid { display: grid; gap: 8px; }
+.fitness-form .nutrition-food-fields { grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 1fr); }
+.fitness-form .nutrition-estimate-grid { grid-template-columns: repeat(6, minmax(70px, 1fr)); }
+.fitness-form .nutrition-estimate-grid input[readonly] { color: #dceeff; background: rgba(24, 54, 77, .48); }
+.fitness-form .nutrition-row-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.fitness-form .nutrition-estimate-status { margin: 0; color: rgba(181, 207, 232, .72); font: 700 9px/1.4 "Space Mono", ui-monospace, monospace; }
+.fitness-form .nutrition-estimate-status[data-estimate-status] { min-height: 13px; }
 #mastery .training-progress-overview {
   grid-column: 1 / -1;
   display: flex;
@@ -1420,6 +1429,9 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
 @media (max-width: 760px) {
   .fitness-form .exercise-row,
   .fitness-form .nutrition-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fitness-form .nutrition-row { grid-template-columns: 1fr; }
+  .fitness-form .nutrition-food-fields,
+  .fitness-form .nutrition-estimate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fitness-form .set-number-label { text-align: left; }
   #mastery .training-progress-overview { align-items: flex-start; flex-direction: column; }
   #mastery .training-progress-stats { justify-content: flex-start; }

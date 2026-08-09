@@ -369,7 +369,7 @@ function ensureManualScan() {
   const panel = document.createElement("section");
   panel.id = "ai-manual-scan";
   panel.className = "panel ai-manual-scan";
-  panel.innerHTML = '<div><p class="eyebrow blue-text">ON-DEMAND INTELLIGENCE</p><h3>Command scans</h3><p>Run a current-data scan during the day. When you are finished for the night, mark <strong>Going to bed</strong> so the debrief includes activity completed after midnight and leaves the operation queue untouched.</p></div><div class="ai-scan-actions"><button class="secondary compact" data-ai-run="scan">Run manual scan</button><button class="primary compact" data-ai-run="bedtime">Going to bed</button></div>';
+  panel.innerHTML = '<div><p class="eyebrow blue-text">NIGHTLY DEBRIEF</p><h3>Close the operating day</h3><p>When you are finished for the night, mark <strong>Going to bed</strong> so the debrief includes activity completed after midnight and leaves the operation queue untouched.</p></div><div class="ai-scan-actions"><button class="primary compact" data-ai-run="bedtime">Going to bed</button></div>';
   anchor.insertAdjacentElement("afterend", panel);
 }
 
