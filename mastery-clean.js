@@ -511,5 +511,5 @@ document.addEventListener("click", event => {
   const complete = event.target.closest("[data-mastery-complete-challenge]"); if (complete) { const challenge = challenges.find(item => item.id === complete.dataset.masteryCompleteChallenge); if (challenge) openSystemDialog("complete", challenge); }
 });
 
-function startMastery() { if (window.__aegisMasteryCleanStarted) return; window.__aegisMasteryCleanStarted = true; new MutationObserver(() => { if (!cleanRendering) render(); }).observe(root, { childList: true }); buildDialogs(); load(); }
+function startMastery() { if (window.__aegisMasteryCleanStarted) return; window.__aegisMasteryCleanStarted = true; buildDialogs(); load(); }
 if (document.readyState === "complete") startMastery(); else window.addEventListener("load", startMastery, { once: true });
