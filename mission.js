@@ -13,12 +13,16 @@ function missionLabel(mission) { return isMeasured(mission) ? `${Math.min(Number
 function normalize(mission) { return { ...mission, progress: missionProgress(mission) }; }
 function icon(category) { return category === "Recovery" ? "＋" : category === "Trading" ? "◈" : category === "Business" ? "▦" : "◇"; }
 function iconClass(category) { return category === "Recovery" ? "recovery-icon" : category === "Trading" ? "trade-icon" : "business-icon"; }
+const missionPriorityOrder = { "Do now": 0, Schedule: 1, Delegate: 2, Eliminate: 3 };
+function sortMissions(items) {
+  return [...items].sort((a, b) => (missionPriorityOrder[a.priority] ?? 9) - (missionPriorityOrder[b.priority] ?? 9) || b.progress - a.progress || String(a.title || "").localeCompare(String(b.title || "")));
+}
 
 function renderMissions() {
   const target = $("#mission-cards");
   if (!target) return;
-  const active = missions.filter((mission) => mission.progress < 100);
-  const complete = missions.filter((mission) => mission.progress >= 100);
+  const active = sortMissions(missions.filter((mission) => mission.progress < 100));
+  const complete = sortMissions(missions.filter((mission) => mission.progress >= 100));
   target.innerHTML = `<div class="mission-view-tabs"><button type="button" class="mission-view-tab active" data-mission-view="active">ACTIVE · ${active.length}</button><button type="button" class="mission-view-tab" data-mission-view="complete">COMPLETED · ${complete.length}</button></div><div class="mission-card-list" data-mission-list></div>`;
   const list = target.querySelector("[data-mission-list]");
   const draw = (items) => { list.innerHTML = items.length ? items.map((mission) => `<button class="mission-card mission-open" data-mission-id="${mission.id}"><span class="eyebrow amber">${escape(mission.priority)}</span><h3>${escape(mission.title)}</h3><p>${escape(mission.category)} mission · ${escape(missionLabel(mission))}</p><div class="meter"><i style="width:${mission.progress}%"></i></div><small class="mission-definition">${mission.completion_definition ? escape(mission.completion_definition) : "Define what completion means"}</small></button>`).join("") : '<article class="mission-card"><h3>No missions in this view.</h3></article>'; };
@@ -30,8 +34,7 @@ function renderCommandMissions() {
   const target = $("#command-missions") || document.querySelector("#command .mission-panel .mission-list");
   if (!target) return;
   target.id = "command-missions";
-  const priorityOrder = { "Do now": 0, Schedule: 1, Delegate: 2, Eliminate: 3 };
-  const active = missions.filter((mission) => mission.progress < 100).sort((a, b) => (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9) || b.progress - a.progress);
+  const active = sortMissions(missions.filter((mission) => mission.progress < 100));
   target.classList.add("mission-list-scroll");
   target.innerHTML = active.length ? active.map((mission) => `<button type="button" class="command-mission mission-open" data-mission-id="${mission.id}"><div class="mission-icon ${iconClass(mission.category)}">${icon(mission.category)}</div><div><strong>${escape(mission.title)}</strong><small>${escape(mission.category)} - ${escape(mission.priority)}</small></div><span>${escape(missionLabel(mission))}</span></button>`).join("") : '<article><div><strong>No active missions</strong><small>Open the next objective from Mission Control.</small></div></article>';
 }

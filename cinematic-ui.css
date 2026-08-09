@@ -297,6 +297,39 @@ main { background: linear-gradient(90deg, rgba(4, 10, 17, .29), rgba(4, 10, 17, 
   font: 700 8px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   letter-spacing: .17em;
 }
+#missions.active .mission-view-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 18px;
+}
+#missions.active .mission-view-tab {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(93,177,248,.2);
+  border-radius: 4px;
+  color: rgba(191,216,240,.72);
+  background: rgba(6,16,27,.52);
+  font: 700 12px/1 "Rajdhani", sans-serif;
+  letter-spacing: .04em;
+  cursor: pointer;
+  transition: border-color .2s ease, color .2s ease, background .2s ease, box-shadow .2s ease;
+}
+#missions.active .mission-view-tab:hover {
+  color: #d9efff;
+  border-color: rgba(82,172,249,.5);
+}
+#missions.active .mission-view-tab.active {
+  color: #d9efff;
+  border-color: rgba(82,172,249,.62);
+  background: linear-gradient(135deg, rgba(50,139,218,.2), rgba(8,18,29,.45));
+  box-shadow: inset 0 0 16px rgba(56,152,237,.08);
+}
+#missions.active .mission-view-tab[data-mission-view="complete"].active {
+  color: #b9f2d4;
+  border-color: rgba(72,205,148,.55);
+  background: linear-gradient(135deg, rgba(48,160,112,.2), rgba(8,25,25,.45));
+  box-shadow: inset 0 0 16px rgba(72,205,148,.08);
+}
 
 /* Recovery stays quieter and clinical; Mastery becomes a library/workshop console; Character remains a vault. */
 #recovery.active .content-grid { margin-top: 0; }
