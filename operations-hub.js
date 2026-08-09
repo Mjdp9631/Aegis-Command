@@ -134,7 +134,7 @@ const starterOperations = () => {
   return [
     ...(preMarketOperationForToday() ? [["Pre-market analysis", "Trading"]] : []),
     ["Review charts and document one lesson", "Trading"],
-    ["Read one chapter", "Mind"],
+    ["Read one chapter", "Self Mastery"],
   ].map(([title, category]) => title === "Pre-market analysis"
     ? preMarketOperationForToday()
     : ({ title, category, completed: false, scheduled_date: null, scheduled_time: null, operation_date: todayKey(), is_daily: true, status: "Queued" }));
@@ -381,7 +381,8 @@ function resolveMission(operation, includeCompleted = false) {
   if (/read one chapter|read chapter/.test(title)) return byPhrase(["learning rhythm", "chapters"]);
   if (/pre-market/.test(title)) return byPhrase(["trading preparation rhythm", "execution playbook", "pre-market"]);
   const category = String(operation.category || "").toLowerCase();
-  const candidates = missions.filter((mission) => (includeCompleted || !mission.completed) && String(mission.category || "").toLowerCase() === category);
+  const missionCategory = category === "self mastery" ? "mind" : category;
+  const candidates = missions.filter((mission) => (includeCompleted || !mission.completed) && String(mission.category || "").toLowerCase() === missionCategory);
   if (!candidates.length) return null;
   const measured = candidates.filter((mission) => String(mission.completion_type || "").toLowerCase() === "units" && Number(mission.target_count) > 0);
   const unitMatch = measured.find((mission) => {
@@ -865,7 +866,7 @@ async function seedIfEmpty() {
 async function ensureTodayOperations(records = []) {
   const daily = [
     ["Review charts and document one lesson", "Trading", "Review one relevant chart or completed trade, capture one process lesson, and file it in Detective or Self Mastery."],
-    ["Read one chapter", "Mind", readingBrief()],
+    ["Read one chapter", "Self Mastery", readingBrief()],
   ].map(([title, category, brief]) => ({ title, category, brief, priority: priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: todayKey(), metric_key: title === "Read one chapter" ? "chapters_read" : null }));
   const preMarket = preMarketOperationForToday();
   if (preMarket) daily.unshift(preMarket);
@@ -967,7 +968,7 @@ function ensureScheduleDialog() {
   dialog.className = "dialog-card operation-schedule-card";
   dialog.innerHTML = `<form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h2>Plan this operation.</h2><p class="schedule-copy">Scheduling is optional. A scheduled operation stays on the calendar until you complete it.</p><div class="schedule-input-grid"><label>Date<input id="operation-schedule-date" type="date" required></label><label>Time <span class="field-optional">optional</span><input id="operation-schedule-time" type="time"></label></div><label>Schedule type<select id="operation-schedule-mode"><option value="one_time">One-time</option><option value="weekly">Repeat weekly</option></select></label><div class="dialog-actions"><button value="clear" type="submit" class="text-button">Remove from calendar</button><button value="cancel" type="submit" class="text-button">Cancel</button><button value="schedule" type="submit" class="primary">Add to calendar</button></div></form>`;
   dialog.querySelector("form")?.insertAdjacentHTML("afterbegin", '<label id="operation-schedule-choice-wrap" hidden>Unscheduled operation<select id="operation-schedule-operation"></select></label>');
-  dialog.querySelector("#operation-schedule-choice-wrap")?.insertAdjacentHTML("afterend", '<div id="operation-schedule-create-fields" hidden><label>New operation<input id="operation-schedule-new-title" placeholder="What needs to happen?" /></label><label>Department<select id="operation-schedule-new-category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Mind</option></select></label></div>');
+  dialog.querySelector("#operation-schedule-choice-wrap")?.insertAdjacentHTML("afterend", '<div id="operation-schedule-create-fields" hidden><label>New operation<input id="operation-schedule-new-title" placeholder="What needs to happen?" /></label><label>Department<select id="operation-schedule-new-category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Self Mastery</option><option>Life Admin</option></select></label></div>');
   document.body.append(dialog);
   const scheduleDate = dialog.querySelector("#operation-schedule-date");
   scheduleDate?.removeAttribute("required");
@@ -1037,7 +1038,7 @@ function ensureScheduleDialog() {
         setTimeout(() => dialog.showModal(), 0);
         return;
       }
-      const category = dialog.querySelector("#operation-schedule-new-category")?.value || "Mind";
+      const category = dialog.querySelector("#operation-schedule-new-category")?.value || "Self Mastery";
       operation = {
         id: `local-${Date.now()}-new-operation`,
         title,
