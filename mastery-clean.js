@@ -94,7 +94,7 @@ const activeChallenge = kind => challenges.find(item => item.lane === kind && ["
 const difficultyLabel = challenge => `${String(challenge.difficulty || "standard").toUpperCase()} · +${Number(challenge.xp_reward || 0)} BONUS XP`;
 
 function entryCard(entry) {
-  return `<article class="mastery-entry"><div class="entry-meta"><span>${escapeHtml(entry.category)}</span>${entry.rating ? `<b>${entry.rating}/5</b>` : ""}</div><h3>${escapeHtml(entry.title)}</h3>${entry.summary ? `<p>${escapeHtml(entry.summary)}</p>` : ""}${entry.key_lessons ? `<p><b>Key takeaways:</b> ${escapeHtml(entry.key_lessons)}</p>` : ""}</article>`;
+  return `<article class="mastery-entry"><div class="entry-meta"><span>${escapeHtml(entry.category)}</span>${entry.rating ? `<b>${entry.rating}/5</b>` : ""}</div><h3>${escapeHtml(entry.title)}</h3>${entry.summary ? `<p>${escapeHtml(entry.summary)}</p>` : ""}${entry.key_lessons ? `<p><b>Key takeaways:</b> ${escapeHtml(entry.key_lessons)}</p>` : ""}<button type="button" class="ghost compact mastery-entry-edit" data-mastery-edit-entry="${escapeHtml(entry.id)}">Edit entry</button></article>`;
 }
 
 function sessionTimestamp(session) {
@@ -152,7 +152,7 @@ function trainingCard(session) {
     }).join("");
     return `<div class="training-exercise"><div class="training-exercise-head"><b>${escapeHtml(exerciseName)}</b><small>${escapeHtml(resistanceType)}</small></div><div class="training-set-summary">${detail}</div><small class="training-progress">${escapeHtml(progressForExercise(session, rows, exerciseName, resistanceType))}</small></div>`;
   }).join("");
-  return `<article class="mastery-entry training-entry"><div class="entry-meta"><span>${escapeHtml(session.workout_split || session.session_type || "GYM")}</span><b>${dateOnly(session.logged_on || session.created_at)}</b></div><h3>${escapeHtml(session.title || "Training session")}</h3>${exerciseBlocks ? `<div class="training-exercise-list">${exerciseBlocks}</div>` : ""}${session.notes ? `<p>${escapeHtml(session.notes)}</p>` : ""}</article>`;
+  return `<article class="mastery-entry training-entry"><div class="entry-meta"><span>${escapeHtml(session.workout_split || session.session_type || "GYM")}</span><b>${dateOnly(session.logged_on || session.created_at)}</b></div><h3>${escapeHtml(session.title || "Training session")}</h3>${exerciseBlocks ? `<div class="training-exercise-list">${exerciseBlocks}</div>` : ""}${session.notes ? `<p>${escapeHtml(session.notes)}</p>` : ""}<button type="button" class="ghost compact mastery-entry-edit" data-mastery-edit-session="${escapeHtml(session.id)}">Edit session</button></article>`;
 }
 
 function trainingProgressOverview() {
@@ -174,7 +174,9 @@ function healthCard() {
   const todayWeights = weightLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today);
   const todayFoods = foodLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today);
   const sum = field => Math.round(todayFoods.reduce((total, item) => total + Number(item[field] || 0), 0));
-  return `<article class="mastery-entry health-entry"><div class="entry-meta"><span>HEALTH PULSE · TODAY</span></div><h3>${todayWeights.length ? todayWeights.map(item => `${item.measured_at}: ${item.weight_lbs} lb`).join(" · ") : "No weigh-ins logged today"}</h3><p>${todayFoods.length ? `${todayFoods.length} foods · ~${sum("calories")} kcal · ${sum("protein_g")}g protein · ${sum("carbs_g")}g carbs · ${sum("fiber_g")}g fiber · ${sum("fat_g")}g fat · ${sum("sugar_g")}g sugar` : "Add a food and quantity for an automatic rough estimate; precision is optional, consistency is the point."}</p></article>`;
+  const weights = weightLogs.slice(0, 12).map(item => `<div class="health-log-row"><span><b>${escapeHtml(item.measured_at)}</b> ${escapeHtml(item.weight_lbs)} lb · ${dateOnly(item.logged_on)}</span><button type="button" class="ghost compact mastery-entry-edit" data-mastery-edit-weight="${escapeHtml(item.id)}">Edit</button></div>`).join("");
+  const foods = foodLogs.slice(0, 12).map(item => `<div class="health-log-row"><span><b>${escapeHtml(item.food_name)}</b> · ${escapeHtml(item.quantity_text || "quantity not recorded")} · ${Number(item.calories || 0)} kcal · ${dateOnly(item.logged_on)}</span><button type="button" class="ghost compact mastery-entry-edit" data-mastery-edit-food="${escapeHtml(item.id)}">Edit</button></div>`).join("");
+  return `<article class="mastery-entry health-entry"><div class="entry-meta"><span>HEALTH PULSE · TODAY</span></div><h3>${todayWeights.length ? todayWeights.map(item => `${item.measured_at}: ${item.weight_lbs} lb`).join(" · ") : "No weigh-ins logged today"}</h3><p>${todayFoods.length ? `${todayFoods.length} foods · ~${sum("calories")} kcal · ${sum("protein_g")}g protein · ${sum("carbs_g")}g carbs · ${sum("fiber_g")}g fiber · ${sum("fat_g")}g fat · ${sum("sugar_g")}g sugar` : "Add a food and quantity for an automatic rough estimate; precision is optional, consistency is the point."}</p>${weights || foods ? `<div class="health-log-list"><p class="eyebrow green-text">RECENT HEALTH LOGS</p>${weights}${foods}</div>` : ""}</article>`;
 }
 
 function challengeCard(challenge) {
@@ -241,12 +243,24 @@ function buildDialogs() {
   document.body.append(fitnessDialog);
 }
 
-function openDialog() {
+function openDialog(existing = null) {
   if (activeType === "Gym" || activeType === "Health") return openFitnessDialog(activeType);
   const dialog = document.querySelector("#mastery-clean-dialog"), select = dialog.querySelector("select");
   const allowed = lane === "mind" ? mindTypes : bodyTypes.filter(type => !isLocked(type));
-  select.innerHTML = allowed.map(type => `<option value="${type}">${typeLabel(type)}</option>`).join(""); select.value = activeType;
-  dialog.querySelector("#mastery-clean-fields").innerHTML = fieldsFor(activeType); dialog.showModal();
+  const category = existing?.category || activeType;
+  select.innerHTML = allowed.map(type => `<option value="${type}">${typeLabel(type)}</option>`).join(""); select.value = category;
+  dialog.querySelector("#mastery-clean-fields").innerHTML = fieldsFor(category);
+  const form = dialog.querySelector("form");
+  form.dataset.editId = existing?.id || "";
+  dialog.querySelector("h2").textContent = existing ? "Edit the useful thing." : "Capture the useful thing.";
+  dialog.querySelector(".primary").textContent = existing ? "Update entry" : "Save entry";
+  if (existing) {
+    ["title", "rating", "summary", "quotes", "lessons", "actions"].forEach(field => {
+      const input = form.elements[field];
+      if (input) input.value = existing[field === "quotes" ? "favorite_quotes" : field] || "";
+    });
+  }
+  dialog.showModal();
 }
 
 function gymSetRow() {
@@ -302,7 +316,7 @@ async function estimateFoodRow(row) {
   }
 }
 
-function openFitnessDialog(type) {
+function openFitnessDialog(type, existing = null, editKind = "") {
   const dialog = document.querySelector("#mastery-fitness-dialog");
   if (type === "Gym") dialog.innerHTML = `<form class="dialog-card mastery-form fitness-form" data-fitness-mode="gym"><button class="dialog-close" type="button">×</button><p class="eyebrow green-text">GYM LOG</p><h2>Record the work.</h2><p class="schedule-copy">Each line becomes training evidence. AEGIS compares the same exercise over time for load, reps, and total volume.</p><label>Workout split<select name="workout_split" required><option>Legs</option><option>Push</option><option>Pull</option><option>Upper Body</option><option>Lower Body</option><option>Recovery-safe mobility</option></select></label><label>Session note <span class="field-optional">optional</span><textarea name="notes" placeholder="Energy, pain, form cue, or anything worth tracking."></textarea></label><div class="form-subhead"><b>Exercise sets</b><button class="ghost compact" type="button" data-add-exercise>+ Add exercise</button></div><div class="exercise-list">${gymSetRow()}</div><button class="primary" type="submit">Save gym session</button></form>`;
   else dialog.innerHTML = `<form class="dialog-card mastery-form fitness-form" data-fitness-mode="health"><button class="dialog-close" type="button">×</button><p class="eyebrow green-text">HEALTH LOG</p><h2>Capture the signal.</h2><p class="schedule-copy">Enter a food and quantity. AEGIS will estimate calories and macros; review the assumptions before saving.</p><div class="health-weight-grid"><label>AM weight (lb) <span class="field-optional">optional</span><input name="am_weight" type="number" min="1" step="0.1" /></label><label>PM weight (lb) <span class="field-optional">optional</span><input name="pm_weight" type="number" min="1" step="0.1" /></label></div><div class="form-subhead"><b>Food intake · auto-estimated</b><button class="ghost compact" type="button" data-add-food>+ Add food</button></div><div class="food-list">${foodRow()}</div><label>Health note <span class="field-optional">optional</span><textarea name="notes" placeholder="Sleep, hydration, appetite, recovery, or a pattern worth remembering."></textarea></label><button class="primary" type="submit">Save health log</button></form>`;
@@ -340,7 +354,47 @@ function openFitnessDialog(type) {
     if (status) status.textContent = "Food or quantity changed. Estimate again before saving.";
   });
   dialog.querySelector(".exercise-list")?.addEventListener("change", event => { if (event.target.matches("[data-resistance-type]")) syncResistanceFields(event.target.closest(".exercise-row")); });
-  dialog.querySelector("form").addEventListener("submit", saveFitnessLog);
+  const form = dialog.querySelector("form");
+  form.dataset.editId = existing?.id || "";
+  form.dataset.editKind = editKind;
+  form.dataset.editLoggedOn = existing?.logged_on || "";
+  form.dataset.editMeasuredAt = existing?.measured_at || "";
+  if (existing) {
+    dialog.querySelector("h2").textContent = type === "Gym" ? "Edit the training record." : "Edit the health record.";
+    form.querySelector(".primary").textContent = type === "Gym" ? "Update gym session" : "Update health log";
+    if (type === "Gym") {
+      form.elements.workout_split.value = existing.workout_split || existing.session_type || "Legs";
+      form.elements.notes.value = existing.notes || "";
+      const rows = trainingSets.filter(set => set.session_id === existing.id).sort((a, b) => Number(a.set_number || 1) - Number(b.set_number || 1));
+      const list = form.querySelector(".exercise-list");
+      list.innerHTML = (rows.length ? rows : [{}]).map(() => gymSetRow()).join("");
+      [...list.querySelectorAll(".exercise-row")].forEach((row, index) => {
+        const set = rows[index] || {};
+        row.dataset.setNumber = set.set_number || index + 1;
+        row.querySelector("[data-set-number-label]").textContent = set.set_number || index + 1;
+        row.querySelector('[name="exercise_name"]').value = set.exercise_name || "";
+        row.querySelector('[name="resistance_type"]').value = set.resistance_type || "Weights";
+        row.querySelector('[name="weight_lbs"]').value = set.weight_lbs ?? "";
+        row.querySelector('[name="band_resistance"]').value = set.band_resistance || "";
+        row.querySelector('[name="reps"]').value = set.reps ?? "";
+        syncResistanceFields(row);
+      });
+    } else if (editKind === "weight") {
+      form.querySelectorAll(".health-weight-grid label").forEach(label => { label.hidden = !label.querySelector(`[name="${String(existing.measured_at || "AM").toLowerCase()}_weight"]`); });
+      const input = form.elements[`${String(existing.measured_at || "AM").toLowerCase()}_weight`];
+      if (input) input.value = existing.weight_lbs ?? "";
+    } else if (editKind === "food") {
+      const list = form.querySelector(".food-list");
+      list.innerHTML = foodRow();
+      const row = list.querySelector(".nutrition-row");
+      ["food_name", "quantity_text", "calories", "protein_g", "carbs_g", "fat_g", "fiber_g", "sugar_g"].forEach(field => { const input = row.querySelector(`[name="${field}"]`); if (input) input.value = existing[field] ?? ""; });
+      row.dataset.estimated = "true";
+      row.dataset.estimateSource = existing.estimate_source || "AI";
+      row.dataset.estimatedAt = existing.estimated_at || new Date().toISOString();
+      row.querySelector("[data-estimate-status]").textContent = "Saved estimate loaded. Re-estimate if the food or quantity changes.";
+    }
+  }
+  form.addEventListener("submit", saveFitnessLog);
   dialog.showModal();
 }
 
@@ -357,7 +411,15 @@ async function saveEntry(event) {
   event.preventDefault(); const form = event.currentTarget, data = new FormData(form), category = data.get("category");
   const record = { category, title: String(data.get("title") || "").trim(), rating: Number(data.get("rating")) || null, summary: String(data.get("summary") || "").trim() || null, favorite_quotes: String(data.get("quotes") || "").trim() || null, key_lessons: String(data.get("lessons") || "").trim() || null, action_items: String(data.get("actions") || "").trim() || null };
   if (!record.title) return;
-  if (db) { const { error } = await db.from("mastery_entries").insert(record); if (error) return alert(error.message); } else entries.unshift(record);
+  const editId = form.dataset.editId;
+  if (db) {
+    const request = editId ? db.from("mastery_entries").update(record).eq("id", editId) : db.from("mastery_entries").insert(record);
+    const { error } = await request;
+    if (error) return alert(error.message);
+  } else if (editId) {
+    entries = entries.map(entry => entry.id === editId ? { ...entry, ...record } : entry);
+  } else entries.unshift({ ...record, id: crypto.randomUUID(), created_at: new Date().toISOString() });
+  form.dataset.editId = "";
   lane = bodyTypes.includes(category) ? "body" : "mind"; activeType = category; saveView(); document.querySelector("#mastery-clean-dialog").close(); await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
 }
 
@@ -369,7 +431,9 @@ async function saveFitnessLog(event) {
   const data = new FormData(form);
   const userId = await currentUserId();
   if (!userId) return alert("Your session has expired. Please sign in again.");
-  const loggedOn = new Date().toISOString().slice(0, 10);
+  const editId = form.dataset.editId || "";
+  const editKind = form.dataset.editKind || "";
+  const loggedOn = form.dataset.editLoggedOn || new Date().toISOString().slice(0, 10);
   try {
     if (mode === "gym") {
       const workoutSplit = String(data.get("workout_split") || "").trim();
@@ -383,11 +447,21 @@ async function saveFitnessLog(event) {
          sets: 1
        })).filter(row => row.exercise_name && row.reps > 0 && (row.resistance_type === "Bands" ? row.band_resistance : row.weight_lbs !== null));
       if (!rows.length) return alert("Add at least one completed exercise set.");
-      const { data: session, error: sessionError } = await db.from("training_sessions").insert({
-        user_id: userId, session_type: "Gym", title: `${workoutSplit} workout`, workout_split: workoutSplit,
-        notes: String(data.get("notes") || "").trim() || null, logged_on: loggedOn
-      }).select().single();
-      if (sessionError) throw sessionError;
+      let session;
+      if (editId) {
+        const { data: updated, error: sessionError } = await db.from("training_sessions").update({ title: `${workoutSplit} workout`, workout_split: workoutSplit, notes: String(data.get("notes") || "").trim() || null, logged_on: loggedOn }).eq("id", editId).eq("user_id", userId).select().single();
+        if (sessionError) throw sessionError;
+        session = updated;
+        const { error: deleteError } = await db.from("training_sets").delete().eq("session_id", editId).eq("user_id", userId);
+        if (deleteError) throw deleteError;
+      } else {
+        const { data: inserted, error: sessionError } = await db.from("training_sessions").insert({
+          user_id: userId, session_type: "Gym", title: `${workoutSplit} workout`, workout_split: workoutSplit,
+          notes: String(data.get("notes") || "").trim() || null, logged_on: loggedOn
+        }).select().single();
+        if (sessionError) throw sessionError;
+        session = inserted;
+      }
       const { error: setError } = await db.from("training_sets").insert(rows.map(row => ({ ...row, user_id: userId, session_id: session.id, logged_on: loggedOn })));
       if (setError) throw setError;
     } else {
@@ -406,14 +480,30 @@ async function saveFitnessLog(event) {
         fiber_g: Number(row.querySelector('[name="fiber_g"]')?.value || 0) || null,
         fat_g: Number(row.querySelector('[name="fat_g"]')?.value || 0) || null,
         sugar_g: Number(row.querySelector('[name="sugar_g"]')?.value || 0) || null,
+        notes: String(data.get("notes") || "").trim() || null,
         estimate_source: row.dataset.estimateSource || "AI",
         estimated_at: row.dataset.estimatedAt || new Date().toISOString(),
         user_id: userId, logged_on: loggedOn
       })).filter(row => row.food_name);
-      if (weights.length) { const { error } = await db.from("health_weight_logs").insert(weights); if (error) throw error; }
-      if (foods.length) { const { error } = await db.from("health_food_logs").insert(foods); if (error) throw error; }
+      if (editId && editKind === "weight") {
+        const measuredAt = String(form.dataset.editMeasuredAt || "AM");
+        const edited = weights.find(item => item.measured_at === measuredAt) || weights[0];
+        if (!edited) return alert("Enter a weight before saving.");
+        const { error } = await db.from("health_weight_logs").update({ measured_at: edited.measured_at, weight_lbs: edited.weight_lbs, logged_on: loggedOn }).eq("id", editId).eq("user_id", userId);
+        if (error) throw error;
+      } else if (editId && editKind === "food") {
+        if (!foods[0]) return alert("Enter a food before saving.");
+        const { error } = await db.from("health_food_logs").update(foods[0]).eq("id", editId).eq("user_id", userId);
+        if (error) throw error;
+      } else {
+        if (weights.length) { const { error } = await db.from("health_weight_logs").insert(weights); if (error) throw error; }
+        if (foods.length) { const { error } = await db.from("health_food_logs").insert(foods); if (error) throw error; }
+      }
       if (!weights.length && !foods.length) return alert("Add a weigh-in or at least one food item.");
     }
+    form.dataset.editId = "";
+    form.dataset.editKind = "";
+    form.dataset.editLoggedOn = "";
     document.querySelector("#mastery-fitness-dialog")?.close();
     await load();
     window.dispatchEvent(new Event("aegis:mastery-changed"));
@@ -500,6 +590,14 @@ async function load() {
 document.addEventListener("click", event => {
   const laneButton = event.target.closest("[data-mastery-clean-lane]"), typeButton = event.target.closest("[data-mastery-clean-type]"), inputButton = event.target.closest("[data-mastery-clean-input]");
   if (laneButton) { lane = laneButton.dataset.masteryCleanLane; activeType = lane === "mind" ? "Book" : "Health"; saveView(); render(); return; }
+  const editEntry = event.target.closest("[data-mastery-edit-entry]");
+  if (editEntry) { const entry = entries.find(item => String(item.id) === String(editEntry.dataset.masteryEditEntry)); if (entry) { lane = bodyTypes.includes(entry.category) ? "body" : "mind"; activeType = entry.category; saveView(); openDialog(entry); } return; }
+  const editSession = event.target.closest("[data-mastery-edit-session]");
+  if (editSession) { const session = trainingSessions.find(item => String(item.id) === String(editSession.dataset.masteryEditSession)); if (session) { lane = "body"; activeType = "Gym"; saveView(); openFitnessDialog("Gym", session); } return; }
+  const editWeight = event.target.closest("[data-mastery-edit-weight]");
+  if (editWeight) { const weight = weightLogs.find(item => String(item.id) === String(editWeight.dataset.masteryEditWeight)); if (weight) { lane = "body"; activeType = "Health"; saveView(); openFitnessDialog("Health", weight, "weight"); } return; }
+  const editFood = event.target.closest("[data-mastery-edit-food]");
+  if (editFood) { const food = foodLogs.find(item => String(item.id) === String(editFood.dataset.masteryEditFood)); if (food) { lane = "body"; activeType = "Health"; saveView(); openFitnessDialog("Health", food, "food"); } return; }
   if (inputButton) { const next = inputButton.dataset.masteryCleanInput; if (!isLocked(next)) { activeType = next; saveView(); openDialog(); } return; }
   if (typeButton) { const next = typeButton.dataset.masteryCleanType; if (!isLocked(next)) { activeType = next; saveView(); render(); } return; }
   if (event.target.closest("[data-mastery-clean-add]")) return openDialog();
