@@ -193,6 +193,8 @@ async function loadLatestAdvisory() {
 
 function paintLatestAdvisory() {
   if (!latestAdvisory) return;
+  const panel = $("#adviser-panel");
+  if (panel) panel.dataset.aiCurated = "true";
   renderMorning(latestAdvisory.morning);
   renderSignal(latestAdvisory.signal);
   renderEvening(latestAdvisory.evening);
@@ -427,5 +429,6 @@ if (supabase) {
     setTimeout(() => restoreAdvisory(), 150);
   });
   window.addEventListener("aegis:navigation", () => { mount(); paintLatestAdvisory(); });
+  window.addEventListener("aegis:adviser-ready", () => { mount(); paintLatestAdvisory(); });
   window.addEventListener("load", () => { mount(); paintLatestAdvisory(); }, { once: true });
 }

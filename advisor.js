@@ -37,6 +37,7 @@ function missionProgress(mission) {
 }
 
 function render({ operations, missions, trades }) {
+  if (document.querySelector("#adviser-panel")?.dataset.aiCurated === "true") return;
   const morning = ensurePanel("morning-briefing", "adviser-panel morning-briefing", "#morning-slot", "beforeend");
   const panel = ensurePanel("adviser-panel", "adviser-panel", ".intel-strip", "afterend");
   const remaining = operations.filter((operation) => !operation.completed);
@@ -72,6 +73,7 @@ async function loadAdvisory() {
   ]);
   if (operationsResult.error || missionsResult.error || tradesResult.error) return;
   render({ operations: operationsResult.data || [], missions: missionsResult.data || [], trades: tradesResult.data || [] });
+  window.dispatchEvent(new Event("aegis:adviser-ready"));
 }
 
 if (supabase) {

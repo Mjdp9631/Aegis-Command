@@ -37,24 +37,10 @@ function renderCommandMissionBoard(nextMissions = missions, operations = []) {
   const target = $("#command-missions") || document.querySelector("#command .mission-panel .mission-list");
   if (!target) return;
   const active = sortMissions(nextMissions.filter((mission) => mission.progress < 100));
-  const complete = sortMissions(nextMissions.filter((mission) => mission.progress >= 100));
   target.className = "mission-list command-mission-board";
-  target.innerHTML = `<div class="command-mission-tabs" role="tablist" aria-label="Mission status"><button type="button" class="command-mission-tab active" data-command-mission-view="active" role="tab" aria-selected="true">ACTIVE · ${active.length}</button><button type="button" class="command-mission-tab" data-command-mission-view="complete" role="tab" aria-selected="false">COMPLETED · ${complete.length}</button></div><div class="command-mission-list" data-command-mission-list></div>`;
-  const list = target.querySelector("[data-command-mission-list]");
-  const draw = (items) => {
-    list.innerHTML = items.length ? items.map((mission) => commandMissionCard(mission, operations)).join("") : '<article class="command-mission-empty"><strong>No missions in this view.</strong><small>Open the next objective from Mission Control.</small></article>';
-  };
-  draw(active);
-  target.querySelectorAll("[data-command-mission-view]").forEach((button) => button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    const completedView = button.dataset.commandMissionView === "complete";
-    target.querySelectorAll("[data-command-mission-view]").forEach((item) => {
-      const selected = item === button;
-      item.classList.toggle("active", selected);
-      item.setAttribute("aria-selected", String(selected));
-    });
-    draw(completedView ? complete : active);
-  }));
+  target.innerHTML = `<div class="command-mission-list" data-command-mission-list></div>`;
+  const activeList = target.querySelector("[data-command-mission-list]");
+  activeList.innerHTML = active.length ? active.map((mission) => commandMissionCard(mission, operations)).join("") : '<article class="command-mission-empty"><strong>No active missions.</strong><small>Open the next objective from Mission Control.</small></article>';
 }
 
 function renderMissions() {
