@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=activity-counters-v1";
 
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
@@ -28,42 +29,10 @@ function tradeOutcome(trade) {
   return "be";
 }
 
-function levelFromXp(xp) {
-  let level = 0;
-  let current = Math.max(0, xp);
-  let required = 100;
-  while (current >= required) { current -= required; level += 1; required = Math.round(required * 1.16); }
-  return { level, current, required, progress: (current / required) * 100 };
-}
-
 function missionProgress(mission) {
   if (!mission) return 0;
   if (mission.completion_type === "units" && Number(mission.target_count) > 0) return Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100);
   return mission.completed ? 100 : 0;
-}
-
-function calculateXp({ trades, operations, projects, content }) {
-  const tradeMonths = new Map();
-  trades.filter(isClosed).forEach((trade) => {
-    const date = new Date(trade.traded_at || trade.created_at);
-    if (Number.isNaN(date.getTime()) || trade.pnl_percent == null) return;
-    const key = `${date.getFullYear()}-${date.getMonth()}`;
-    tradeMonths.set(key, (tradeMonths.get(key) || 0) + Number(trade.pnl_percent || 0));
-  });
-  const trading = Math.max(0, [...tradeMonths.values()].reduce((total, pnl) => total + (pnl > 0 ? Math.min(55, Math.round(pnl * 6)) : Math.max(-12, Math.round(pnl * 2))), 0));
-  const operationDays = new Map();
-  operations.forEach((operation) => {
-    if (!operation.scheduled_date) return;
-    const day = operationDays.get(operation.scheduled_date) || { total: 0, done: 0 };
-    day.total += 1; if (operation.completed) day.done += 1; operationDays.set(operation.scheduled_date, day);
-  });
-  const discipline = Math.max(0, [...operationDays.values()].reduce((total, day) => {
-    const rate = day.done / day.total;
-    return total + (rate >= .9 ? 6 : rate >= .75 ? 4 : rate >= .6 ? 2 : rate < .4 ? -1 : 0);
-  }, 0));
-  const projectXp = projects.filter((project) => project.status === "Complete").length * 30;
-  const contentXp = content.filter((item) => item.status === "Published").length * 8;
-  return discipline + trading + projectXp + contentXp;
 }
 
 function ratio(value, ceiling) {
@@ -163,7 +132,7 @@ function attachCrosshair(chart) {
 
 function render() {
   if (!dashboardData) return;
-  const { trades, operations, missions, projects, content, mastery, accounts } = dashboardData;
+  const { trades, operations, missions, projects, mastery, accounts } = dashboardData;
   const chart = valueSeries(trades, accounts);
   $("#hero-trade-chart").innerHTML = chartSvg(chart.entries, chart.unit, chart.total);
   activeChart = chart;
@@ -174,7 +143,8 @@ function render() {
   $("#hero-trade-pnl").textContent = chart.count ? pnl : "—";
   $("#hero-trade-pnl").classList.toggle("negative", chart.total < 0);
 
-  const xp = calculateXp(dashboardData);
+  const metrics = characterMetrics(dashboardData, dashboardData.xpCampaign?.started_at);
+  const xp = metrics.totalXp;
   const level = levelFromXp(xp);
   $("#hero-character-level").textContent = `LV ${level.level}`;
   $("#hero-character-xp").textContent = `${Math.round(level.current)} / ${level.required} XP`;
@@ -223,16 +193,20 @@ async function load() {
   if (!supabase) return;
   const { data: session } = await supabase.auth.getSession();
   if (!session.session) return;
-  const [tradesResult, operationsResult, missionsResult, projectsResult, contentResult, masteryResult, accountsResult] = await Promise.all([
+  const [tradesResult, operationsResult, occurrenceResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, challengeResult, campaignResult, accountsResult] = await Promise.all([
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }),
-    supabase.from("operations").select("scheduled_date, completed"),
+    supabase.from("operations").select("id, title, scheduled_date, operation_date, completed_on, completed, schedule_mode"),
+    supabase.from("operation_occurrences").select("id, operation_id, occurrence_date, completed_on, completed"),
     supabase.from("missions").select("*"),
-    supabase.from("business_projects").select("status"),
-    supabase.from("content_items").select("status"),
-    supabase.from("mastery_entries").select("id"),
+    supabase.from("business_projects").select("title, status, created_at"),
+    supabase.from("content_items").select("title, platform, status, created_at"),
+    supabase.from("mastery_entries").select("category, title, created_at"),
+    supabase.from("training_sessions").select("session_type, title, logged_on, created_at"),
+    supabase.from("mastery_challenges").select("lane, category, title, status, completed_at, xp_reward"),
+    supabase.from("xp_campaigns").select("started_at").maybeSingle(),
     supabase.from("account_balances").select("*").order("is_primary", { ascending: false }).order("created_at", { ascending: true })
   ]);
-  dashboardData = { trades: tradesResult.data || [], operations: operationsResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], content: contentResult.data || [], mastery: masteryResult.data || [], accounts: accountsResult.data || [] };
+  dashboardData = { trades: tradesResult.data || [], operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], mastery: masteryResult.data || [], xpCampaign: campaignResult.data || null, accounts: accountsResult.data || [] };
   render();
 }
 

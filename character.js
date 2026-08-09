@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=activity-counters-v1";
 
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
@@ -10,19 +11,6 @@ let xpCampaignError = null;
 let directorReviews = [];
 const quarterKey = () => `${new Date().getFullYear()}-Q${Math.floor(new Date().getMonth() / 3) + 1}`;
 
-function levelFromXp(xp) {
-  let level = 0;
-  let remaining = Math.max(0, xp);
-  // A long-game curve: early levels establish habits, while LV 50 remains an elite five-year target.
-  let required = 40;
-  while (remaining >= required) {
-    remaining -= required;
-    level += 1;
-    required = Math.round(required * 1.09);
-  }
-  return { level, current: remaining, required, progress: (remaining / required) * 100 };
-}
-
 function missionProgress(mission) {
   return mission?.completion_type === "units" && Number(mission.target_count) > 0 ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission?.completed ? 100 : 0;
 }
@@ -31,104 +19,8 @@ function missionLabel(mission) {
   return mission?.completion_type === "units" && Number(mission.target_count) > 0 ? `${Math.min(Number(mission.completed_count) || 0, Number(mission.target_count))} / ${mission.target_count} ${mission.unit_label || "units"}` : mission?.completed ? "Complete" : "Not complete";
 }
 
-function monthKey(value) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function isOnOrAfter(value, startedAt) {
-  if (!startedAt) return false;
-  const timestamp = new Date(value || 0).getTime();
-  return !Number.isNaN(timestamp) && timestamp >= new Date(startedAt).getTime();
-}
-
-function isOnOrAfterCampaignDay(day, startedAt) {
-  if (!day || !startedAt) return false;
-  const startedDay = new Date(startedAt).toLocaleDateString("en-CA");
-  return String(day) >= startedDay;
-}
-
-function tradingXp(trades, startedAt) {
-  const totals = new Map();
-  trades.filter((trade) => isOnOrAfter(trade.traded_at || trade.created_at, startedAt) && String(trade.account || "").trim().toLowerCase() !== "theoretical" && trade.trade_status !== "Open" && trade.pnl_percent != null).forEach((trade) => {
-    const key = monthKey(trade.traded_at);
-    if (key) totals.set(key, (totals.get(key) || 0) + Number(trade.pnl_percent || 0));
-  });
-  const ledger = [];
-  totals.forEach((pnl, month) => {
-    const change = pnl > 0 ? Math.min(55, Math.round(pnl * 6)) : Math.max(-12, Math.round(pnl * 2));
-    ledger.push({ label: month, detail: `${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}% PnL`, change });
-  });
-  return { xp: Math.max(0, ledger.reduce((total, entry) => total + entry.change, 0)), ledger: ledger.sort((a, b) => b.label.localeCompare(a.label)) };
-}
-
-function disciplineXp(operations, startedAt) {
-  const days = new Map();
-  operations.forEach((operation) => {
-    // Score the day the operation actually belonged to.  A completed operation
-    // must never disappear from the ledger merely because it was scheduled for
-    // today or rescheduled later in the day.
-    const dayKey = operation.operation_date || operation.completed_on || operation.scheduled_date;
-    if (!dayKey || !isOnOrAfterCampaignDay(dayKey, startedAt)) return;
-    // The evening debrief is deliberately completed after the day is assessed;
-    // it is informative, not a discipline requirement.
-    if (/evening\s+(mission\s+)?debrief/i.test(operation.title || "")) return;
-    const day = days.get(dayKey) || { total: 0, done: 0 };
-    day.total += 1;
-    if (operation.completed) day.done += 1;
-    days.set(dayKey, day);
-  });
-  const ledger = [];
-  days.forEach(({ total, done }, date) => {
-    const rate = total ? done / total : 0;
-    const change = rate >= 0.9 ? 6 : rate >= 0.75 ? 4 : rate >= 0.6 ? 2 : rate < 0.4 ? -1 : 0;
-    ledger.push({ label: date, detail: `${done}/${total} operations - ${Math.round(rate * 100)}%`, change });
-  });
-  return { xp: Math.max(0, ledger.reduce((total, entry) => total + entry.change, 0)), ledger: ledger.sort((a, b) => b.label.localeCompare(a.label)) };
-}
-
-function ccfxXp(projects, contentItems, startedAt) {
-  const ledger = [];
-  projects.filter((project) => isOnOrAfter(project.created_at, startedAt) && project.status === "Complete").forEach((project) => {
-    ledger.push({ label: new Date(project.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `Completed project: ${escape(project.title)}`, change: 30 });
-  });
-  contentItems.filter((item) => isOnOrAfter(item.created_at, startedAt) && item.status === "Published").forEach((item) => {
-    ledger.push({ label: new Date(item.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `Published ${escape(item.platform)}: ${escape(item.title)}`, change: 8 });
-  });
-  return { xp: ledger.reduce((total, entry) => total + entry.change, 0), ledger: ledger.sort((a, b) => b.label.localeCompare(a.label)) };
-}
-
-function masteryXp(entries, challenges, startedAt) {
-  const mindAwards = { "Book": 50, "Quote": 5, "Trading Note": 20, "Psychology": 15, "Space": 10, "Philosophy": 15, "Business": 15, "Stoicism": 12, "Leadership": 18, "Communication": 15, "History": 15, "Systems Thinking": 20 };
-  // These awards stay modest because the campaign is intentionally long-term.
-  // Generated transmissions add their separately-declared bonus only on completion.
-  const bodyAwards = {
-    "Health": 15,
-    "Gym": 25,
-    "Mobility": 18,
-    "Performance": 30,
-    "Sports": 30,
-    "Outdoor Skills": 20
-  };
-  const ledgerFor = (awards) => entries.filter((entry) => isOnOrAfter(entry.created_at, startedAt) && awards[entry.category]).map((entry) => ({
-    label: new Date(entry.created_at || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    detail: `${entry.category}: ${escape(entry.title || "entry")}`,
-    change: awards[entry.category]
-  })).sort((a, b) => b.label.localeCompare(a.label));
-  const mindLedger = ledgerFor(mindAwards);
-  const bodyLedger = ledgerFor(bodyAwards);
-  challenges.filter((challenge) => challenge.status === "completed" && isOnOrAfter(challenge.completed_at, startedAt) && Number(challenge.xp_reward || 0) > 0).forEach((challenge) => {
-    const ledger = challenge.lane === "body" ? bodyLedger : mindLedger;
-    ledger.push({ label: new Date(challenge.completed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `${escape(challenge.category || "Mastery")} transmission: ${escape(challenge.title)}`, change: Number(challenge.xp_reward) });
-  });
-  return {
-    mind: { xp: mindLedger.reduce((total, entry) => total + entry.change, 0), ledger: mindLedger.sort((a, b) => b.label.localeCompare(a.label)) },
-    body: { xp: bodyLedger.reduce((total, entry) => total + entry.change, 0), ledger: bodyLedger.sort((a, b) => b.label.localeCompare(a.label)) }
-  };
-}
-
 function xpLedger(entries, cadence) {
-  const rows = entries.length ? entries.map((entry) => `<li><span><b>${entry.label}</b>${entry.detail}</span><strong class="${entry.change < 0 ? "negative" : ""}">${entry.change >= 0 ? "+" : ""}${entry.change} XP</strong></li>`).join("") : `<li class="ledger-empty">No ${cadence} XP evidence yet.</li>`;
+  const rows = entries.length ? entries.map((entry) => `<li><span><b>${escape(entry.label)}</b>${escape(entry.detail)}</span><strong class="${entry.change < 0 ? "negative" : ""}">${entry.change >= 0 ? "+" : ""}${entry.change} XP</strong></li>`).join("") : `<li class="ledger-empty">No ${cadence} XP evidence yet.</li>`;
   return `<details class="xp-ledger"><summary>View XP ledger</summary><ul>${rows}</ul></details>`;
 }
 
@@ -147,13 +39,9 @@ function directorReviewPanel() {
   return `<section class="panel director-review-panel"><div><p class="eyebrow amber">QUARTERLY DIRECTOR REVIEW</p><h3>${quarterKey()} · Measure the whole system.</h3><p>Review the person behind the data: wins, bottlenecks, standards, and the next quarter’s focus.</p></div><button class="primary compact" type="button" id="open-director-review">${review.id ? "Update Director Review" : "Open Director Review"}</button>${review.id ? `<div class="director-review-preview"><span><b>Wins</b>${escape(review.wins || "Not recorded")}</span><span><b>Next focus</b>${escape(review.next_focus || "Not recorded")}</span></div>` : ""}</section>`;
 }
 
-function render({ operations, trades, missions, projects, contentItems, masteryEntries, masteryChallenges }) {
-  const empty = { xp: 0, ledger: [] };
-  const startedAt = xpCampaign?.started_at;
-  const discipline = startedAt ? disciplineXp(operations, startedAt) : empty;
-  const trading = startedAt ? tradingXp(trades, startedAt) : empty;
-  const ccfx = startedAt ? ccfxXp(projects, contentItems, startedAt) : empty;
-  const mastery = startedAt ? masteryXp(masteryEntries, masteryChallenges, startedAt) : { mind: empty, body: empty };
+function render({ operations, occurrences, trades, missions, projects, contentItems, masteryEntries, masteryChallenges, trainingSessions }) {
+  const metrics = characterMetrics({ operations, occurrences, trades, projects, contentItems, masteryEntries, masteryChallenges, trainingSessions }, xpCampaign?.started_at);
+  const { discipline, trading, ccfx, mastery } = metrics;
   const recovery = missions.find((mission) => mission.category === "Recovery");
   const levels = { discipline: levelFromXp(discipline.xp).level, trading: levelFromXp(trading.xp).level, ccfx: levelFromXp(ccfx.xp).level, mind: levelFromXp(mastery.mind.xp).level, body: levelFromXp(mastery.body.xp).level };
   localStorage.setItem("aegis-character-levels", JSON.stringify(levels));
@@ -166,13 +54,15 @@ async function load() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [operationsResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, campaignResult, reviewResult, challengeResult] = await Promise.all([
-    supabase.from("operations").select("title, scheduled_date, operation_date, completed_on, completed"),
+  const [operationsResult, occurrenceResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, campaignResult, reviewResult, challengeResult] = await Promise.all([
+    supabase.from("operations").select("id, title, scheduled_date, operation_date, completed_on, completed, schedule_mode"),
+    supabase.from("operation_occurrences").select("id, operation_id, occurrence_date, completed_on, completed"),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }),
     supabase.from("missions").select("*").order("created_at", { ascending: false }),
     supabase.from("business_projects").select("*"),
     supabase.from("content_items").select("*"),
     supabase.from("mastery_entries").select("*").order("created_at", { ascending: false }),
+    supabase.from("training_sessions").select("*").order("logged_on", { ascending: false }),
     supabase.from("xp_campaigns").select("started_at").maybeSingle(),
     supabase.from("director_reviews").select("*").order("updated_at", { ascending: false }).limit(4),
     supabase.from("mastery_challenges").select("*").order("completed_at", { ascending: false }).limit(100)
@@ -180,7 +70,7 @@ async function load() {
   xpCampaign = campaignResult.data || null;
   directorReviews = reviewResult.data || [];
   xpCampaignError = campaignResult.error ? "XP campaign setup is awaiting its one-time database migration." : null;
-  render({ operations: operationsResult.data || [], trades: tradesResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], masteryChallenges: challengeResult.data || [] });
+  render({ operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], trades: tradesResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [] });
 }
 
 document.addEventListener("click", async (event) => {
