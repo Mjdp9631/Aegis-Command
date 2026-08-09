@@ -1,0 +1,2 @@
+/* Brain review has a display rule, so explicitly preserve the tab's hidden state. */
+.detective-brain[hidden] { display: none !important; }
