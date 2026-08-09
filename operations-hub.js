@@ -1005,12 +1005,13 @@ function ensureScheduleDialog() {
     if (value.startsWith("mission:")) {
       const mission = missions.find((item) => String(item.id) === value.slice("mission:".length));
       if (!mission) return;
-      const scheduledCount = scheduledCountForMission(mission.id);
-      const nextNumber = Math.min(Math.max(1, Number(mission.target_count || 1)), Math.max(Number(mission.completed_count || 0), scheduledCount) + 1);
-      const operation = {
-        id: `local-${Date.now()}-${mission.id}`,
-        title: `${mission.title} — ${mission.unit_label || "unit"} ${nextNumber}`,
-        category: mission.category || "Mission",
+       const scheduledCount = scheduledCountForMission(mission.id);
+       const nextNumber = Math.min(Math.max(1, Number(mission.target_count || 1)), Math.max(Number(mission.completed_count || 0), scheduledCount) + 1);
+       const category = mission.category === "Mind" ? "Self Mastery" : mission.category || "Self Mastery";
+       const operation = {
+         id: `local-${Date.now()}-${mission.id}`,
+         title: `${mission.title} — ${mission.unit_label || "unit"} ${nextNumber}`,
+         category,
         priority: mission.priority || priorityFor(mission.category),
         status: "Queued",
         completed: false,
@@ -1159,6 +1160,45 @@ function openScheduleDialog(operation) {
   const end = $("#operation-schedule-end-date");
   if (end) end.value = dateOnly(operation.scheduled_end_date) || "";
   mode?.dispatchEvent(new Event("change"));
+  if (!dialog.open) dialog.showModal();
+}
+
+function openMissionScheduleDialog(missionId) {
+  const mission = missions.find((item) => String(item.id) === String(missionId));
+  if (!mission || mission.completed) return;
+  const dialog = ensureScheduleDialog();
+  removePickerCreatedOperation(dialog);
+  const measured = String(mission.completion_type || "").toLowerCase() === "units";
+  const category = mission.category === "Mind" ? "Self Mastery" : mission.category || "Self Mastery";
+  const scheduledCount = scheduledCountForMission(mission.id);
+  const nextNumber = Math.max(1, Math.max(Number(mission.completed_count || 0), scheduledCount) + 1);
+  const operation = {
+    id: `local-${Date.now()}-${mission.id}`,
+    title: `${mission.title}${measured ? ` — ${mission.unit_label || "unit"} ${nextNumber}` : ""}`,
+    category,
+    priority: mission.priority || priorityFor(mission.category),
+    status: "Queued",
+    completed: false,
+    is_daily: false,
+    mission_id: mission.id,
+    metric_key: mission.metric_key || null,
+    brief: mission.operation_template?.brief || mission.completion_definition || `Complete one ${mission.unit_label || "operation"} for this mission.`,
+  };
+  operations.push(operation);
+  dialog.dataset.createdOperationId = operation.id;
+  dialog.dataset.operationKey = operation.id;
+  const choiceWrap = dialog.querySelector("#operation-schedule-choice-wrap");
+  if (choiceWrap) choiceWrap.hidden = true;
+  const createFields = dialog.querySelector("#operation-schedule-create-fields");
+  if (createFields) createFields.hidden = true;
+  const date = dialog.querySelector("#operation-schedule-date");
+  if (date) date.value = todayKey();
+  const time = dialog.querySelector("#operation-schedule-time");
+  if (time) time.value = "";
+  const mode = dialog.querySelector("#operation-schedule-mode");
+  if (mode) mode.value = "one_time";
+  mode?.dispatchEvent(new Event("change"));
+  saveCachedOperations();
   if (!dialog.open) dialog.showModal();
 }
 
@@ -1334,6 +1374,7 @@ async function boot() {
 }
 
 window.AEGIS_OPEN_CALENDAR = openCalendar;
+window.AEGIS_SCHEDULE_MISSION = openMissionScheduleDialog;
 window.AEGIS_RENDER_OPERATIONS_QUEUE = () => {
   renderQueue();
   renderCalendar();

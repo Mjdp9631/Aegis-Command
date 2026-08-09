@@ -18,6 +18,45 @@ function sortMissions(items) {
   return [...items].sort((a, b) => (missionPriorityOrder[a.priority] ?? 9) - (missionPriorityOrder[b.priority] ?? 9) || b.progress - a.progress || String(a.title || "").localeCompare(String(b.title || "")));
 }
 
+function commandMissionCard(mission, operations = []) {
+  const linked = operations.filter((operation) => String(operation.mission_id || "") === String(mission.id));
+  const completedOperations = linked.filter((operation) => Boolean(operation.completed)).length;
+  const measured = isMeasured(mission);
+  const progressValue = mission.progress;
+  const progressLabel = measured
+    ? `${Math.min(Number(mission.completed_count) || 0, Number(mission.target_count))} / ${mission.target_count} ${mission.unit_label || "units"}`
+    : linked.length ? `${completedOperations} / ${linked.length} linked operations complete` : missionLabel(mission);
+  const evidence = mission.completion_definition || "Define the evidence that proves this mission is complete.";
+  const scheduleAction = mission.progress < 100
+    ? `<button type="button" class="command-mission-schedule" data-schedule-mission="${escape(mission.id)}">+ Schedule operation</button>`
+    : "";
+  return `<article class="command-mission-card mission-open" data-mission-id="${escape(mission.id)}" data-open-mission="${escape(mission.id)}" tabindex="0"><div class="command-mission-heading"><div class="mission-icon ${iconClass(mission.category)}">${icon(mission.category)}</div><div class="command-mission-copy"><strong>${escape(mission.title)}</strong><small>${escape(mission.category)} · ${escape(mission.priority)}</small></div><span class="command-mission-percent">${progressValue}%</span></div><div class="meter command-mission-meter"><i style="width:${progressValue}%"></i></div><p class="command-mission-progress">${escape(progressLabel)}</p><p class="command-mission-evidence"><b>Completion evidence:</b> ${escape(evidence)}</p><div class="command-mission-actions">${scheduleAction}<button type="button" class="command-mission-details">View details →</button></div></article>`;
+}
+
+function renderCommandMissionBoard(nextMissions = missions, operations = []) {
+  const target = $("#command-missions") || document.querySelector("#command .mission-panel .mission-list");
+  if (!target) return;
+  const active = sortMissions(nextMissions.filter((mission) => mission.progress < 100));
+  const complete = sortMissions(nextMissions.filter((mission) => mission.progress >= 100));
+  target.className = "mission-list command-mission-board";
+  target.innerHTML = `<div class="command-mission-tabs" role="tablist" aria-label="Mission status"><button type="button" class="command-mission-tab active" data-command-mission-view="active" role="tab" aria-selected="true">ACTIVE · ${active.length}</button><button type="button" class="command-mission-tab" data-command-mission-view="complete" role="tab" aria-selected="false">COMPLETED · ${complete.length}</button></div><div class="command-mission-list" data-command-mission-list></div>`;
+  const list = target.querySelector("[data-command-mission-list]");
+  const draw = (items) => {
+    list.innerHTML = items.length ? items.map((mission) => commandMissionCard(mission, operations)).join("") : '<article class="command-mission-empty"><strong>No missions in this view.</strong><small>Open the next objective from Mission Control.</small></article>';
+  };
+  draw(active);
+  target.querySelectorAll("[data-command-mission-view]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const completedView = button.dataset.commandMissionView === "complete";
+    target.querySelectorAll("[data-command-mission-view]").forEach((item) => {
+      const selected = item === button;
+      item.classList.toggle("active", selected);
+      item.setAttribute("aria-selected", String(selected));
+    });
+    draw(completedView ? complete : active);
+  }));
+}
+
 function renderMissions() {
   const target = $("#mission-cards");
   if (!target) return;
@@ -31,13 +70,10 @@ function renderMissions() {
 }
 
 function renderCommandMissions() {
-  const target = $("#command-missions") || document.querySelector("#command .mission-panel .mission-list");
-  if (!target) return;
-  target.id = "command-missions";
-  const active = sortMissions(missions.filter((mission) => mission.progress < 100));
-  target.classList.add("mission-list-scroll");
-  target.innerHTML = active.length ? active.map((mission) => `<button type="button" class="command-mission mission-open" data-mission-id="${mission.id}"><div class="mission-icon ${iconClass(mission.category)}">${icon(mission.category)}</div><div><strong>${escape(mission.title)}</strong><small>${escape(mission.category)} - ${escape(mission.priority)}</small></div><span>${escape(missionLabel(mission))}</span></button>`).join("") : '<article><div><strong>No active missions</strong><small>Open the next objective from Mission Control.</small></div></article>';
+  renderCommandMissionBoard();
 }
+
+window.AEGIS_RENDER_COMMAND_MISSIONS = renderCommandMissionBoard;
 
 function publishMissionChange() { window.dispatchEvent(new Event("aegis:missions-changed")); }
 
@@ -169,6 +205,14 @@ window.addEventListener("aegis:phase-mission-template", (event) => {
   $("#new-mission-method").value = "binary";
   updateTrackingFields($("#mission-create-form"), "new-mission");
   dialog.showModal();
+});
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-schedule-mission]");
+  if (!button) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (typeof window.AEGIS_SCHEDULE_MISSION === "function") window.AEGIS_SCHEDULE_MISSION(button.dataset.scheduleMission);
 });
 
 if (cloudReady) {

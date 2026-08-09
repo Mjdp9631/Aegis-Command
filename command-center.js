@@ -22,14 +22,10 @@ function updateMetric(title, mission) {
 }
 
 function render(missions, operations = []) {
+  if (typeof window.AEGIS_RENDER_COMMAND_MISSIONS === "function") window.AEGIS_RENDER_COMMAND_MISSIONS(missions.map((mission) => ({ ...mission, progress: progress(mission) })), operations);
   const target = $("#command-missions") || document.querySelector("#command .mission-panel .mission-list");
   if (target) {
     target.id = "command-missions";
-    const priority = { "Do now": 0, Schedule: 1, Delegate: 2, Eliminate: 3 };
-    // Command Center is the live overview: never hide an active mission just
-    // because it was created after the first three cards.
-    const active = missions.filter((mission) => progress(mission) < 100).sort((a, b) => (priority[a.priority] ?? 9) - (priority[b.priority] ?? 9) || progress(b) - progress(a));
-    target.innerHTML = active.length ? active.map((mission) => { const linked = operations.filter(operation => operation.mission_id === mission.id); const total = linked.length, complete = linked.filter(operation => operation.completed).length, operationProgress = total ? Math.round((complete / total) * 100) : progress(mission); const operationLabel = total ? `${complete} / ${total} operations complete` : label(mission); return `<article class="command-mission-row" data-open-mission="${escape(mission.id)}" tabindex="0"><div class="mission-icon ${iconClass(mission.category)}">${icons[mission.category] || "*"}</div><div class="command-mission-copy"><strong>${escape(mission.title)}</strong><small>${escape(mission.category)} - ${escape(mission.priority)}</small><div class="meter command-mission-meter"><i style="width:${operationProgress}%"></i></div><small>${operationLabel}</small></div><span>${operationProgress}%</span></article>`; }).join("") : '<article><div><strong>No active missions</strong><small>Open the next objective from Mission Control.</small></div></article>';
   }
   updateMetric("RECOVERY", missions.find((mission) => mission.category === "Recovery"));
   updateMetric("TRADING PROCESS", missions.find((mission) => mission.category === "Trading"));
@@ -49,6 +45,7 @@ if (supabase) {
   window.addEventListener("aegis:missions-changed", () => setTimeout(load, 80));
   document.addEventListener("click", (event) => { if (event.target.closest("#save-mission, #mission-editor-dialog .primary")) setTimeout(load, 1200); });
   document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-schedule-mission]")) return;
     const row = event.target.closest("[data-open-mission]");
     if (!row) return;
     window.location.hash = "#missions";

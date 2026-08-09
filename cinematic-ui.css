@@ -1218,3 +1218,123 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
     grid-template-columns:100px minmax(210px,1.5fr) 112px 98px 76px !important;
   }
 }
+
+/* Command Center mission board: full active inventory, completed archive, and
+   a direct route from mission evidence to a scheduled operation. */
+#command .command-mission-board {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  overflow: auto;
+  min-height: 0;
+  padding-right: 4px;
+}
+#command .command-mission-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#command .command-mission-tab {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(93,177,248,.2);
+  border-radius: 4px;
+  color: rgba(191,216,240,.72);
+  background: rgba(6,16,27,.52);
+  font: 700 10px/1 "Space Mono", ui-monospace, monospace;
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+#command .command-mission-tab:hover,
+#command .command-mission-tab.active {
+  color: #d9efff;
+  border-color: rgba(82,172,249,.62);
+  background: linear-gradient(135deg, rgba(50,139,218,.2), rgba(8,18,29,.45));
+  box-shadow: inset 0 0 16px rgba(56,152,237,.08);
+}
+#command .command-mission-tab[data-command-mission-view="complete"].active {
+  color: #b9f2d4;
+  border-color: rgba(72,205,148,.55);
+  background: linear-gradient(135deg, rgba(48,160,112,.2), rgba(8,25,25,.45));
+  box-shadow: inset 0 0 16px rgba(72,205,148,.08);
+}
+#command .command-mission-list {
+  display: grid;
+  gap: 10px;
+}
+#command .command-mission-card {
+  display: grid !important;
+  gap: 8px;
+  min-height: 0 !important;
+  padding: 14px !important;
+  border: 1px solid rgba(93,177,248,.17);
+  border-radius: 5px;
+  background: linear-gradient(135deg, rgba(8,22,37,.72), rgba(4,12,22,.6));
+  cursor: pointer;
+}
+#command .command-mission-card:hover {
+  border-color: rgba(103,191,255,.55);
+}
+#command .command-mission-heading {
+  display: grid;
+  grid-template-columns: 30px minmax(0,1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+#command .command-mission-copy {
+  min-width: 0;
+}
+#command .command-mission-copy strong {
+  display: block;
+  overflow: hidden;
+  color: #e6f3ff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 16px/1.1 "Rajdhani", sans-serif;
+}
+#command .command-mission-copy small,
+#command .command-mission-progress {
+  color: rgba(165,199,231,.72);
+  font: 700 8px/1.3 "Space Mono", ui-monospace, monospace;
+  letter-spacing: .05em;
+}
+#command .command-mission-copy small { display: block; margin-top: 4px; }
+#command .command-mission-percent {
+  color: #efb54f;
+  font: 700 12px/1 "Space Mono", ui-monospace, monospace;
+}
+#command .command-mission-meter { margin: 1px 0 0; height: 4px; }
+#command .command-mission-progress { margin: 0; color: #dceaff; }
+#command .command-mission-evidence {
+  margin: 0;
+  color: rgba(188,214,237,.68);
+  font-size: 11px;
+  line-height: 1.45;
+}
+#command .command-mission-evidence b { color: #8fcaff; }
+#command .command-mission-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 3px;
+}
+#command .command-mission-actions button {
+  border: 1px solid rgba(103,191,255,.25);
+  border-radius: 3px;
+  padding: 7px 9px;
+  color: #9fcfff;
+  background: rgba(3,13,24,.72);
+  font: 700 9px/1 "Space Mono", ui-monospace, monospace;
+  cursor: pointer;
+}
+#command .command-mission-actions button:hover { border-color: #efb54f; color: #efb54f; }
+#command .command-mission-schedule { border-color: rgba(239,181,79,.35) !important; color: #efb54f !important; }
+#command .command-mission-details { opacity: .8; }
+#command .command-mission-empty {
+  padding: 18px 4px;
+  color: rgba(184,210,235,.62);
+}
+#command .command-mission-empty strong,
+#command .command-mission-empty small { display: block; }
+#command .command-mission-empty small { margin-top: 5px; font-size: 11px; }
