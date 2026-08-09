@@ -34,6 +34,44 @@ function metricCard(label, value, detail, progress, accent = "blue") {
   return `<article class="evidence-card ${accent}"><span>${label}</span><strong>${value}</strong><div class="stat-meter"><i style="width:${Math.max(0, Math.min(100, progress))}%"></i></div><small>${detail}</small></article>`;
 }
 
+function radarValue(xp) {
+  const meter = levelFromXp(xp);
+  return Math.max(0, Math.min(1, (meter.level + meter.progress / 100) / 5));
+}
+
+function characterRadarPoints(metrics, recoveryProgress) {
+  const values = [
+    radarValue(metrics.discipline.xp),
+    radarValue(metrics.trading.xp),
+    radarValue(metrics.mastery.body.xp),
+    radarValue(metrics.ccfx.xp),
+    radarValue(metrics.mastery.mind.xp),
+    Math.max(0, Math.min(1, recoveryProgress / 100)),
+  ];
+  const axes = [[50, 7], [87, 28], [87, 72], [50, 93], [13, 72], [13, 28]];
+  return values.map((value, index) => {
+    const [x, y] = axes[index];
+    return `${50 + (x - 50) * value},${50 + (y - 50) * value}`;
+  }).join(" ");
+}
+
+function focusStat(label, metric, accent = "blue") {
+  const meter = levelFromXp(metric.xp);
+  return `<div class="character-focus-stat ${accent}"><span>${label}</span><b>LV ${meter.level}</b><small>${Math.round(meter.current)} / ${meter.required} XP to next level</small><i><em style="width:${Math.max(0, Math.min(100, meter.progress))}%"></em></i></div>`;
+}
+
+function recoveryFocusStat(recovery) {
+  const progress = recovery ? missionProgress(recovery) : 0;
+  return `<div class="character-focus-stat green"><span>RECOVERY QUEST</span><b>${progress}%</b><small>${recovery ? escape(recovery.title) : "No Recovery mission open"}</small><i><em style="width:${progress}%"></em></i></div>`;
+}
+
+function characterFocus(metrics, recovery) {
+  const level = levelFromXp(metrics.totalXp);
+  const recoveryProgress = recovery ? missionProgress(recovery) : 0;
+  const points = characterRadarPoints(metrics, recoveryProgress);
+  return `<section class="character-focus panel"><div class="character-focus-heading"><p class="eyebrow blue-text">CHARACTER SYSTEMS / LIVE PROFILE</p><h3>The whole system at a glance.</h3><p>Each axis reflects evidence earned in that system. The center level is your combined character XP.</p></div><div class="character-focus-layout"><div class="character-hexagon"><svg viewBox="0 0 100 100" role="img" aria-label="Character level radar"><polygon class="character-radar-grid" points="50,7 87,28 87,72 50,93 13,72 13,28"></polygon><polygon class="character-radar-grid inner" points="50,22 74,36 74,64 50,78 26,64 26,36"></polygon><path class="character-radar-axis" d="M16 50H84M50 7V93M16 28L84 72M84 28L16 72"></path><polygon class="character-radar-data" points="${points}"></polygon></svg><div class="character-hexagon-core"><span>CHARACTER LEVEL</span><strong>LV ${level.level}</strong><small>${Math.round(level.current)} / ${level.required} XP</small></div></div><div class="character-focus-stats">${focusStat("DISCIPLINE", metrics.discipline, "amber")}${focusStat("TRADING INTEL", metrics.trading, "blue")}${focusStat("BODY MASTERY", metrics.mastery.body, "green")}${focusStat("CCFX QUESTS", metrics.ccfx, "amber")}${focusStat("MIND MASTERY", metrics.mastery.mind, "blue")}${recoveryFocusStat(recovery)}</div></div></section>`;
+}
+
 function directorReviewPanel() {
   const review = directorReviews.find((item) => item.quarter_key === quarterKey()) || {};
   return `<section class="panel director-review-panel"><div><p class="eyebrow amber">QUARTERLY DIRECTOR REVIEW</p><h3>${quarterKey()} · Measure the whole system.</h3><p>Review the person behind the data: wins, bottlenecks, standards, and the next quarter’s focus.</p></div><button class="primary compact" type="button" id="open-director-review">${review.id ? "Update Director Review" : "Open Director Review"}</button>${review.id ? `<div class="director-review-preview"><span><b>Wins</b>${escape(review.wins || "Not recorded")}</span><span><b>Next focus</b>${escape(review.next_focus || "Not recorded")}</span></div>` : ""}</section>`;
@@ -47,7 +85,7 @@ function render({ operations, occurrences, trades, missions, projects, contentIt
   localStorage.setItem("aegis-character-levels", JSON.stringify(levels));
   window.dispatchEvent(new CustomEvent("aegis:character-levels-changed", { detail: levels }));
   const launch = !xpCampaign ? `<section class="panel xp-launch-panel"><p class="eyebrow amber">CAMPAIGN CALIBRATION</p><h3>XP is paused.</h3><p class="body-copy">Nothing logged before activation will count. When you are ready, start the five-year campaign and the ledger will begin from that moment forward.</p>${xpCampaignError ? `<p class="body-copy">${escape(xpCampaignError)}</p>` : `<button class="primary compact" type="button" id="start-xp-campaign">Start campaign tracking</button>`}</section>` : "";
-  $("#character").innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p></div>${launch}<section class="evidence-grid">${xpStat("DISCIPLINE", discipline.xp, discipline.ledger, "daily", "amber")}${xpStat("TRADING INTEL", trading.xp, trading.ledger, "monthly", "blue")}${xpStat("MIND MASTERY", mastery.mind.xp, mastery.mind.ledger, "Mind", "blue")}${xpStat("BODY MASTERY", mastery.body.xp, mastery.body.ledger, "Body", "green")}${xpStat("CCFX QUESTS", ccfx.xp, ccfx.ledger, "CCFX", "amber")}${metricCard("RECOVERY QUEST", recovery ? missionLabel(recovery) : "LOCKED", recovery ? escape(recovery.title) : "Awaiting a Recovery mission", missionProgress(recovery), "green")}</section>${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
+  $("#character").innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p></div>${launch}${characterFocus(metrics, recovery)}<section class="evidence-grid">${xpStat("DISCIPLINE", discipline.xp, discipline.ledger, "daily", "amber")}${xpStat("TRADING INTEL", trading.xp, trading.ledger, "monthly", "blue")}${xpStat("MIND MASTERY", mastery.mind.xp, mastery.mind.ledger, "Mind", "blue")}${xpStat("BODY MASTERY", mastery.body.xp, mastery.body.ledger, "Body", "green")}${xpStat("CCFX QUESTS", ccfx.xp, ccfx.ledger, "CCFX", "amber")}${metricCard("RECOVERY QUEST", recovery ? missionLabel(recovery) : "LOCKED", recovery ? escape(recovery.title) : "Awaiting a Recovery mission", missionProgress(recovery), "green")}</section>${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
 }
 
 async function load() {
