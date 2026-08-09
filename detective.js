@@ -6,6 +6,7 @@ const supabase = ready ? createClient(config.supabaseUrl, config.supabaseAnonKey
 const $ = (selector) => document.querySelector(selector);
 let syncSetupUi = () => {};
 let currentTradeId = null;
+let editFormSnapshot = null;
 let loadedTrades = [];
 let activeFilters = {};
 let includeTheoreticalInAnalysis = false;
@@ -22,6 +23,21 @@ function displayNumber(value, suffix = "") {
 
 function escapeHtml(value = "") {
   return String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
+}
+
+function localDateTimeValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function isoFromLocalDateTime(value, fallback = new Date().toISOString()) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!match) return fallback;
+  const [, year, month, day, hour, minute] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), 0, 0).toISOString();
 }
 
 function normalizedOutcome(value) {
@@ -349,9 +365,11 @@ function clearForm() {
   $("#detective-trade-dialog form").reset();
   $("#detective-outcome").value = "Open";
   $("#detective-followed-plan").value = "yes";
+  $("#detective-debrief-note").value = "";
   syncPlanAdherenceUi();
   syncSetupUi();
   currentTradeId = null;
+  editFormSnapshot = null;
 }
 
 function syncPlanAdherenceUi() {
@@ -366,7 +384,10 @@ function syncPlanAdherenceUi() {
 }
 
 function ensurePlanAdherenceFields() {
-  if ($("#detective-followed-plan")) return;
+  if ($("#detective-followed-plan")) {
+    ensureDebriefNoteField();
+    return;
+  }
   const saveButton = $("#save-detective-trade");
   if (!saveButton) return;
   const wrap = document.createElement("div");
@@ -374,18 +395,56 @@ function ensurePlanAdherenceFields() {
   wrap.innerHTML = `<label>Followed plan?<select id="detective-followed-plan"><option value="yes">Yes</option><option value="no">No</option></select></label><label id="detective-violation-wrap" hidden>Rule violation / why?<textarea id="detective-violation-reason" placeholder="Name the rule and what happened."></textarea></label>`;
   saveButton.before(wrap);
   $("#detective-followed-plan")?.addEventListener("change", syncPlanAdherenceUi);
+  ensureDebriefNoteField();
+}
+
+function ensureDebriefNoteField() {
+  if ($("#detective-debrief-note")) return;
+  const saveButton = $("#save-detective-trade");
+  if (!saveButton) return;
+  saveButton.insertAdjacentHTML("beforebegin", `<label class="debrief-note-field">Debrief note<textarea id="detective-debrief-note" rows="3" placeholder="What happened, what did you notice, and what should the record remember?"></textarea></label>`);
 }
 
 function setSelectValue(selector, value) {
   const control = $(selector);
-  if (value != null && Array.from(control.options).some((option) => option.value === value)) control.value = value;
+  if (value == null || value === "") return;
+  const normalized = String(value);
+  if (!Array.from(control.options).some((option) => option.value === normalized)) control.add(new Option(normalized, normalized));
+  control.value = normalized;
+}
+
+function readTradeFormValues() {
+  return {
+    pair: $("#detective-pair").value.trim().toUpperCase(),
+    setup: JSON.stringify(Array.from($("#detective-setup").selectedOptions).map((option) => option.value)),
+    trade_type: $("#detective-type").value.trim() || null,
+    market_condition: $("#detective-market-condition").value.trim() || null,
+    cb_hour: $("#detective-cb-hour").value.trim() || null,
+    r_multiple: numberOrNull($("#detective-r").value),
+    pnl_percent: numberOrNull($("#detective-pnl").value),
+    outcome: $("#detective-outcome").value === "Open" ? null : $("#detective-outcome").value,
+    trade_status: $("#detective-outcome").value === "Open" ? "Open" : "Closed",
+    mae_30m: numberOrNull($("#detective-mae").value),
+    mfe_30m: numberOrNull($("#detective-mfe").value),
+    position: $("#detective-position").value.trim() || null,
+    account: $("#detective-account").value.trim() || null,
+    trade_day: $("#detective-day").value.trim() || null,
+    trade_month: $("#detective-month").value.trim() || null,
+    session_time: $("#detective-session-time").value.trim() || null,
+    entry_timeframe: $("#detective-entry-tf").value.trim() || null,
+    wick: $("#detective-wick").value.trim() || null,
+    plan_violation: $("#detective-followed-plan").value === "no",
+    violation_type: $("#detective-followed-plan").value === "no" ? $("#detective-violation-reason").value.trim() || null : null,
+    debrief_note: $("#detective-debrief-note").value.trim() || null,
+    traded_at_local: $("#detective-time").value
+  };
 }
 
 function editTrade(trade) {
   currentTradeId = trade.id;
   const form = $("#detective-trade-dialog form");
   form.reset();
-  $("#detective-pair").value = trade.pair || "";
+  setSelectValue("#detective-pair", trade.pair);
   setSelectValue("#detective-type", trade.trade_type);
   setSelectValue("#detective-market-condition", trade.market_condition);
   setSelectValue("#detective-cb-hour", trade.cb_hour);
@@ -398,13 +457,18 @@ function editTrade(trade) {
   setSelectValue("#detective-entry-tf", trade.entry_timeframe);
   setSelectValue("#detective-wick", trade.wick);
   const selectedSetups = (() => { try { return JSON.parse(trade.setup || "[]"); } catch { return [trade.setup]; } })();
+  selectedSetups.filter(Boolean).forEach((setup) => {
+    if (!Array.from($("#detective-setup").options).some((option) => option.value === setup)) $("#detective-setup").add(new Option(setup, setup));
+  });
   Array.from($("#detective-setup").options).forEach((option) => { option.selected = selectedSetups.includes(option.value); });
   ["mae", "mfe", "r", "pnl"].forEach((field) => { $("#detective-" + field).value = trade[{ mae: "mae_30m", mfe: "mfe_30m", r: "r_multiple", pnl: "pnl_percent" }[field]] ?? ""; });
-  if (trade.traded_at) $("#detective-time").value = new Date(trade.traded_at).toISOString().slice(0, 16);
+  if (trade.traded_at) $("#detective-time").value = localDateTimeValue(trade.traded_at);
   $("#detective-followed-plan").value = trade.plan_violation ? "no" : "yes";
   $("#detective-violation-reason").value = trade.violation_type || "";
+  $("#detective-debrief-note").value = trade.debrief_note || "";
   syncPlanAdherenceUi();
   syncSetupUi();
+  editFormSnapshot = readTradeFormValues();
   $("#save-detective-trade").textContent = "Update debrief";
   $("#detective-trade-dialog").showModal();
 }
@@ -427,30 +491,23 @@ async function saveTrade(event) {
     alert("Please sign in before logging a trade.");
     return;
   }
-  const payload = {
-    pair: $("#detective-pair").value.trim().toUpperCase(),
-    setup: JSON.stringify(Array.from($("#detective-setup").selectedOptions).map((option) => option.value)),
-    trade_type: $("#detective-type").value.trim() || null,
-    market_condition: $("#detective-market-condition").value.trim() || null,
-    cb_hour: $("#detective-cb-hour").value.trim() || null,
-    r_multiple: numberOrNull($("#detective-r").value),
-    pnl_percent: numberOrNull($("#detective-pnl").value),
-    outcome: $("#detective-outcome").value === "Open" ? null : $("#detective-outcome").value,
-    trade_status: $("#detective-outcome").value === "Open" ? "Open" : "Closed",
-    execution_grade: "A",
-    mae_30m: numberOrNull($("#detective-mae").value),
-    mfe_30m: numberOrNull($("#detective-mfe").value),
-    position: $("#detective-position").value.trim() || null,
-    account: $("#detective-account").value.trim() || null,
-    trade_day: $("#detective-day").value.trim() || null,
-    trade_month: $("#detective-month").value.trim() || null,
-    session_time: $("#detective-session-time").value.trim() || null,
-    entry_timeframe: $("#detective-entry-tf").value.trim() || null,
-    wick: $("#detective-wick").value.trim() || null,
-    plan_violation: $("#detective-followed-plan").value === "no",
-    violation_type: $("#detective-followed-plan").value === "no" ? $("#detective-violation-reason").value.trim() : null,
-    traded_at: $("#detective-time").value ? new Date($("#detective-time").value).toISOString() : new Date().toISOString()
-  };
+  const formValues = readTradeFormValues();
+  const existingTrade = currentTradeId ? loadedTrades.find((trade) => String(trade.id) === String(currentTradeId)) : null;
+  const hasSnapshot = Boolean(currentTradeId && editFormSnapshot);
+  const isNewTrade = !currentTradeId;
+  const payload = hasSnapshot
+    ? Object.fromEntries(Object.entries(formValues).filter(([field, value]) => value !== editFormSnapshot[field]))
+    : { ...formValues };
+  const timeChanged = !hasSnapshot || formValues.traded_at_local !== editFormSnapshot.traded_at_local;
+  delete payload.traded_at_local;
+  if (timeChanged) payload.traded_at = isoFromLocalDateTime(formValues.traded_at_local, existingTrade?.traded_at || new Date().toISOString());
+  if (isNewTrade) payload.execution_grade = "A";
+  if (!isNewTrade && Object.keys(payload).length === 0) {
+    $("#detective-trade-dialog").close();
+    clearForm();
+    $("#save-detective-trade").textContent = "Save debrief";
+    return;
+  }
   const request = currentTradeId
     ? supabase.from("trade_debriefs").update(payload).eq("id", currentTradeId)
     : supabase.from("trade_debriefs").insert(payload);
