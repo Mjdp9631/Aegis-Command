@@ -363,9 +363,12 @@ async function resolveRoadmap(id, action) {
   await loadRoadmap();
 }
 
-function ensureManualScan() {
+function ensureBedtimeAction() {
   const anchor = $("#adviser-panel");
-  if (!anchor || $("#ai-manual-scan")) return;
+  if (!anchor) return;
+  const existing = $("#ai-manual-scan");
+  if (existing?.querySelector('[data-ai-run="scan"]')) existing.remove();
+  if ($("#ai-manual-scan")) return;
   const panel = document.createElement("section");
   panel.id = "ai-manual-scan";
   panel.className = "panel ai-manual-scan";
@@ -389,7 +392,7 @@ function mount() {
     panel.innerHTML = '<div class="panel-head"><div><p class="eyebrow blue-text">ADAPTIVE DIRECTIVES</p><h3>Jarvis / Alfred transmissions</h3><p class="body-copy">Not routine. Correctives appear only when the evidence shows a meaningful repeating pattern; challenge transmissions appear when you have earned a higher standard.</p></div></div><div class="ai-suggestion-list" id="ai-suggestion-list"><p class="ai-status">No pending adaptive directives.</p></div>';
     $("#ai-roadmap-navigator")?.insertAdjacentElement("afterend", panel);
   }
-  ensureManualScan();
+  ensureBedtimeAction();
 }
 
 document.addEventListener("click", (event) => {
