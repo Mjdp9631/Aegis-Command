@@ -416,7 +416,14 @@ if (supabase) {
   supabase.auth.getSession().then(async ({ data: { session } }) => { if (!session) return; mount(); await loadLatestAdvisory(); await loadSuggestions(); await loadRoadmap(); try { latestContext = await gather(); setFocusStreak(latestContext.streaks.execution); } catch {} });
   supabase.auth.onAuthStateChange((_event, session) => { if (session) setTimeout(async () => { mount(); await loadLatestAdvisory(); await loadSuggestions(); await loadRoadmap(); }, 150); });
   let remountTimer;
-  new MutationObserver(() => {
+  const advisorySurface = (node) => {
+    const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    return Boolean(element?.closest(".adviser-panel, .command-briefing, #ai-manual-scan, #ai-mission-control, #ai-roadmap-navigator, #ai-suggestion-list, #ai-roadmap-list, #ai-transmission-dialog, #ai-scan-overlay"));
+  };
+  new MutationObserver((mutations) => {
+    // Painting the briefing changes text nodes inside these surfaces. Ignore
+    // those mutations so the observer cannot repaint itself forever on load.
+    if (mutations.length && mutations.every((mutation) => advisorySurface(mutation.target))) return;
     clearTimeout(remountTimer);
     remountTimer = setTimeout(() => { mount(); paintLatestAdvisory(); }, 140);
   }).observe(document.body, { childList: true, subtree: true });
