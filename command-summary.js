@@ -9,6 +9,20 @@ const today = (() => {
   return `${parts.year}-${parts.month}-${parts.day}`;
 })();
 
+function dateOnly(value) { return value ? String(value).slice(0, 10) : ""; }
+
+function operationIsToday(operation) {
+  if (dateOnly(operation.operation_date) === today) return true;
+  const start = dateOnly(operation.scheduled_date);
+  if (!start || today < start) return false;
+  const end = dateOnly(operation.scheduled_end_date);
+  if (end && today > end) return false;
+  const mode = String(operation.schedule_mode || "one_time").toLowerCase();
+  if (mode === "daily") return true;
+  if (mode !== "weekly" && mode !== "recurring") return today === start;
+  return new Date(`${start}T17:00:00Z`).getUTCDay() === new Date(`${today}T17:00:00Z`).getUTCDay();
+}
+
 function normalizedOutcome(value) {
   const supplied = String(value || "").trim().toLowerCase();
   if (supplied === "win" || supplied === "small win") return "Win";
@@ -71,10 +85,11 @@ async function load() {
     supabase.from("business_projects").select("*"),
     supabase.from("content_items").select("*"),
     supabase.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1),
-    supabase.from("operations").select("*").eq("scheduled_date", today),
+    supabase.from("operations").select("*"),
     supabase.from("mastery_entries").select("*")
   ]);
-  render({ missions: missionsResult.data || [], trades: tradesResult.data || [], projects: projectsResult.data || [], content: contentResult.data || [], recoveryLogs: recoveryResult.data || [], operations: operationsResult.data || [], masteryEntries: masteryResult.data || [] });
+  const todayOperations = (operationsResult.data || []).filter(operationIsToday);
+  render({ missions: missionsResult.data || [], trades: tradesResult.data || [], projects: projectsResult.data || [], content: contentResult.data || [], recoveryLogs: recoveryResult.data || [], operations: todayOperations, masteryEntries: masteryResult.data || [] });
 }
 
 document.addEventListener("click", (event) => {

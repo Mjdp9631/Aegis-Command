@@ -1,0 +1,17 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Local installers, packaged brain exports, and browser test profiles
+*.exe
+*.msi
+*.zip
+chrome-profile/
+chrome-preview-profile*/
+_brain_inspect/
+actual-desktop-preview.png

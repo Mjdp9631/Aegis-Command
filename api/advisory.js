@@ -1,11 +1,12 @@
 const SUPABASE_URL = "https://ifogfhaqozsyygbgwvzo.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_6knh69A_xVRQOPDotPrTcA_6_D_-RMa";
 const DIRECTOR_EMAIL = "mat.investments.95@gmail.com";
+const { CAMPAIGN_CHARTER } = require("../campaign-charter.js");
 
 const responseSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["morning", "signal", "evening", "proposals"],
+  required: ["morning", "signal", "evening", "sections", "roadmap", "directives"],
   properties: {
     morning: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
     signal: { type: "object", additionalProperties: false, required: ["jarvis", "alfred", "market_tone", "opportunity_window", "focus_area", "risk_posture"], properties: { jarvis: { type: "string" }, alfred: { type: "string" }, market_tone: { type: "string" }, opportunity_window: { type: "string" }, focus_area: { type: "string" }, risk_posture: { type: "string" } } },
@@ -15,7 +16,16 @@ const responseSchema = {
       what_to_improve: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
       tomorrow_focus: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } }
     } },
-    proposals: { type: "array", maxItems: 3, items: { type: "object", additionalProperties: false, required: ["advisor", "mission_kind", "title", "category", "priority", "rationale", "evidence"], properties: { advisor: { type: "string", enum: ["Jarvis", "Alfred"] }, mission_kind: { type: "string", enum: ["corrective", "challenge"] }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } } } } }
+    sections: { type: "object", additionalProperties: false, required: ["detective", "missions", "enterprise", "recovery", "mastery", "character"], properties: {
+      detective: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
+      missions: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
+      enterprise: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
+      recovery: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
+      mastery: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
+      character: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } }
+    } },
+    roadmap: { type: "array", maxItems: 1, items: { type: "object", additionalProperties: false, required: ["phase", "title", "category", "priority", "objective", "rationale", "evidence"], properties: { phase: { type: "integer", minimum: 0, maximum: 4 }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, objective: { type: "string" }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } } } } },
+    directives: { type: "array", maxItems: 2, items: { type: "object", additionalProperties: false, required: ["advisor", "mission_kind", "title", "category", "priority", "rationale", "evidence", "cadence_key", "escalation_level"], properties: { advisor: { type: "string", enum: ["Jarvis", "Alfred"] }, mission_kind: { type: "string", enum: ["corrective", "challenge"] }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } }, cadence_key: { type: "string" }, escalation_level: { type: "integer", minimum: 1, maximum: 3 } } } }
   }
 };
 
@@ -24,7 +34,15 @@ const systemPrompt = `You are the dual advisory intelligence for a private five-
 JARVIS is analytical and exact: prioritization, systems, trading-process evidence, trend detection, bottlenecks, and leverage.
 ALFRED is grounded and demanding but humane: recovery, sustainable standards, character, balance, and follow-through.
 
-Never issue buy/sell/hold directions, price targets, position sizing, investment advice, diagnoses, treatment plans, or instructions that conflict with clinicians. Discuss trading only as process quality, data collection, rule adherence, risk discipline, and review. Do not invent data. Never call a single weak data point a pattern. Keep each field concise (normally 1–2 sentences). Corrective missions are for repeated or material evidence gaps; challenge missions are optional stretch assignments when consistency or evidence supports them. At most one corrective and two challenges. Use the exact JSON schema.`;
+Never issue buy/sell/hold directions, price targets, position sizing, investment advice, diagnoses, treatment plans, or instructions that conflict with clinicians. Discuss trading only as process quality, data collection, rule adherence, risk discipline, and review. Do not invent data. Never call a single weak data point a pattern. Keep each field concise (normally 1–2 sentences). Corrective missions are for repeated or material evidence gaps; challenge missions are optional stretch assignments when consistency or evidence supports them. At most one corrective and two challenges. Use the exact JSON schema. The trading.authoritative_summary field is the final accounting record: never reinterpret it, never infer a perfect record from the closed-trade total, and never use a numerical trading claim that conflicts with it.`;
+
+const sectionInstructions = `Every scan must refresh EVERY area, not only the Command Center. In sections: detective is strictly trade-log/process/risk-discipline advice; missions is prioritization and follow-through; enterprise is Special Projects / CCFX execution; recovery is clinician-safe recovery and logging; mastery is Mind/Body learning, training, and personal development; character is earned levels, evidence, streaks, and phase readiness. Jarvis and Alfred must give distinct advice in every section. Do not repeat the same message across sections.
+
+For trading statistics, use ONLY the exact supplied values for closed trades, wins, losses, breakeven, win rate, month PnL, plan violations, current streak, longest win streak, and longest loss streak. The trading.authoritative_summary is authoritative. Never calculate a new statistic. Never call trades consecutive wins or losses unless an explicit streak value is supplied; closed-trade count is not a streak. Never describe results as perfect, loss-free, or 100% unless the authoritative summary explicitly proves it. If evidence is insufficient, say so plainly.
+
+For mode "morning", direct the morning section toward today's plan, signal toward current attention/risk, and evening toward what should be evaluated later without claiming results that have not happened. For mode "evening", make the evening section a true review of today's evidence and make the morning section the first priority for the next operating day. For mode "scan", assess only the current moment.
+
+Two lanes: ROADMAP is the intentional five-year campaign toward a real-world Bruce Wayne / Tony Stark: capable body and recovery, disciplined Detective-grade trading process, intellectual range, financial independence, and useful enterprise. Return one roadmap item only when the supplied roadmap state has fewer than two active accepted items or shows a completed/obsolete item. Otherwise return []. DIRECTIVES are adaptive, not routine. Default to []. A corrective is non-negotiable only when the supplied history demonstrates a repeated meaningful pattern AND it directly repairs an accepted roadmap mission, active-phase requirement, or roadmap bottleneck. It may also impose a proportional consequence, but the consequence must reinforce the missed standard (extra evidence-based work or escalating XP loss), never be arbitrary. Escalation may rise only if that same pattern persists through past directives. A challenge is optional and only when a demonstrated strength has earned a stretch assignment; do not issue it if a recent challenge is in the supplied history. Never create a directive merely because a scan occurred. Jarvis and Alfred may each issue separate roadmap-supporting transmissions, but they must use the same active-phase priorities and must never contradict one another; if only one useful transmission exists, return only one. Deep-work logs, Director Reviews, and self-generated mastery transmissions inform advice and reflection, but must not independently trigger a corrective or challenge. At most one corrective and one challenge.`;
 
 async function verifyDirector(req) {
   const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -52,7 +70,7 @@ module.exports = async (req, res) => {
       body: JSON.stringify({
         model: "gpt-4.1-mini",
         input: [
-          { role: "system", content: [{ type: "input_text", text: systemPrompt }] },
+          { role: "system", content: [{ type: "input_text", text: `${systemPrompt}\n\n${sectionInstructions}\n\n${CAMPAIGN_CHARTER}` }] },
           { role: "user", content: [{ type: "input_text", text: `Analyze this AEGIS data. Current request mode: ${String(req.body?.mode || "scan")}.\n\n${JSON.stringify(context)}` }] }
         ],
         text: { format: { type: "json_schema", name: "aegis_dual_advisory", strict: true, schema: responseSchema } }

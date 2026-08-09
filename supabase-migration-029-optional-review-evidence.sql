@@ -1,0 +1,2 @@
+-- Optional, private screenshot retention for AI trade reviews.
+-- Run once in Supabase SQL Editor.

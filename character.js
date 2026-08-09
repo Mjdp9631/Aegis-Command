@@ -65,11 +65,18 @@ function tradingXp(trades, startedAt) {
 function disciplineXp(operations, startedAt) {
   const days = new Map();
   operations.forEach((operation) => {
-    if (!operation.scheduled_date || operation.scheduled_date >= today || !isOnOrAfterCampaignDay(operation.scheduled_date, startedAt)) return;
-    const day = days.get(operation.scheduled_date) || { total: 0, done: 0 };
+    // Score the day the operation actually belonged to.  A completed operation
+    // must never disappear from the ledger merely because it was scheduled for
+    // today or rescheduled later in the day.
+    const dayKey = operation.operation_date || operation.completed_on || operation.scheduled_date;
+    if (!dayKey || !isOnOrAfterCampaignDay(dayKey, startedAt)) return;
+    // The evening debrief is deliberately completed after the day is assessed;
+    // it is informative, not a discipline requirement.
+    if (/evening\s+(mission\s+)?debrief/i.test(operation.title || "")) return;
+    const day = days.get(dayKey) || { total: 0, done: 0 };
     day.total += 1;
     if (operation.completed) day.done += 1;
-    days.set(operation.scheduled_date, day);
+    days.set(dayKey, day);
   });
   const ledger = [];
   days.forEach(({ total, done }, date) => {
@@ -160,7 +167,7 @@ async function load() {
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
   const [operationsResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, campaignResult, reviewResult, challengeResult] = await Promise.all([
-    supabase.from("operations").select("scheduled_date, completed"),
+    supabase.from("operations").select("title, scheduled_date, operation_date, completed_on, completed"),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }),
     supabase.from("missions").select("*").order("created_at", { ascending: false }),
     supabase.from("business_projects").select("*"),

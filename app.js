@@ -55,6 +55,11 @@ function renderOperations(){
 }
 function renderTrades(){}
 async function loadCloud(){
+  // Operations Hub owns the operation + mission read/write path.  The legacy
+  // loader below seeded browser-date fallback rows whenever it did not see a
+  // row for "today"; that is what created duplicate operations and stale-date
+  // queue entries after a refresh.  Leave it completely out of that domain.
+  if(window.AEGIS_USE_OPERATIONS_HUB||window.AEGIS_OPERATIONS_HUB_ACTIVE)return;
   const cachedOperations=[...operations];
   const {data:opData,error:allError}=await sb.from("operations").select("*").limit(180);
   if(allError){console.error("Could not load operations:",allError);if(!operations.length)operations=defaults().map(([title,category])=>({title,category,completed:false,scheduled_date:today,status:"Queued"}));saveLocal();renderOperations();return}
