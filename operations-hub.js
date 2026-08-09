@@ -263,7 +263,16 @@ async function loadOccurrences() {
   const merged = new Map((Array.isArray(data) ? data : []).map((row) => [occurrenceIdentity(row), row]));
   cachedOccurrences().filter(cachedOccurrenceIsCurrent).forEach((row) => {
     const key = occurrenceIdentity(row);
-    if (!merged.has(key)) merged.set(key, row);
+    const remote = merged.get(key);
+    if (!remote) {
+      merged.set(key, row);
+      return;
+    }
+    // A status click can finish locally just before an auth refresh returns
+    // an older occurrence snapshot. Keep the newer local row in that case.
+    const localStamp = Date.parse(row.local_updated_at || 0) || Number(row.local_updated_at) || 0;
+    const remoteStamp = Date.parse(remote.updated_at || remote.created_at || 0) || 0;
+    if (localStamp > remoteStamp) merged.set(key, row);
   });
   operationOccurrences = [...merged.values()];
   saveCachedOccurrences();
@@ -444,8 +453,9 @@ function mergeSavedStatus(remote = []) {
     const localStamp = Date.parse(local.local_updated_at) || Number(local.local_updated_at) || 0;
     const remoteStamp = Date.parse(operation.updated_at || operation.created_at) || 0;
     if (localStamp <= remoteStamp) return operation;
-    // A local schedule edit is newer than the cloud snapshot. Overlay only
-    // mutable execution fields; identity and ownership remain cloud-owned.
+    // A local schedule or status edit is newer than the cloud snapshot.
+    // Overlay only mutable execution fields; identity and ownership remain
+    // cloud-owned.
     return {
       ...operation,
       scheduled_date: local.scheduled_date || null,
@@ -836,10 +846,14 @@ async function cycleStatus(key) {
     operation.mission_id = series.mission_id;
     operation.metric_key = series.metric_key;
   }
+  const localUpdatedAt = new Date().toISOString();
+  operation.local_updated_at = localUpdatedAt;
+  if (operation._occurrence) operation._occurrence.local_updated_at = localUpdatedAt;
   // Preserve the director's update locally before the network round trip.
   // A refresh can no longer turn a just-clicked Ongoing/Complete operation
   // back into Queued simply because the database is temporarily unavailable.
   saveCachedOperations();
+  if (operation._occurrence) saveCachedOccurrences();
   renderQueue();
   renderCalendar();
   const saved = await persist(operation);
@@ -848,6 +862,7 @@ async function cycleStatus(key) {
     return;
   }
   saveCachedOperations();
+  if (operation._occurrence) saveCachedOccurrences();
   // Occurrence progress is applied by the database trigger using the durable
   // occurrence id. Keep the old local-only fallback for offline mode.
   if (operation._occurrence && (!client || !currentUser)) {
