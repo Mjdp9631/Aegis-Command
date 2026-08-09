@@ -358,7 +358,10 @@ function checklistFor(operation) {
 }
 
 function resolveMission(operation, includeCompleted = false) {
-  if (operation.mission_id) return missions.find((mission) => String(mission.id) === String(operation.mission_id)) || null;
+  if (operation.mission_id) {
+    const explicit = missions.find((mission) => String(mission.id) === String(operation.mission_id));
+    if (explicit) return explicit;
+  }
   if (isReadingOperation(operation) && currentBook?.title) {
     const bookTitle = currentBook.title.toLowerCase();
     const bookMission = missions.find((mission) => (includeCompleted || !mission.completed)
@@ -402,7 +405,6 @@ function resolveMission(operation, includeCompleted = false) {
 // command center, calendar, and mission page trying to maintain separate
 // counters in the browser.
 function attachMissionLink(operation) {
-  if (operation.mission_id) return;
   const mission = resolveMission(operation);
   if (!mission) return;
   operation.mission_id = mission.id;
@@ -818,10 +820,9 @@ async function cycleStatus(key) {
     return;
   }
   saveCachedOperations();
-  // Occurrences are independent rows and therefore bypass the legacy
-  // operations-table progress trigger. Advance (or reverse) the linked
-  // measured mission exactly once for this occurrence.
-  if (operation._occurrence) {
+  // Occurrence progress is applied by the database trigger using the durable
+  // occurrence id. Keep the old local-only fallback for offline mode.
+  if (operation._occurrence && (!client || !currentUser)) {
     if (next === "Complete" && !wasComplete) await updateMissionEvidence(series, 1);
     if (next !== "Complete" && wasComplete) await updateMissionEvidence(series, -1);
   }
