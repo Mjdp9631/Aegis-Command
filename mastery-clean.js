@@ -164,6 +164,11 @@ function trainingProgressOverview() {
   return `<section class="training-progress-overview"><div><p class="eyebrow green-text">PROGRESS TRACKING</p><h3>${escapeHtml(latest.workout_split || latest.title || "Latest session")}</h3><small>Latest session · ${dateOnly(latest.logged_on || latest.created_at)} · compare each exercise below against its prior entry.</small></div><div class="training-progress-stats"><span><b>${trainingSessions.length}</b> sessions</span><span><b>${exercises.size}</b> exercises</span><span><b>${weightedVolume ? `${weightedVolume.toFixed(0)} lb` : "Bands"}</b> latest volume</span></div></section>`;
 }
 
+function laneInputDock() {
+  const types = lane === "mind" ? mindTypes : bodyTypes;
+  return `<section class="mastery-input-dock"><div><p class="eyebrow ${lane === "mind" ? "blue-text" : "green-text"}">${lane.toUpperCase()} INPUT ACCESS</p><small>Log any ${lane === "mind" ? "Mind" : "Body"} evidence from here. AEGIS files it under the correct category automatically.</small></div><div class="mastery-input-actions">${types.map(type => `<button type="button" class="mastery-input-action ${isLocked(type) ? "locked" : ""}" data-mastery-clean-input="${escapeHtml(type)}" ${isLocked(type) ? "disabled title=\"Complete Recovery to unlock\"" : ""}>+ ${escapeHtml(typeLabel(type))}${isLocked(type) ? " · LOCKED" : ""}</button>`).join("")}</div></section>`;
+}
+
 function healthCard() {
   const today = new Date().toISOString().slice(0, 10);
   const todayWeights = weightLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today);
@@ -207,7 +212,7 @@ function render() {
   const categoryCards = `<div class="mastery-category-grid">${types.map(type => `<button class="mastery-category ${type === activeType ? "active" : ""} ${isLocked(type) ? "locked" : ""}" data-mastery-clean-type="${type}"><small>${type.toUpperCase()}${isLocked(type) ? " · LOCKED" : ""}</small><strong>${entries.filter(entry => entry.category === type).length}</strong><small>${type === "Book" ? "books and reading notes" : isLocked(type) ? "complete Recovery to unlock" : "entries captured"}</small></button>`).join("")}</div>`;
   const specialContent = activeType === "Gym" ? `${trainingProgressOverview()}${trainingSessions.slice(0, 12).map(trainingCard).join("")}` : activeType === "Health" ? healthCard() : "";
   const content = isCurrentLocked ? `<div class="mastery-lock"><h3>${activeType} locked</h3><p>Unlocks after Recovery is completed and you confirm archiving the Recovery section.</p></div>` : (specialContent || visible.map(entryCard).join("") || `<div class="mastery-empty">Nothing logged here yet. Capture the first useful item.</div>`);
-  root.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Capture knowledge worth using, produce focused work, and train only what your foundation supports.</p></div><div class="mastery-tabs"><button class="mastery-tab ${lane === "mind" ? "active" : ""}" data-mastery-clean-lane="mind">Mind</button><button class="mastery-tab ${lane === "body" ? "active" : ""}" data-mastery-clean-lane="body">Body</button></div>${categoryCards}${systemsPanel()}<div class="mastery-toolbar"><h3>${typeLabel(activeType)}</h3>${isCurrentLocked ? "" : `<button class="primary compact" data-mastery-clean-add>+ Add entry</button>`}</div><div class="mastery-list">${content}</div>`;
+  root.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Capture knowledge worth using, produce focused work, and train only what your foundation supports.</p></div><div class="mastery-tabs"><button class="mastery-tab ${lane === "mind" ? "active" : ""}" data-mastery-clean-lane="mind">Mind</button><button class="mastery-tab ${lane === "body" ? "active" : ""}" data-mastery-clean-lane="body">Body</button></div>${laneInputDock()}${categoryCards}${systemsPanel()}<div class="mastery-toolbar"><h3>${typeLabel(activeType)}</h3>${isCurrentLocked ? "" : `<button class="primary compact" data-mastery-clean-add>+ Add entry</button>`}</div><div class="mastery-list">${content}</div>`;
   setTimeout(() => { cleanRendering = false; }, 0);
 }
 
@@ -444,8 +449,9 @@ async function load() {
 }
 
 document.addEventListener("click", event => {
-  const laneButton = event.target.closest("[data-mastery-clean-lane]"), typeButton = event.target.closest("[data-mastery-clean-type]");
+  const laneButton = event.target.closest("[data-mastery-clean-lane]"), typeButton = event.target.closest("[data-mastery-clean-type]"), inputButton = event.target.closest("[data-mastery-clean-input]");
   if (laneButton) { lane = laneButton.dataset.masteryCleanLane; activeType = lane === "mind" ? "Book" : "Health"; saveView(); render(); return; }
+  if (inputButton) { const next = inputButton.dataset.masteryCleanInput; if (!isLocked(next)) { activeType = next; saveView(); openDialog(); } return; }
   if (typeButton) { const next = typeButton.dataset.masteryCleanType; if (!isLocked(next)) { activeType = next; saveView(); render(); } return; }
   if (event.target.closest("[data-mastery-clean-add]")) return openDialog();
   if (event.target.closest("[data-mastery-deep-work]")) return openSystemDialog("deep-work");

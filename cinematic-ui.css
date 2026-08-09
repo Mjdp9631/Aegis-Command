@@ -1425,3 +1425,37 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   #mastery .training-progress-stats { justify-content: flex-start; }
   #mastery .training-progress-stats span { text-align: left; }
 }
+
+/* Mind and Body share one input console. Category cards remain filters, while
+   this dock keeps every lane-specific logger reachable from any sub-category. */
+#mastery .mastery-input-dock {
+  display: grid;
+  grid-template-columns: minmax(190px, .72fr) minmax(0, 1.7fr);
+  gap: 14px;
+  align-items: center;
+  margin: 0 0 16px;
+  padding: 13px 15px;
+  border: 1px solid rgba(103,191,255,.18);
+  border-radius: 6px;
+  background: linear-gradient(100deg, rgba(8,27,45,.78), rgba(4,14,25,.58));
+}
+#mastery .mastery-input-dock > div:first-child small { display: block; color: rgba(181,207,232,.7); font-size: 11px; line-height: 1.4; }
+#mastery .mastery-input-actions { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
+#mastery .mastery-input-action {
+  min-height: 29px;
+  padding: 0 9px;
+  border: 1px solid rgba(103,191,255,.24);
+  border-radius: 4px;
+  color: #9fcfff;
+  background: rgba(3,13,24,.72);
+  font: 700 9px/1 "Space Mono", ui-monospace, monospace;
+  cursor: pointer;
+  transition: border-color .2s ease, color .2s ease, background .2s ease;
+}
+#mastery .mastery-input-action:hover { border-color: #efb54f; color: #efb54f; background: rgba(97,63,18,.2); }
+#mastery .mastery-input-action.locked,
+#mastery .mastery-input-action:disabled { cursor: not-allowed; opacity: .45; }
+@media (max-width: 760px) {
+  #mastery .mastery-input-dock { grid-template-columns: 1fr; }
+  #mastery .mastery-input-actions { justify-content: flex-start; }
+}
