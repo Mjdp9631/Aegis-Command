@@ -97,9 +97,71 @@ function entryCard(entry) {
   return `<article class="mastery-entry"><div class="entry-meta"><span>${escapeHtml(entry.category)}</span>${entry.rating ? `<b>${entry.rating}/5</b>` : ""}</div><h3>${escapeHtml(entry.title)}</h3>${entry.summary ? `<p>${escapeHtml(entry.summary)}</p>` : ""}${entry.key_lessons ? `<p><b>Key takeaways:</b> ${escapeHtml(entry.key_lessons)}</p>` : ""}</article>`;
 }
 
+function sessionTimestamp(session) {
+  const value = session.logged_on || session.created_at;
+  const timestamp = new Date(value || 0).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function setRowsFor(sessionId, exerciseName, resistanceType) {
+  return trainingSets.filter(set => set.session_id === sessionId
+    && String(set.exercise_name || "").trim().toLowerCase() === String(exerciseName || "").trim().toLowerCase()
+    && String(set.resistance_type || "Weights") === String(resistanceType || "Weights"));
+}
+
+function previousSetRows(session, exerciseName, resistanceType) {
+  const previousSessions = trainingSessions
+    .filter(item => item.id !== session.id && sessionTimestamp(item) < sessionTimestamp(session))
+    .sort((a, b) => sessionTimestamp(b) - sessionTimestamp(a));
+  for (const previous of previousSessions) {
+    const rows = setRowsFor(previous.id, exerciseName, resistanceType);
+    if (rows.length) return { session: previous, rows };
+  }
+  return null;
+}
+
+function progressForExercise(session, rows, exerciseName, resistanceType) {
+  const previous = previousSetRows(session, exerciseName, resistanceType);
+  if (!previous) return "BASELINE · first logged comparison";
+  const currentReps = rows.reduce((sum, row) => sum + Number(row.reps || 0) * Math.max(1, Number(row.sets || 1)), 0);
+  const previousReps = previous.rows.reduce((sum, row) => sum + Number(row.reps || 0) * Math.max(1, Number(row.sets || 1)), 0);
+  if (resistanceType === "Bands") {
+    const delta = currentReps - previousReps;
+    return delta ? `${delta > 0 ? "↑" : "↓"} ${Math.abs(delta)} total reps vs ${dateOnly(previous.session.logged_on || previous.session.created_at)}` : `→ holding reps vs ${dateOnly(previous.session.logged_on || previous.session.created_at)}`;
+  }
+  const currentTop = Math.max(...rows.map(row => Number(row.weight_lbs || 0)));
+  const previousTop = Math.max(...previous.rows.map(row => Number(row.weight_lbs || 0)));
+  const currentVolume = rows.reduce((sum, row) => sum + Number(row.weight_lbs || 0) * Number(row.reps || 0) * Math.max(1, Number(row.sets || 1)), 0);
+  const previousVolume = previous.rows.reduce((sum, row) => sum + Number(row.weight_lbs || 0) * Number(row.reps || 0) * Math.max(1, Number(row.sets || 1)), 0);
+  if (currentTop !== previousTop) return `${currentTop > previousTop ? "↑" : "↓"} ${Math.abs(currentTop - previousTop).toFixed(1).replace(/\.0$/, "")} lb top set vs ${dateOnly(previous.session.logged_on || previous.session.created_at)}`;
+  if (currentVolume !== previousVolume) return `${currentVolume > previousVolume ? "↑" : "↓"} ${Math.abs(currentVolume - previousVolume).toFixed(0)} lb volume vs ${dateOnly(previous.session.logged_on || previous.session.created_at)}`;
+  return `→ holding load and volume vs ${dateOnly(previous.session.logged_on || previous.session.created_at)}`;
+}
+
 function trainingCard(session) {
   const sets = trainingSets.filter(set => set.session_id === session.id);
-  return `<article class="mastery-entry training-entry"><div class="entry-meta"><span>${escapeHtml(session.workout_split || session.session_type || "GYM")}</span><b>${dateOnly(session.logged_on || session.created_at)}</b></div><h3>${escapeHtml(session.title || "Training session")}</h3>${sets.length ? `<div class="training-set-summary">${sets.map(set => { const resistance = set.resistance_type === "Bands" ? `${escapeHtml(set.band_resistance || "Band")}` : `${Number(set.weight_lbs || 0)} lb`; return `<span><b>${escapeHtml(set.exercise_name)}</b> · ${resistance} × ${Number(set.reps || 0)} × ${Number(set.sets || 1)}</span>`; }).join("")}</div>` : ""}${session.notes ? `<p>${escapeHtml(session.notes)}</p>` : ""}</article>`;
+  const groups = [...new Map(sets.map(set => [`${String(set.exercise_name || "").trim().toLowerCase()}|${set.resistance_type || "Weights"}`, set])).values()];
+  const exerciseBlocks = groups.map(group => {
+    const exerciseName = group.exercise_name || "Exercise";
+    const resistanceType = group.resistance_type || "Weights";
+    const rows = sets.filter(set => String(set.exercise_name || "").trim().toLowerCase() === String(exerciseName).trim().toLowerCase() && String(set.resistance_type || "Weights") === resistanceType);
+    const detail = rows.map((set, index) => {
+      const setNumber = Number(set.set_number || index + 1);
+      const resistance = resistanceType === "Bands" ? (set.band_resistance || "Band") : `${Number(set.weight_lbs || 0)} lb`;
+      return `<span><b>S${setNumber}</b> ${escapeHtml(resistance)} × ${Number(set.reps || 0)} reps</span>`;
+    }).join("");
+    return `<div class="training-exercise"><div class="training-exercise-head"><b>${escapeHtml(exerciseName)}</b><small>${escapeHtml(resistanceType)}</small></div><div class="training-set-summary">${detail}</div><small class="training-progress">${escapeHtml(progressForExercise(session, rows, exerciseName, resistanceType))}</small></div>`;
+  }).join("");
+  return `<article class="mastery-entry training-entry"><div class="entry-meta"><span>${escapeHtml(session.workout_split || session.session_type || "GYM")}</span><b>${dateOnly(session.logged_on || session.created_at)}</b></div><h3>${escapeHtml(session.title || "Training session")}</h3>${exerciseBlocks ? `<div class="training-exercise-list">${exerciseBlocks}</div>` : ""}${session.notes ? `<p>${escapeHtml(session.notes)}</p>` : ""}</article>`;
+}
+
+function trainingProgressOverview() {
+  const latest = trainingSessions[0];
+  if (!latest) return "";
+  const latestSets = trainingSets.filter(set => set.session_id === latest.id);
+  const weightedVolume = latestSets.reduce((sum, set) => sum + Number(set.weight_lbs || 0) * Number(set.reps || 0) * Math.max(1, Number(set.sets || 1)), 0);
+  const exercises = new Set(latestSets.map(set => String(set.exercise_name || "").trim().toLowerCase()).filter(Boolean));
+  return `<section class="training-progress-overview"><div><p class="eyebrow green-text">PROGRESS TRACKING</p><h3>${escapeHtml(latest.workout_split || latest.title || "Latest session")}</h3><small>Latest session · ${dateOnly(latest.logged_on || latest.created_at)} · compare each exercise below against its prior entry.</small></div><div class="training-progress-stats"><span><b>${trainingSessions.length}</b> sessions</span><span><b>${exercises.size}</b> exercises</span><span><b>${weightedVolume ? `${weightedVolume.toFixed(0)} lb` : "Bands"}</b> latest volume</span></div></section>`;
 }
 
 function healthCard() {
@@ -143,7 +205,7 @@ function render() {
   const visible = entries.filter(entry => entry.category === activeType);
   const isCurrentLocked = isLocked(activeType);
   const categoryCards = `<div class="mastery-category-grid">${types.map(type => `<button class="mastery-category ${type === activeType ? "active" : ""} ${isLocked(type) ? "locked" : ""}" data-mastery-clean-type="${type}"><small>${type.toUpperCase()}${isLocked(type) ? " · LOCKED" : ""}</small><strong>${entries.filter(entry => entry.category === type).length}</strong><small>${type === "Book" ? "books and reading notes" : isLocked(type) ? "complete Recovery to unlock" : "entries captured"}</small></button>`).join("")}</div>`;
-  const specialContent = activeType === "Gym" ? trainingSessions.slice(0, 12).map(trainingCard).join("") : activeType === "Health" ? healthCard() : "";
+  const specialContent = activeType === "Gym" ? `${trainingProgressOverview()}${trainingSessions.slice(0, 12).map(trainingCard).join("")}` : activeType === "Health" ? healthCard() : "";
   const content = isCurrentLocked ? `<div class="mastery-lock"><h3>${activeType} locked</h3><p>Unlocks after Recovery is completed and you confirm archiving the Recovery section.</p></div>` : (specialContent || visible.map(entryCard).join("") || `<div class="mastery-empty">Nothing logged here yet. Capture the first useful item.</div>`);
   root.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Capture knowledge worth using, produce focused work, and train only what your foundation supports.</p></div><div class="mastery-tabs"><button class="mastery-tab ${lane === "mind" ? "active" : ""}" data-mastery-clean-lane="mind">Mind</button><button class="mastery-tab ${lane === "body" ? "active" : ""}" data-mastery-clean-lane="body">Body</button></div>${categoryCards}${systemsPanel()}<div class="mastery-toolbar"><h3>${typeLabel(activeType)}</h3>${isCurrentLocked ? "" : `<button class="primary compact" data-mastery-clean-add>+ Add entry</button>`}</div><div class="mastery-list">${content}</div>`;
   setTimeout(() => { cleanRendering = false; }, 0);
@@ -183,7 +245,7 @@ function openDialog() {
 }
 
 function gymSetRow() {
-  return `<div class="exercise-row"><label>Exercise<input name="exercise_name" required placeholder="e.g. DB bench press" /></label><label>Resistance<select name="resistance_type" data-resistance-type><option value="Weights">Weights</option><option value="Bands">Bands</option></select></label><label data-weight-field>Weight (lb)<input name="weight_lbs" type="number" min="0" step="0.5" required /></label><label data-band-field hidden>Band resistance<select name="band_resistance" disabled><option value="">Select band</option><option>Light</option><option>Medium</option><option>Heavy</option><option>Extra heavy</option><option>Other</option></select></label><label>Reps<input name="reps" type="number" min="1" required /></label><label>Sets<input name="sets" type="number" min="1" value="1" required /></label><button class="ghost compact" type="button" data-remove-exercise>Remove</button></div>`;
+  return `<div class="exercise-row" data-set-number="1"><label class="set-number-label">Set <b data-set-number-label>1</b></label><label>Exercise<input name="exercise_name" required placeholder="e.g. DB bench press" /></label><label>Resistance<select name="resistance_type" data-resistance-type><option value="Weights">Weights</option><option value="Bands">Bands</option></select></label><label data-weight-field>Weight (lb)<input name="weight_lbs" type="number" min="0" step="0.5" required /></label><label data-band-field hidden>Band resistance<select name="band_resistance" disabled><option value="">Select band</option><option>Light</option><option>Medium</option><option>Heavy</option><option>Extra heavy</option><option>Other</option></select></label><label>Reps<input name="reps" type="number" min="1" required /></label><button class="ghost compact" type="button" data-add-set>+ Set</button><button class="ghost compact" type="button" data-remove-exercise>Remove</button></div>`;
 }
 
 function syncResistanceFields(row) {
@@ -210,7 +272,26 @@ function openFitnessDialog(type) {
   dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
   dialog.querySelector("[data-add-exercise]")?.addEventListener("click", () => dialog.querySelector(".exercise-list").insertAdjacentHTML("beforeend", gymSetRow()));
   dialog.querySelector("[data-add-food]")?.addEventListener("click", () => dialog.querySelector(".food-list").insertAdjacentHTML("beforeend", foodRow()));
-  dialog.onclick = event => { const removeExercise = event.target.closest("[data-remove-exercise]"); const removeFood = event.target.closest("[data-remove-food]"); if (removeExercise) removeExercise.closest(".exercise-row")?.remove(); if (removeFood) removeFood.closest(".nutrition-row")?.remove(); };
+   dialog.onclick = event => {
+     const removeExercise = event.target.closest("[data-remove-exercise]");
+     const removeFood = event.target.closest("[data-remove-food]");
+     const addSet = event.target.closest("[data-add-set]");
+     if (removeExercise) removeExercise.closest(".exercise-row")?.remove();
+     if (removeFood) removeFood.closest(".nutrition-row")?.remove();
+     if (addSet) {
+       const source = addSet.closest(".exercise-row");
+       const list = source?.closest(".exercise-list");
+       if (!source || !list) return;
+       const exerciseName = source.querySelector('[name="exercise_name"]')?.value.trim().toLowerCase();
+       const matching = [...list.querySelectorAll(".exercise-row")].filter(row => row.querySelector('[name="exercise_name"]')?.value.trim().toLowerCase() === exerciseName);
+       const nextNumber = matching.reduce((max, row) => Math.max(max, Number(row.dataset.setNumber || 0)), 0) + 1;
+       const clone = source.cloneNode(true);
+       clone.dataset.setNumber = nextNumber;
+       clone.querySelector("[data-set-number-label]").textContent = nextNumber;
+       source.after(clone);
+       syncResistanceFields(clone);
+     }
+   };
   dialog.querySelector(".exercise-list")?.addEventListener("change", event => { if (event.target.matches("[data-resistance-type]")) syncResistanceFields(event.target.closest(".exercise-row")); });
   dialog.querySelector("form").addEventListener("submit", saveFitnessLog);
   dialog.showModal();
@@ -245,14 +326,15 @@ async function saveFitnessLog(event) {
   try {
     if (mode === "gym") {
       const workoutSplit = String(data.get("workout_split") || "").trim();
-      const rows = [...form.querySelectorAll(".exercise-row")].map(row => ({
-        exercise_name: String(row.querySelector('[name="exercise_name"]')?.value || "").trim(),
+       const rows = [...form.querySelectorAll(".exercise-row")].map(row => ({
+         set_number: Number(row.dataset.setNumber || 1),
+         exercise_name: String(row.querySelector('[name="exercise_name"]')?.value || "").trim(),
         resistance_type: String(row.querySelector('[name="resistance_type"]')?.value || "Weights"),
         weight_lbs: row.querySelector('[name="resistance_type"]')?.value === "Bands" ? null : Number(row.querySelector('[name="weight_lbs"]')?.value || 0),
         band_resistance: row.querySelector('[name="resistance_type"]')?.value === "Bands" ? String(row.querySelector('[name="band_resistance"]')?.value || "").trim() : null,
         reps: Number(row.querySelector('[name="reps"]')?.value || 0),
-        sets: Number(row.querySelector('[name="sets"]')?.value || 0)
-      })).filter(row => row.exercise_name && row.reps > 0 && row.sets > 0 && (row.resistance_type === "Bands" ? row.band_resistance : row.weight_lbs !== null));
+         sets: 1
+       })).filter(row => row.exercise_name && row.reps > 0 && (row.resistance_type === "Bands" ? row.band_resistance : row.weight_lbs !== null));
       if (!rows.length) return alert("Add at least one completed exercise set.");
       const { data: session, error: sessionError } = await db.from("training_sessions").insert({
         user_id: userId, session_type: "Gym", title: `${workoutSplit} workout`, workout_split: workoutSplit,

@@ -1368,3 +1368,60 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   letter-spacing: .04em;
   transition: border-color .2s ease, color .2s ease, background .2s ease, box-shadow .2s ease;
 }
+
+/* Body / Gym logger: the same quiet, evidence-first treatment as the rest of
+   the mastery console, with enough room for real set-by-set capture. */
+.fitness-form { width: min(980px, calc(100vw - 32px)); }
+.fitness-form .exercise-list,
+.fitness-form .food-list { display: grid; gap: 9px; }
+.fitness-form .exercise-row,
+.fitness-form .nutrition-row {
+  display: grid;
+  grid-template-columns: 58px minmax(150px, 1.45fr) minmax(105px, .8fr) minmax(105px, .8fr) minmax(92px, .65fr) auto auto;
+  gap: 8px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid rgba(103,191,255,.16);
+  border-radius: 5px;
+  background: linear-gradient(135deg, rgba(8,23,38,.72), rgba(3,12,22,.58));
+}
+.fitness-form .exercise-row label,
+.fitness-form .nutrition-row label { min-width: 0; margin: 0; }
+.fitness-form .exercise-row input,
+.fitness-form .exercise-row select,
+.fitness-form .nutrition-row input { min-width: 0; padding: 9px; }
+.fitness-form .set-number-label { color: #efb54f; text-align: center; }
+.fitness-form .set-number-label b { display: block; margin-top: 8px; font: 700 13px/1 "Space Mono", ui-monospace, monospace; }
+.fitness-form .form-subhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+#mastery .training-progress-overview {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 15px 16px;
+  border: 1px solid rgba(103,191,255,.2);
+  border-radius: 6px;
+  background: linear-gradient(100deg, rgba(8,29,47,.78), rgba(4,14,25,.58));
+}
+#mastery .training-progress-overview h3 { margin: 4px 0; }
+#mastery .training-progress-overview small { color: rgba(181,207,232,.7); line-height: 1.45; }
+#mastery .training-progress-stats { display: flex; gap: 15px; flex-wrap: wrap; justify-content: flex-end; }
+#mastery .training-progress-stats span { color: rgba(181,207,232,.66); font: 700 9px/1.3 "Space Mono", ui-monospace, monospace; text-align: right; text-transform: uppercase; }
+#mastery .training-progress-stats b { display: block; margin-bottom: 4px; color: #dceeff; font-size: 15px; }
+#mastery .training-exercise-list { display: grid; gap: 9px; margin-top: 13px; }
+#mastery .training-exercise { padding: 10px 11px; border-left: 2px solid rgba(102,224,168,.55); background: rgba(5,19,30,.48); }
+#mastery .training-exercise-head { display: flex; justify-content: space-between; gap: 10px; color: #dceeff; }
+#mastery .training-exercise-head small { color: rgba(181,207,232,.64); font: 700 8px/1 "Space Mono", ui-monospace, monospace; text-transform: uppercase; }
+#mastery .training-set-summary { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 8px; }
+#mastery .training-set-summary span { padding: 5px 7px; border: 1px solid rgba(103,191,255,.14); color: rgba(211,231,249,.8); font: 700 9px/1 "Space Mono", ui-monospace, monospace; }
+#mastery .training-set-summary span b { color: #efb54f; }
+#mastery .training-progress { display: block; margin-top: 8px; color: #72d9a7 !important; font: 700 9px/1.35 "Space Mono", ui-monospace, monospace; text-transform: uppercase; }
+@media (max-width: 760px) {
+  .fitness-form .exercise-row,
+  .fitness-form .nutrition-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fitness-form .set-number-label { text-align: left; }
+  #mastery .training-progress-overview { align-items: flex-start; flex-direction: column; }
+  #mastery .training-progress-stats { justify-content: flex-start; }
+  #mastery .training-progress-stats span { text-align: left; }
+}
