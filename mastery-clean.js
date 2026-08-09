@@ -174,9 +174,9 @@ function healthCard() {
   const todayWeights = weightLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today);
   const todayFoods = foodLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today);
   const sum = field => Math.round(todayFoods.reduce((total, item) => total + Number(item[field] || 0), 0));
-  const weights = weightLogs.slice(0, 12).map(item => `<div class="health-log-row"><span><b>${escapeHtml(item.measured_at)}</b> ${escapeHtml(item.weight_lbs)} lb · ${dateOnly(item.logged_on)}</span><button type="button" class="ghost compact mastery-entry-edit" data-mastery-edit-weight="${escapeHtml(item.id)}">Edit</button></div>`).join("");
-  const foods = foodLogs.slice(0, 12).map(item => `<div class="health-log-row"><span><b>${escapeHtml(item.food_name)}</b> · ${escapeHtml(item.quantity_text || "quantity not recorded")} · ${Number(item.calories || 0)} kcal · ${dateOnly(item.logged_on)}</span><button type="button" class="ghost compact mastery-entry-edit" data-mastery-edit-food="${escapeHtml(item.id)}">Edit</button></div>`).join("");
-  return `<article class="mastery-entry health-entry"><div class="entry-meta"><span>HEALTH PULSE · TODAY</span></div><h3>${todayWeights.length ? todayWeights.map(item => `${item.measured_at}: ${item.weight_lbs} lb`).join(" · ") : "No weigh-ins logged today"}</h3><p>${todayFoods.length ? `${todayFoods.length} foods · ~${sum("calories")} kcal · ${sum("protein_g")}g protein · ${sum("carbs_g")}g carbs · ${sum("fiber_g")}g fiber · ${sum("fat_g")}g fat · ${sum("sugar_g")}g sugar` : "Add a food and quantity for an automatic rough estimate; precision is optional, consistency is the point."}</p>${weights || foods ? `<div class="health-log-list"><p class="eyebrow green-text">RECENT HEALTH LOGS</p>${weights}${foods}</div>` : ""}</article>`;
+  const weights = weightLogs.slice(0, 12).map(item => `<div class="health-log-row"><span><b>${escapeHtml(item.measured_at)}</b> ${escapeHtml(item.weight_lbs)} lb · ${dateOnly(item.logged_on)}</span></div>`).join("");
+  const foods = foodLogs.slice(0, 12).map(item => `<div class="health-log-row"><span><b>${escapeHtml(item.food_name)}</b> · ${escapeHtml(item.quantity_text || "quantity not recorded")} · ${Number(item.calories || 0)} kcal · ${dateOnly(item.logged_on)}</span></div>`).join("");
+  return `<article class="mastery-entry health-entry"><div class="entry-meta"><span>HEALTH PULSE · TODAY</span></div><h3>${todayWeights.length ? todayWeights.map(item => `${item.measured_at}: ${item.weight_lbs} lb`).join(" · ") : "No weigh-ins logged today"}</h3><p>${todayFoods.length ? `${todayFoods.length} foods · ~${sum("calories")} kcal · ${sum("protein_g")}g protein · ${sum("carbs_g")}g carbs · ${sum("fiber_g")}g fiber · ${sum("fat_g")}g fat · ${sum("sugar_g")}g sugar` : "Add a food and quantity for an automatic rough estimate; precision is optional, consistency is the point."}</p>${weights || foods ? `<div class="health-log-list"><p class="eyebrow green-text">RECENT HEALTH LOGS</p>${weights}${foods}</div>` : ""}<button type="button" class="ghost compact mastery-entry-edit" data-mastery-edit-health>Edit health log</button></article>`;
 }
 
 function challengeCard(challenge) {
@@ -392,6 +392,25 @@ function openFitnessDialog(type, existing = null, editKind = "") {
       row.dataset.estimateSource = existing.estimate_source || "AI";
       row.dataset.estimatedAt = existing.estimated_at || new Date().toISOString();
       row.querySelector("[data-estimate-status]").textContent = "Saved estimate loaded. Re-estimate if the food or quantity changes.";
+    } else if (editKind === "health") {
+      form.dataset.editWeightIds = JSON.stringify(Object.fromEntries((existing.weights || []).map(item => [item.measured_at, item.id])));
+      form.dataset.editFoodIds = JSON.stringify((existing.foods || []).map(item => item.id).filter(Boolean));
+      const weightByTime = Object.fromEntries((existing.weights || []).map(item => [item.measured_at, item]));
+      ["AM", "PM"].forEach(time => { const input = form.elements[`${time.toLowerCase()}_weight`]; if (input) input.value = weightByTime[time]?.weight_lbs ?? ""; });
+      const list = form.querySelector(".food-list");
+      const foods = existing.foods || [];
+      list.innerHTML = (foods.length ? foods : [{}]).map(() => foodRow()).join("");
+      [...list.querySelectorAll(".nutrition-row")].forEach((row, index) => {
+        const food = foods[index] || {};
+        row.dataset.recordId = food.id || "";
+        ["food_name", "quantity_text", "calories", "protein_g", "carbs_g", "fat_g", "fiber_g", "sugar_g"].forEach(field => { const input = row.querySelector(`[name="${field}"]`); if (input) input.value = food[field] ?? ""; });
+        if (food.id) {
+          row.dataset.estimated = "true";
+          row.dataset.estimateSource = food.estimate_source || "AI";
+          row.dataset.estimatedAt = food.estimated_at || new Date().toISOString();
+          row.querySelector("[data-estimate-status]").textContent = "Saved estimate loaded. Re-estimate if the food or quantity changes.";
+        }
+      });
     }
   }
   form.addEventListener("submit", saveFitnessLog);
@@ -472,6 +491,7 @@ async function saveFitnessLog(event) {
       const namedFoodRows = foodRows.filter(row => String(row.querySelector('[name="food_name"]')?.value || "").trim());
       if (namedFoodRows.some(row => row.dataset.estimated !== "true")) return alert("Estimate each food after entering its quantity.");
       const foods = foodRows.map(row => ({
+        record_id: row.dataset.recordId || null,
         food_name: String(row.querySelector('[name="food_name"]')?.value || "").trim(),
         quantity_text: String(row.querySelector('[name="quantity_text"]')?.value || "").trim(),
         calories: Number(row.querySelector('[name="calories"]')?.value || 0) || null,
@@ -493,17 +513,54 @@ async function saveFitnessLog(event) {
         if (error) throw error;
       } else if (editId && editKind === "food") {
         if (!foods[0]) return alert("Enter a food before saving.");
-        const { error } = await db.from("health_food_logs").update(foods[0]).eq("id", editId).eq("user_id", userId);
+        const { record_id, ...food } = foods[0];
+        const { error } = await db.from("health_food_logs").update(food).eq("id", editId).eq("user_id", userId);
         if (error) throw error;
+      } else if (editKind === "health") {
+        const weightIds = JSON.parse(form.dataset.editWeightIds || "{}");
+        const submittedTimes = new Set(weights.map(item => item.measured_at));
+        for (const [measuredAt, id] of Object.entries(weightIds)) {
+          if (!submittedTimes.has(measuredAt)) {
+            const { error } = await db.from("health_weight_logs").delete().eq("id", id).eq("user_id", userId);
+            if (error) throw error;
+          }
+        }
+        for (const weight of weights) {
+          const id = weightIds[weight.measured_at];
+          const request = id
+            ? db.from("health_weight_logs").update({ measured_at: weight.measured_at, weight_lbs: weight.weight_lbs, logged_on: loggedOn }).eq("id", id).eq("user_id", userId)
+            : db.from("health_weight_logs").insert(weight);
+          const { error } = await request;
+          if (error) throw error;
+        }
+        const submittedFoodIds = new Set(foods.map(item => item.record_id).filter(Boolean));
+        const originalFoodIds = JSON.parse(form.dataset.editFoodIds || "[]");
+        for (const id of originalFoodIds) {
+          if (!submittedFoodIds.has(id)) {
+            const { error } = await db.from("health_food_logs").delete().eq("id", id).eq("user_id", userId);
+            if (error) throw error;
+          }
+        }
+        for (const item of foods) {
+          const { record_id, ...food } = item;
+          const request = record_id
+            ? db.from("health_food_logs").update(food).eq("id", record_id).eq("user_id", userId)
+            : db.from("health_food_logs").insert(food);
+          const { error } = await request;
+          if (error) throw error;
+        }
       } else {
         if (weights.length) { const { error } = await db.from("health_weight_logs").insert(weights); if (error) throw error; }
-        if (foods.length) { const { error } = await db.from("health_food_logs").insert(foods); if (error) throw error; }
+        if (foods.length) { const { error } = await db.from("health_food_logs").insert(foods.map(({ record_id, ...food }) => food)); if (error) throw error; }
       }
       if (!weights.length && !foods.length) return alert("Add a weigh-in or at least one food item.");
     }
     form.dataset.editId = "";
     form.dataset.editKind = "";
     form.dataset.editLoggedOn = "";
+    form.dataset.editMeasuredAt = "";
+    form.dataset.editWeightIds = "";
+    form.dataset.editFoodIds = "";
     document.querySelector("#mastery-fitness-dialog")?.close();
     await load();
     window.dispatchEvent(new Event("aegis:mastery-changed"));
@@ -594,6 +651,8 @@ document.addEventListener("click", event => {
   if (editEntry) { const entry = entries.find(item => String(item.id) === String(editEntry.dataset.masteryEditEntry)); if (entry) { lane = bodyTypes.includes(entry.category) ? "body" : "mind"; activeType = entry.category; saveView(); openDialog(entry); } return; }
   const editSession = event.target.closest("[data-mastery-edit-session]");
   if (editSession) { const session = trainingSessions.find(item => String(item.id) === String(editSession.dataset.masteryEditSession)); if (session) { lane = "body"; activeType = "Gym"; saveView(); openFitnessDialog("Gym", session); } return; }
+  const editHealth = event.target.closest("[data-mastery-edit-health]");
+  if (editHealth) { const today = new Date().toISOString().slice(0, 10); lane = "body"; activeType = "Health"; saveView(); openFitnessDialog("Health", { logged_on: today, weights: weightLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today), foods: foodLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today) }, "health"); return; }
   const editWeight = event.target.closest("[data-mastery-edit-weight]");
   if (editWeight) { const weight = weightLogs.find(item => String(item.id) === String(editWeight.dataset.masteryEditWeight)); if (weight) { lane = "body"; activeType = "Health"; saveView(); openFitnessDialog("Health", weight, "weight"); } return; }
   const editFood = event.target.closest("[data-mastery-edit-food]");
