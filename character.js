@@ -39,7 +39,7 @@ function radarValue(xp) {
   return Math.max(0, Math.min(1, (meter.level + meter.progress / 100) / 5));
 }
 
-function characterRadarPoints(metrics, recoveryProgress) {
+function characterRadarData(metrics, recoveryProgress) {
   const values = [
     radarValue(metrics.discipline.xp),
     radarValue(metrics.trading.xp),
@@ -48,28 +48,52 @@ function characterRadarPoints(metrics, recoveryProgress) {
     radarValue(metrics.mastery.mind.xp),
     Math.max(0, Math.min(1, recoveryProgress / 100)),
   ];
-  const axes = [[50, 7], [87, 28], [87, 72], [50, 93], [13, 72], [13, 28]];
+  const axes = [
+    { x: 50, y: 7, label: "DISCIPLINE", anchor: "middle", labelX: 50, labelY: 2 },
+    { x: 87, y: 28, label: "TRADING", anchor: "start", labelX: 91, labelY: 25 },
+    { x: 87, y: 72, label: "BODY", anchor: "start", labelX: 91, labelY: 77 },
+    { x: 50, y: 93, label: "CCFX", anchor: "middle", labelX: 50, labelY: 99 },
+    { x: 13, y: 72, label: "MIND", anchor: "end", labelX: 9, labelY: 77 },
+    { x: 13, y: 28, label: "RECOVERY", anchor: "end", labelX: 9, labelY: 25 },
+  ];
   return values.map((value, index) => {
-    const [x, y] = axes[index];
-    return `${50 + (x - 50) * value},${50 + (y - 50) * value}`;
-  }).join(" ");
+    const axis = axes[index];
+    return { ...axis, value, pointX: 50 + (axis.x - 50) * value, pointY: 50 + (axis.y - 50) * value };
+  });
 }
 
-function focusStat(label, metric, accent = "blue") {
+function radarPoints(data) {
+  return data.map((axis) => `${axis.pointX},${axis.pointY}`).join(" ");
+}
+
+function focusStat(label, metric, accent = "blue", axis = label.toLowerCase()) {
   const meter = levelFromXp(metric.xp);
-  return `<div class="character-focus-stat ${accent}"><span>${label}</span><b>LV ${meter.level}</b><small>${Math.round(meter.current)} / ${meter.required} XP to next level</small><i><em style="width:${Math.max(0, Math.min(100, meter.progress))}%"></em></i></div>`;
+  return `<div class="character-focus-stat ${accent}" data-focus-axis="${axis}" aria-label="${label}"><b>LV ${meter.level}</b><small>${Math.round(meter.current)} / ${meter.required} XP to next level</small><i><em style="width:${Math.max(0, Math.min(100, meter.progress))}%"></em></i></div>`;
 }
 
 function recoveryFocusStat(recovery) {
   const progress = recovery ? missionProgress(recovery) : 0;
-  return `<div class="character-focus-stat green"><span>RECOVERY QUEST</span><b>${progress}%</b><small>${recovery ? escape(recovery.title) : "No Recovery mission open"}</small><i><em style="width:${progress}%"></em></i></div>`;
+  return `<div class="character-focus-stat green" data-focus-axis="recovery" aria-label="Recovery quest"><b>${progress}%</b><small>${recovery ? escape(recovery.title) : "No Recovery mission open"}</small><i><em style="width:${progress}%"></em></i></div>`;
 }
 
 function characterFocus(metrics, recovery) {
   const level = levelFromXp(metrics.totalXp);
   const recoveryProgress = recovery ? missionProgress(recovery) : 0;
-  const points = characterRadarPoints(metrics, recoveryProgress);
-  return `<section class="character-focus panel"><div class="character-focus-heading"><p class="eyebrow blue-text">CHARACTER SYSTEMS / LIVE PROFILE</p><h3>The whole system at a glance.</h3><p>Each axis reflects evidence earned in that system. The center level is your combined character XP.</p></div><div class="character-focus-layout"><div class="character-hexagon"><svg viewBox="0 0 100 100" role="img" aria-label="Character level radar"><polygon class="character-radar-grid" points="50,7 87,28 87,72 50,93 13,72 13,28"></polygon><polygon class="character-radar-grid inner" points="50,22 74,36 74,64 50,78 26,64 26,36"></polygon><path class="character-radar-axis" d="M16 50H84M50 7V93M16 28L84 72M84 28L16 72"></path><polygon class="character-radar-data" points="${points}"></polygon></svg><div class="character-hexagon-core"><span>CHARACTER LEVEL</span><strong>LV ${level.level}</strong><small>${Math.round(level.current)} / ${level.required} XP</small></div></div><div class="character-focus-stats">${focusStat("DISCIPLINE", metrics.discipline, "amber")}${focusStat("TRADING INTEL", metrics.trading, "blue")}${focusStat("BODY MASTERY", metrics.mastery.body, "green")}${focusStat("CCFX QUESTS", metrics.ccfx, "amber")}${focusStat("MIND MASTERY", metrics.mastery.mind, "blue")}${recoveryFocusStat(recovery)}</div></div></section>`;
+  const radarData = characterRadarData(metrics, recoveryProgress);
+  const points = radarPoints(radarData);
+  const axisMarkup = radarData.map((axis) => `<g class="character-radar-level" data-focus-axis="${axis.label.toLowerCase()}" tabindex="0" role="button" aria-label="${axis.label} level"><line class="character-radar-spoke" x1="50" y1="50" x2="${axis.x}" y2="${axis.y}"></line><circle class="character-radar-dot" cx="${axis.pointX}" cy="${axis.pointY}" r="2.3"></circle><circle class="character-radar-hit" cx="${axis.pointX}" cy="${axis.pointY}" r="7"></circle><text class="character-radar-label" x="${axis.labelX}" y="${axis.labelY}" text-anchor="${axis.anchor}">${axis.label}</text></g>`).join("");
+  return `<section class="character-focus panel"><div class="character-focus-heading"><p class="eyebrow blue-text">CHARACTER SYSTEMS / LIVE PROFILE</p><h3>The whole system at a glance.</h3><p>Hover or focus an axis to isolate that level. Each line reflects evidence earned in its system.</p></div><div class="character-focus-layout"><div class="character-hexagon-wrap"><div class="character-hexagon"><svg viewBox="0 0 100 100" role="img" aria-label="Character level radar"><polygon class="character-radar-grid" points="50,7 87,28 87,72 50,93 13,72 13,28"></polygon><polygon class="character-radar-grid inner" points="50,22 74,36 74,64 50,78 26,64 26,36"></polygon><path class="character-radar-axis" d="M16 50H84M50 7V93M16 28L84 72M84 28L16 72"></path><polygon class="character-radar-data" points="${points}"></polygon>${axisMarkup}</svg></div><div class="character-hexagon-readout"><span>CHARACTER LEVEL</span><strong>LV ${level.level}</strong><small>${Math.round(level.current)} / ${level.required} XP</small></div></div><div class="character-focus-stats">${focusStat("DISCIPLINE", metrics.discipline, "amber", "discipline")}${focusStat("TRADING INTEL", metrics.trading, "blue", "trading")}${focusStat("BODY MASTERY", metrics.mastery.body, "green", "body")}${focusStat("CCFX QUESTS", metrics.ccfx, "amber", "ccfx")}${focusStat("MIND MASTERY", metrics.mastery.mind, "blue", "mind")}${recoveryFocusStat(recovery)}</div></div></section>`;
+}
+
+function bindCharacterFocusHover() {
+  const items = Array.from(document.querySelectorAll("#character [data-focus-axis]"));
+  const setHighlight = (axis, active) => items.filter((item) => item.dataset.focusAxis === axis).forEach((item) => item.classList.toggle("is-highlighted", active));
+  items.forEach((item) => {
+    item.addEventListener("mouseenter", () => setHighlight(item.dataset.focusAxis, true));
+    item.addEventListener("mouseleave", () => setHighlight(item.dataset.focusAxis, false));
+    item.addEventListener("focus", () => setHighlight(item.dataset.focusAxis, true));
+    item.addEventListener("blur", () => setHighlight(item.dataset.focusAxis, false));
+  });
 }
 
 function directorReviewPanel() {
@@ -86,6 +110,7 @@ function render({ operations, occurrences, trades, missions, projects, contentIt
   window.dispatchEvent(new CustomEvent("aegis:character-levels-changed", { detail: levels }));
   const launch = !xpCampaign ? `<section class="panel xp-launch-panel"><p class="eyebrow amber">CAMPAIGN CALIBRATION</p><h3>XP is paused.</h3><p class="body-copy">Nothing logged before activation will count. When you are ready, start the five-year campaign and the ledger will begin from that moment forward.</p>${xpCampaignError ? `<p class="body-copy">${escape(xpCampaignError)}</p>` : `<button class="primary compact" type="button" id="start-xp-campaign">Start campaign tracking</button>`}</section>` : "";
   $("#character").innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p></div>${launch}${characterFocus(metrics, recovery)}<section class="evidence-grid">${xpStat("DISCIPLINE", discipline.xp, discipline.ledger, "daily", "amber")}${xpStat("TRADING INTEL", trading.xp, trading.ledger, "monthly", "blue")}${xpStat("MIND MASTERY", mastery.mind.xp, mastery.mind.ledger, "Mind", "blue")}${xpStat("BODY MASTERY", mastery.body.xp, mastery.body.ledger, "Body", "green")}${xpStat("CCFX QUESTS", ccfx.xp, ccfx.ledger, "CCFX", "amber")}${metricCard("RECOVERY QUEST", recovery ? missionLabel(recovery) : "LOCKED", recovery ? escape(recovery.title) : "Awaiting a Recovery mission", missionProgress(recovery), "green")}</section>${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
+  bindCharacterFocusHover();
 }
 
 async function load() {

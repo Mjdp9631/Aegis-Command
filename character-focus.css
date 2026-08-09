@@ -7,23 +7,33 @@
 .character-focus-heading h3 { margin: 0 0 8px; font-size: 22px; }
 .character-focus-heading > p:last-child { max-width: 640px; margin: 0; color: #9db1c9; font-size: 12px; line-height: 1.55; }
 .character-focus-layout { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(360px, 1.2fr); align-items: center; gap: clamp(24px, 6vw, 90px); margin-top: 24px; }
+.character-hexagon-wrap { display: grid; justify-items: center; }
 .character-hexagon { position: relative; width: min(100%, 390px); aspect-ratio: 1; margin: auto; display: grid; place-items: center; }
 .character-hexagon svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 24px rgba(83, 169, 244, .12)); }
 .character-radar-grid { fill: rgba(110, 183, 255, .025); stroke: rgba(141, 183, 222, .3); stroke-width: .7; }
 .character-radar-grid.inner { fill: transparent; stroke: rgba(141, 183, 222, .14); }
 .character-radar-axis { stroke: rgba(141, 183, 222, .15); stroke-width: .45; }
 .character-radar-data { fill: rgba(110, 183, 255, .22); stroke: #73c1ff; stroke-width: 1.2; filter: drop-shadow(0 0 5px rgba(110, 183, 255, .35)); }
-.character-hexagon-core { position: absolute; inset: 34%; display: grid; align-content: center; justify-items: center; text-align: center; pointer-events: none; }
-.character-hexagon-core span { color: var(--muted); font-size: 8px; font-weight: 800; letter-spacing: .13em; }
-.character-hexagon-core strong { margin: 6px 0 4px; color: var(--amber); font-size: 36px; letter-spacing: -.07em; line-height: 1; }
-.character-hexagon-core small { color: #b7c8da; font-size: 10px; }
+.character-radar-level { cursor: pointer; outline: none; }
+.character-radar-spoke { stroke: rgba(141, 183, 222, .18); stroke-width: .45; transition: stroke .2s, stroke-width .2s; }
+.character-radar-dot { fill: #73c1ff; stroke: #d9f0ff; stroke-width: .55; transition: r .2s, fill .2s, filter .2s; }
+.character-radar-hit { fill: transparent; pointer-events: all; }
+.character-radar-label { fill: #8fa6c0; font-size: 3.4px; font-weight: 800; letter-spacing: .08em; transition: fill .2s, font-size .2s, filter .2s; pointer-events: auto; cursor: pointer; }
+.character-radar-level:hover .character-radar-spoke, .character-radar-level.is-highlighted .character-radar-spoke { stroke: var(--amber); stroke-width: 1.1; }
+.character-radar-level:hover .character-radar-dot, .character-radar-level.is-highlighted .character-radar-dot { fill: var(--amber); r: 3.4; filter: drop-shadow(0 0 4px rgba(228, 173, 99, .85)); }
+.character-radar-level:hover .character-radar-label, .character-radar-level.is-highlighted .character-radar-label { fill: #fff1d7; font-size: 3.8px; filter: drop-shadow(0 0 3px rgba(228, 173, 99, .8)); }
+.character-hexagon-readout { display: grid; justify-items: center; text-align: center; margin-top: -2px; }
+.character-hexagon-readout span { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .13em; }
+.character-hexagon-readout strong { margin: 5px 0 3px; color: var(--amber); font-size: 36px; letter-spacing: -.07em; line-height: 1; }
+.character-hexagon-readout small { color: #b7c8da; font-size: 10px; }
 .character-focus-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .character-focus-stat { display: grid; gap: 6px; padding: 15px; border: 1px solid var(--line); border-radius: 9px; background: rgba(7, 13, 22, .58); }
-.character-focus-stat span { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .1em; }
 .character-focus-stat b { color: var(--blue); font-size: 23px; letter-spacing: -.05em; line-height: 1; }
 .character-focus-stat small { min-height: 27px; color: #9db1c9; font-size: 10px; line-height: 1.35; }
 .character-focus-stat i { display: block; height: 3px; overflow: hidden; border-radius: 999px; background: #273141; }
 .character-focus-stat i em { display: block; height: 100%; border-radius: inherit; background: var(--blue); }
+.character-focus-stat:hover, .character-focus-stat.is-highlighted { border-color: rgba(228, 173, 99, .62); background: rgba(45, 35, 22, .46); box-shadow: 0 0 18px rgba(228, 173, 99, .1); }
+.character-focus-stat:hover b, .character-focus-stat.is-highlighted b { color: var(--amber); }
 .character-focus-stat.amber b { color: var(--amber); }
 .character-focus-stat.amber i em { background: var(--amber); }
 .character-focus-stat.green b { color: var(--green); }
