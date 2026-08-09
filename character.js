@@ -15,23 +15,13 @@ function missionProgress(mission) {
   return mission?.completion_type === "units" && Number(mission.target_count) > 0 ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission?.completed ? 100 : 0;
 }
 
-function missionLabel(mission) {
-  return mission?.completion_type === "units" && Number(mission.target_count) > 0 ? `${Math.min(Number(mission.completed_count) || 0, Number(mission.target_count))} / ${mission.target_count} ${mission.unit_label || "units"}` : mission?.completed ? "Complete" : "Not complete";
-}
-
 function xpLedger(entries, cadence) {
   const rows = entries.length ? entries.map((entry) => `<li><span><b>${escape(entry.label)}</b>${escape(entry.detail)}</span><strong class="${entry.change < 0 ? "negative" : ""}">${entry.change >= 0 ? "+" : ""}${entry.change} XP</strong></li>`).join("") : `<li class="ledger-empty">No ${cadence} XP evidence yet.</li>`;
   return `<details class="xp-ledger"><summary>View XP ledger</summary><ul>${rows}</ul></details>`;
 }
 
-function xpStat(label, xp, entries, cadence, accent = "blue") {
-  if (!xpCampaign) return `<div class="xp-stat-group"><article class="evidence-card ${accent}"><span>${label}</span><strong>LV 0</strong><div class="stat-meter"><i style="width:0%"></i></div><small><b>XP CALIBRATION PENDING</b></small></article><div class="xp-ledger xp-paused"><span>Tracking begins when you authorize the campaign start.</span></div></div>`;
-  const meter = levelFromXp(xp);
-  return `<div class="xp-stat-group"><article class="evidence-card ${accent}"><span>${label}</span><strong>LV ${meter.level}</strong><div class="stat-meter"><i style="width:${Math.max(0, Math.min(100, meter.progress))}%"></i></div><small><b>${Math.round(meter.current)} / ${meter.required} XP to LV ${meter.level + 1}</b></small></article>${xpLedger(entries, cadence)}</div>`;
-}
-
-function metricCard(label, value, detail, progress, accent = "blue") {
-  return `<article class="evidence-card ${accent}"><span>${label}</span><strong>${value}</strong><div class="stat-meter"><i style="width:${Math.max(0, Math.min(100, progress))}%"></i></div><small>${detail}</small></article>`;
+function xpLedgerOrPaused(entries, cadence) {
+  return xpCampaign ? xpLedger(entries, cadence) : `<div class="xp-ledger xp-paused"><span>Tracking begins when you authorize the campaign start.</span></div>`;
 }
 
 function radarValue(xp) {
@@ -66,9 +56,9 @@ function radarPoints(data) {
   return data.map((axis) => `${axis.pointX},${axis.pointY}`).join(" ");
 }
 
-function focusStat(label, metric, accent = "blue", axis = label.toLowerCase()) {
+function focusStat(label, metric, cadence, accent = "blue", axis = label.toLowerCase()) {
   const meter = levelFromXp(metric.xp);
-  return `<div class="character-focus-stat ${accent}" data-focus-axis="${axis}" aria-label="${label}"><b>LV ${meter.level}</b><small>${Math.round(meter.current)} / ${meter.required} XP to next level</small><i><em style="width:${Math.max(0, Math.min(100, meter.progress))}%"></em></i></div>`;
+  return `<div class="character-focus-stat ${accent}" data-focus-axis="${axis}" aria-label="${label}"><b>LV ${meter.level}</b><small>${Math.round(meter.current)} / ${meter.required} XP to next level</small><i><em style="width:${Math.max(0, Math.min(100, meter.progress))}%"></em></i>${xpLedgerOrPaused(metric.ledger, cadence)}</div>`;
 }
 
 function recoveryFocusStat(recovery) {
@@ -82,7 +72,7 @@ function characterFocus(metrics, recovery) {
   const radarData = characterRadarData(metrics, recoveryProgress);
   const points = radarPoints(radarData);
   const axisMarkup = radarData.map((axis) => `<g class="character-radar-level" data-focus-axis="${axis.label.toLowerCase()}" tabindex="0" role="button" aria-label="${axis.label} level"><line class="character-radar-spoke" x1="50" y1="50" x2="${axis.x}" y2="${axis.y}"></line><circle class="character-radar-dot" cx="${axis.pointX}" cy="${axis.pointY}" r="2.3"></circle><circle class="character-radar-hit" cx="${axis.pointX}" cy="${axis.pointY}" r="7"></circle><text class="character-radar-label" x="${axis.labelX}" y="${axis.labelY}" text-anchor="${axis.anchor}">${axis.label}</text></g>`).join("");
-  return `<section class="character-focus panel"><div class="character-focus-heading"><p class="eyebrow blue-text">CHARACTER SYSTEMS / LIVE PROFILE</p><h3>The whole system at a glance.</h3><p>Hover or focus an axis to isolate that level. Each line reflects evidence earned in its system.</p></div><div class="character-focus-layout"><div class="character-hexagon-wrap"><div class="character-hexagon"><svg viewBox="0 0 100 100" role="img" aria-label="Character level radar"><polygon class="character-radar-grid" points="50,7 87,28 87,72 50,93 13,72 13,28"></polygon><polygon class="character-radar-grid inner" points="50,22 74,36 74,64 50,78 26,64 26,36"></polygon><path class="character-radar-axis" d="M16 50H84M50 7V93M16 28L84 72M84 28L16 72"></path><polygon class="character-radar-data" points="${points}"></polygon>${axisMarkup}</svg></div><div class="character-hexagon-readout"><span>CHARACTER LEVEL</span><strong>LV ${level.level}</strong><small>${Math.round(level.current)} / ${level.required} XP</small></div></div><div class="character-focus-stats">${focusStat("DISCIPLINE", metrics.discipline, "amber", "discipline")}${focusStat("TRADING INTEL", metrics.trading, "blue", "trading")}${focusStat("BODY MASTERY", metrics.mastery.body, "green", "body")}${focusStat("CCFX QUESTS", metrics.ccfx, "amber", "ccfx")}${focusStat("MIND MASTERY", metrics.mastery.mind, "blue", "mind")}${recoveryFocusStat(recovery)}</div></div></section>`;
+  return `<section class="character-focus panel"><div class="character-focus-heading"><p class="eyebrow blue-text">CHARACTER SYSTEMS / LIVE PROFILE</p><h3>The whole system at a glance.</h3><p>Hover or focus an axis to isolate that level. Each line reflects evidence earned in its system.</p></div><div class="character-focus-layout"><div class="character-hexagon-wrap"><div class="character-hexagon"><svg viewBox="0 0 100 100" role="img" aria-label="Character level radar"><polygon class="character-radar-grid" points="50,7 87,28 87,72 50,93 13,72 13,28"></polygon><polygon class="character-radar-grid inner" points="50,22 74,36 74,64 50,78 26,64 26,36"></polygon><path class="character-radar-axis" d="M16 50H84M50 7V93M16 28L84 72M84 28L16 72"></path><polygon class="character-radar-data" points="${points}"></polygon>${axisMarkup}</svg></div><div class="character-hexagon-readout"><span>CHARACTER LEVEL</span><strong>LV ${level.level}</strong><small>${Math.round(level.current)} / ${level.required} XP</small></div></div><div class="character-focus-stats">${focusStat("DISCIPLINE", metrics.discipline, "daily", "amber", "discipline")}${focusStat("TRADING INTEL", metrics.trading, "monthly", "blue", "trading")}${focusStat("BODY MASTERY", metrics.mastery.body, "Body", "green", "body")}${focusStat("CCFX QUESTS", metrics.ccfx, "CCFX", "amber", "ccfx")}${focusStat("MIND MASTERY", metrics.mastery.mind, "Mind", "blue", "mind")}${recoveryFocusStat(recovery)}</div></div></section>`;
 }
 
 function bindCharacterFocusHover() {
@@ -109,7 +99,7 @@ function render({ operations, occurrences, trades, missions, projects, contentIt
   localStorage.setItem("aegis-character-levels", JSON.stringify(levels));
   window.dispatchEvent(new CustomEvent("aegis:character-levels-changed", { detail: levels }));
   const launch = !xpCampaign ? `<section class="panel xp-launch-panel"><p class="eyebrow amber">CAMPAIGN CALIBRATION</p><h3>XP is paused.</h3><p class="body-copy">Nothing logged before activation will count. When you are ready, start the five-year campaign and the ledger will begin from that moment forward.</p>${xpCampaignError ? `<p class="body-copy">${escape(xpCampaignError)}</p>` : `<button class="primary compact" type="button" id="start-xp-campaign">Start campaign tracking</button>`}</section>` : "";
-  $("#character").innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p></div>${launch}${characterFocus(metrics, recovery)}<section class="evidence-grid">${xpStat("DISCIPLINE", discipline.xp, discipline.ledger, "daily", "amber")}${xpStat("TRADING INTEL", trading.xp, trading.ledger, "monthly", "blue")}${xpStat("MIND MASTERY", mastery.mind.xp, mastery.mind.ledger, "Mind", "blue")}${xpStat("BODY MASTERY", mastery.body.xp, mastery.body.ledger, "Body", "green")}${xpStat("CCFX QUESTS", ccfx.xp, ccfx.ledger, "CCFX", "amber")}${metricCard("RECOVERY QUEST", recovery ? missionLabel(recovery) : "LOCKED", recovery ? escape(recovery.title) : "Awaiting a Recovery mission", missionProgress(recovery), "green")}</section>${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
+  $("#character").innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p></div>${launch}${characterFocus(metrics, recovery)}${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
   bindCharacterFocusHover();
 }
 
