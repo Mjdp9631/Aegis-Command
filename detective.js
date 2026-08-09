@@ -218,8 +218,10 @@ function syncGroupSplitVisibility() {
   const type = $("#account-group-type")?.value;
   const wrap = $("#account-group-split-wrap");
   if (!wrap) return;
+  const input = $("#account-group-split");
   wrap.hidden = type !== "Prop Firm";
-  $("#account-group-split").disabled = type !== "Prop Firm";
+  input.disabled = type !== "Prop Firm";
+  input.required = type === "Prop Firm";
 }
 
 function syncGroupOptionsForAccountType() {
