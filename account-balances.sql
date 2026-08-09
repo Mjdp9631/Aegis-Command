@@ -6,6 +6,7 @@ create table if not exists public.account_balances (
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   account_name text not null check (char_length(account_name) between 1 and 80),
   starting_balance numeric(14,2) not null check (starting_balance > 0),
+  account_type text not null default 'Live' check (account_type in ('Live', 'Prop Firm')),
   is_primary boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -22,3 +23,6 @@ with check ((select auth.uid()) = user_id);
 
 create index if not exists account_balances_user_idx
 on public.account_balances (user_id, is_primary desc, created_at asc);
+
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on public.account_balances to authenticated;

@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Rajdhani:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="auth-gate.css" />
-    <link rel="stylesheet" href="detective.css" />
+    <link rel="stylesheet" href="detective.css?v=group-withdrawals-v1" />
     <link rel="stylesheet" href="brain-review.css" />
     <link rel="stylesheet" href="detective-visibility.css?v=tab-visibility-v1" />
     <link rel="stylesheet" href="trade-review-input.css" />
@@ -138,6 +138,7 @@
             <div class="panel-head"><div><p class="eyebrow blue-text">02 — ACCOUNT INTELLIGENCE</p><h3>Account Balances</h3></div></div>
             <p class="body-copy">Set each account’s starting balance once. Closed trade PnL percentages compound into its current balance automatically.</p>
             <form id="account-balance-form" class="account-balance-form"><label>Account name <input id="account-balance-name" required maxlength="80" placeholder="e.g. Master" /></label><label>Starting balance <input id="account-starting-balance" required min="0.01" step="0.01" type="number" placeholder="10000" /></label><label class="account-primary"><input id="account-primary" type="checkbox" /> Use as Command Center balance</label><button class="primary compact" type="submit">Save account</button></form>
+            <div id="account-ledger-controls"><form id="account-group-form" class="account-group-form"><div class="account-form-heading"><p class="eyebrow amber">CREATE GROUP</p><small>Separate live and prop-firm accounting.</small></div><label>Group name <input id="account-group-name" required maxlength="80" placeholder="e.g. Prop Group 1" /></label><label>Type <select id="account-group-type"><option>Live</option><option>Prop Firm</option></select></label><label id="account-group-split-wrap">Payout split (%) <input id="account-group-split" type="number" min="0" max="100" step="0.01" value="80" /></label><button class="primary compact" type="submit">Create group</button></form><div class="account-inline-settings"><label>Account type <select id="account-balance-type"><option>Live</option><option>Prop Firm</option></select></label><label>Assign group <select id="account-balance-group"><option value="">No group</option></select></label></div></div>
             <div class="account-balance-list" id="account-balance-list"><p class="empty-account-state">No account balance is configured yet.</p></div>
           </section>
           <section class="detective-brain" id="detective-brain" hidden>
@@ -225,7 +226,7 @@
     <script type="module" src="auth-flow.js"></script>
     <script type="module" src="mission.js?v=active-only-v1"></script>
     <script type="module" src="phase-protocol.js?v=phase-protocol-v6"></script>
-    <script type="module" src="detective.js?v=auth-safe-v1"></script>
+    <script type="module" src="detective.js?v=group-withdrawals-v1"></script>
     <script type="module" src="brain-review.js?v=blind-scenario-v1"></script>
     <script type="module" src="advisor.js?v=curated-advisory-v1"></script>
     <script type="module" src="notion-importer.js"></script>
@@ -233,7 +234,7 @@
     <script type="module" src="character.js?v=hexagon-focus-v1"></script>
     <script type="module" src="command-center.js?v=auth-safe-v1"></script>
     <script type="module" src="command-summary.js?v=auth-safe-v2"></script>
-    <script type="module" src="command-dashboard.js?v=auth-safe-v2"></script>
+    <script type="module" src="command-dashboard.js?v=group-withdrawals-v1"></script>
     <script type="module" src="mastery-clean.js?v=edit-box-v2"></script>
     <script type="module" src="tab-advisory.js?v=auth-safe-v2"></script>
     <link rel="stylesheet" href="ai-lane-layout.css?v=1" />

@@ -8,6 +8,7 @@ let dashboardData = null;
 let activeRange = "all";
 let activeChart = null;
 let activeChartMode = "pnl";
+let accountLedger = { groups: [], memberships: [], tradeLinks: [], withdrawals: [], allocations: [] };
 
 function normalOutcome(value) {
   const item = String(value || "").trim().toLowerCase();
@@ -63,6 +64,11 @@ function rangeCutoff(trades) {
   return cutoff;
 }
 
+function ledgerMembershipAt(accountId, timestamp) {
+  const time = new Date(timestamp || 0).getTime();
+  return accountLedger.memberships.filter((membership) => membership.account_id === accountId && new Date(membership.joined_at).getTime() <= time && (!membership.left_at || new Date(membership.left_at).getTime() > time)).sort((a, b) => new Date(b.joined_at) - new Date(a.joined_at))[0] || null;
+}
+
 function valueSeries(trades, accounts) {
   const completed = trades.filter(isClosed).sort((a, b) => new Date(a.traded_at || a.created_at) - new Date(b.traded_at || b.created_at));
   const cutoff = rangeCutoff(completed);
@@ -70,13 +76,25 @@ function valueSeries(trades, accounts) {
     const account = (accounts || []).find((item) => item.is_primary) || (accounts || [])[0];
     if (!account) return { entries: [], total: 0, unit: "$", count: 0, accountName: null };
     let total = Number(account.starting_balance);
-    const allEntries = completed.filter((trade) => String(trade.account || "").trim() === account.account_name).map((trade) => {
+    const events = [];
+    completed.filter((trade) => String(trade.account || "").trim() === account.account_name).forEach((trade) => events.push({ type: "journal", time: new Date(trade.traded_at || trade.created_at), trade }));
+    accountLedger.tradeLinks.forEach((link) => {
+      const trade = completed.find((item) => item.id === link.trade_id);
+      if (trade && ledgerMembershipAt(account.id, trade.traded_at || trade.created_at)?.group_id === link.group_id) events.push({ type: "group-trade", time: new Date(trade.traded_at || trade.created_at), link });
+    });
+    accountLedger.allocations.filter((allocation) => allocation.account_id === account.id).forEach((allocation) => {
+      const withdrawal = accountLedger.withdrawals.find((item) => item.id === allocation.withdrawal_id);
+      if (withdrawal) events.push({ type: "withdrawal", time: new Date(withdrawal.withdrawn_at), allocation });
+    });
+    const allEntries = events.sort((a, b) => a.time - b.time).map((event) => {
       const prior = total;
-      total *= 1 + (Number(trade.pnl_percent) || 0) / 100;
-      return { total, delta: total - prior, date: new Date(trade.traded_at || trade.created_at) };
+      if (event.type === "journal") total *= 1 + (Number(event.trade.pnl_percent) || 0) / 100;
+      if (event.type === "group-trade") total += Number(event.link.actual_pnl_usd) || 0;
+      if (event.type === "withdrawal") total -= Number(event.allocation.gross_deduction_usd) || 0;
+      return { total, delta: total - prior, date: event.time };
     });
     const entries = activeRange === "all" ? allEntries : allEntries.filter((entry) => entry.date >= cutoff);
-    return { entries, total: entries.at(-1)?.total ?? Number(account.starting_balance), unit: "$", count: entries.length, accountName: account.account_name };
+    return { entries, total: allEntries.at(-1)?.total ?? Number(account.starting_balance), unit: "$", count: entries.length, accountName: account.account_name };
   }
   const filtered = activeRange === "all" ? completed : completed.filter((trade) => new Date(trade.traded_at || trade.created_at) >= cutoff);
   const usablePnl = filtered.some((trade) => trade.pnl_percent != null && Number.isFinite(Number(trade.pnl_percent)));
@@ -193,7 +211,7 @@ async function load() {
   if (!supabase) return;
   const { data: session } = await supabase.auth.getSession();
   if (!session.session) return;
-  const [tradesResult, operationsResult, occurrenceResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, challengeResult, campaignResult, accountsResult] = await Promise.all([
+  const [tradesResult, operationsResult, occurrenceResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, challengeResult, campaignResult, accountsResult, groupsResult, membershipsResult, tradeLinksResult, withdrawalsResult, allocationsResult] = await Promise.all([
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }),
     supabase.from("operations").select("id, title, scheduled_date, operation_date, completed_on, completed, schedule_mode"),
     supabase.from("operation_occurrences").select("id, operation_id, occurrence_date, completed_on, completed"),
@@ -204,9 +222,15 @@ async function load() {
     supabase.from("training_sessions").select("session_type, title, logged_on, created_at"),
     supabase.from("mastery_challenges").select("lane, category, title, status, completed_at, xp_reward"),
     supabase.from("xp_campaigns").select("started_at").maybeSingle(),
-    supabase.from("account_balances").select("*").order("is_primary", { ascending: false }).order("created_at", { ascending: true })
+    supabase.from("account_balances").select("*").order("is_primary", { ascending: false }).order("created_at", { ascending: true }),
+    supabase.from("account_groups").select("*").order("created_at", { ascending: true }),
+    supabase.from("account_group_memberships").select("*").order("joined_at", { ascending: true }),
+    supabase.from("account_group_trade_links").select("*").order("created_at", { ascending: true }),
+    supabase.from("account_group_withdrawals").select("*").order("withdrawn_at", { ascending: false }),
+    supabase.from("account_group_withdrawal_allocations").select("*").order("created_at", { ascending: true })
   ]);
   dashboardData = { trades: tradesResult.data || [], operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], mastery: masteryResult.data || [], xpCampaign: campaignResult.data || null, accounts: accountsResult.data || [] };
+  accountLedger = { groups: groupsResult.data || [], memberships: membershipsResult.data || [], tradeLinks: tradeLinksResult.data || [], withdrawals: withdrawalsResult.data || [], allocations: allocationsResult.data || [] };
   render();
 }
 
