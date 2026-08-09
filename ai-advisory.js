@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
+const sharedBuildContext = window.AEGIS_AI_CONTEXT?.buildContext;
 const $ = (selector) => document.querySelector(selector);
 const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 let latestContext = null;
@@ -85,7 +86,7 @@ function missionProgress(mission) {
   return mission.completed ? 100 : 0;
 }
 
-function buildContext({ operations, occurrences = [], missions, trades, recovery, mastery, projects, contentItems = [], tradeReviews = [], progressEvents = [], phase, directives = [], roadmap = [], deepWork = [], challenges = [], directorReviews = [], trainingSessions = [], trainingSets = [], weightLogs = [], foodLogs = [], activityEvents = [], accounts = [], groups = [], withdrawals = [], advisoryHistory = [], campaign = null }, operatingDate = operatingDayKey()) {
+function legacyBuildContext({ operations, occurrences = [], missions, trades, recovery, mastery, projects, contentItems = [], tradeReviews = [], progressEvents = [], phase, directives = [], roadmap = [], deepWork = [], challenges = [], directorReviews = [], trainingSessions = [], trainingSets = [], weightLogs = [], foodLogs = [], activityEvents = [], accounts = [], groups = [], withdrawals = [], advisoryHistory = [], campaign = null }, operatingDate = operatingDayKey()) {
   const recurringIds = new Set(operations.filter(operation => ["daily", "weekly", "recurring"].includes(String(operation.schedule_mode || "").toLowerCase())).map(operation => String(operation.id)));
   const occurrenceRows = occurrences.map(occurrence => {
     const parent = operations.find(operation => String(operation.id) === String(occurrence.operation_id)) || {};
@@ -168,10 +169,27 @@ function renderEvening(evening) {
   if (target.innerHTML !== markup) target.innerHTML = markup;
 }
 
-function proposalMarkup(item) {
+function legacyProposalMarkup(item) {
   const corrective = item.mission_kind === "corrective";
   const action = corrective ? `<button data-ai-acknowledge="${item.id}">Acknowledge directive</button>` : `<button data-ai-accept="${item.id}">Accept mission</button><button class="decline" data-ai-decline="${item.id}">Decline</button>`;
   return `<article class="ai-suggestion ${item.mission_kind}"><div><span class="eyebrow ${corrective ? "amber" : "blue-text"}">${corrective ? "SYSTEM DIRECTIVE" : "CHALLENGE TRANSMISSION"} / ${escape(item.advisor).toUpperCase()}</span><strong>${escape(item.title)}</strong><p>${escape(item.rationale)}</p><small>${(item.evidence || []).map(escape).join(" · ")}</small></div><div class="ai-actions">${action}</div></article>`;
+}
+
+function proposalMarkup(item) {
+  const corrective = item.mission_kind === "corrective";
+  const action = corrective ? `<button data-ai-acknowledge="${item.id}">Acknowledge directive</button>` : `<button data-ai-accept="${item.id}">Accept mission</button><button class="decline" data-ai-decline="${item.id}">Decline</button>`;
+  const evidenceIds = item.evidence_ids?.length ? `<small class="ai-evidence-ids">Evidence: ${item.evidence_ids.map(escape).join(" · ")}</small>` : "";
+  const feedback = `<div class="ai-feedback" aria-label="Recommendation feedback"><span>Calibrate:</span><button type="button" data-ai-feedback="useful" data-ai-feedback-id="${item.id}">Useful</button><button type="button" data-ai-feedback="irrelevant" data-ai-feedback-id="${item.id}">Not relevant</button><button type="button" data-ai-feedback="already_done" data-ai-feedback-id="${item.id}">Already done</button></div>`;
+  return `<article class="ai-suggestion ${item.mission_kind}"><div><span class="eyebrow ${corrective ? "amber" : "blue-text"}">${corrective ? "SYSTEM DIRECTIVE" : "CHALLENGE TRANSMISSION"} / ${escape(item.advisor).toUpperCase()}</span><strong>${escape(item.title)}</strong><p>${escape(item.rationale)}</p><small>${(item.evidence || []).map(escape).join(" · ")}</small>${evidenceIds}${feedback}</div><div class="ai-actions">${action}</div></article>`;
+}
+
+async function recordSuggestionFeedback(id, feedbackType) {
+  if (!supabase || !id) return;
+  const { error } = await supabase.from("ai_recommendation_feedback").insert({ suggestion_id: id, feedback_type: feedbackType });
+  if (error) return console.warn("AI feedback was not saved", error.message);
+  document.querySelectorAll(`[data-ai-feedback-id="${CSS.escape(String(id))}"]`).forEach((button) => {
+    button.classList.toggle("selected", button.dataset.aiFeedback === feedbackType);
+  });
 }
 
 function roadmapMarkup(item) {
@@ -180,15 +198,12 @@ function roadmapMarkup(item) {
 
 async function loadSuggestions() {
   if (!supabase) return;
-  // A transmission is a snapshot of the evidence available when it was issued.
-  // Never mix pending items from older scans into the current assessment.
-  const { data: latest } = await supabase.from("ai_advisories").select("id").order("created_at", { ascending: false }).limit(1).maybeSingle();
-  let data = [];
-  if (latest?.id) {
-    const response = await supabase.from("ai_mission_suggestions").select("*").eq("status", "pending").eq("advisory_id", latest.id).order("created_at", { ascending: false }).limit(8);
-    if (response.error) throw response.error;
-    data = response.data || [];
-  }
+  // Pending transmissions remain actionable until resolved. Looking only at
+  // the newest advisory hid morning suggestions whenever a later bedtime
+  // debrief was saved without directives.
+  const response = await supabase.from("ai_mission_suggestions").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(8);
+  if (response.error) throw response.error;
+  const data = response.data || [];
   const target = $("#ai-suggestion-list");
   if (target) target.innerHTML = data.length ? data.map(proposalMarkup).join("") : '<p class="ai-status">No current scan transmissions. Run an intelligence scan when you want a fresh assessment.</p>';
 }
@@ -198,6 +213,16 @@ async function loadRoadmap() {
   const { data } = await supabase.from("ai_roadmap_missions").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(4);
   const target = $("#ai-roadmap-list");
   if (target) target.innerHTML = data?.length ? data.map(roadmapMarkup).join("") : '<p class="ai-status">The campaign has enough active objectives. Navigator remains on watch.</p>';
+}
+
+async function loadCalibration() {
+  if (!supabase) return;
+  const { data, error } = await supabase.from("ai_calibration_reviews").select("*").order("week_start", { ascending: false }).limit(1).maybeSingle();
+  const target = $("#ai-calibration-list");
+  if (!target) return;
+  if (error || !data) { target.innerHTML = '<p class="ai-status">The first weekly calibration will appear after the next Monday scan.</p>'; return; }
+  const adjustments = Array.isArray(data.adjustments) ? data.adjustments : [];
+  target.innerHTML = `<p><b>${escape(data.week_start)}</b> · ${escape(data.summary)}</p><small>${adjustments.map(escape).join(" · ")}</small>`;
 }
 
 async function loadLatestAdvisory() {
@@ -220,7 +245,8 @@ function paintLatestAdvisory() {
 
 async function persist(advisory, type, { readOnly = false, operatingDate = operatingDayKey() } = {}) {
   const payload = { ...advisory, scan_mode: type, operating_date: operatingDate, completed_at: new Date().toISOString() };
-  let result = await supabase.from("ai_advisories").insert({ advisory_type: type, payload }).select().single();
+  let result = await supabase.from("ai_advisories").insert({ advisory_type: type, payload, scan_mode: type, operating_date: operatingDate }).select().single();
+  if (result.error) result = await supabase.from("ai_advisories").insert({ advisory_type: type, payload }).select().single();
   // Older Supabase projects still have the original four-value advisory check.
   // Keep bedtime usable until migration 049 is applied without changing its
   // read-only semantics.
@@ -233,14 +259,24 @@ async function persist(advisory, type, { readOnly = false, operatingDate = opera
   const directives = advisory.directives || [];
   const roadmap = advisory.roadmap || [];
   if (directives.length) {
-    const rows = directives.map((item) => ({ advisory_id: stored.id, advisor: item.advisor, mission_kind: item.mission_kind, title: item.title, category: item.category, priority: item.priority, rationale: item.rationale, evidence: item.evidence, cadence_key: item.cadence_key, escalation_level: item.escalation_level }));
+    const rows = directives.map((item) => ({ advisory_id: stored.id, advisor: item.advisor, mission_kind: item.mission_kind, title: item.title, category: item.category, priority: item.priority, rationale: item.rationale, evidence: item.evidence, evidence_ids: item.evidence_ids || [], cadence_key: item.cadence_key, escalation_level: item.escalation_level }));
     const { error: proposalError } = await supabase.from("ai_mission_suggestions").insert(rows);
     if (proposalError) throw proposalError;
     const { data: savedSuggestions } = await supabase.from("ai_mission_suggestions").select("*").eq("advisory_id", stored.id).order("created_at");
-    if (roadmap.length) await supabase.from("ai_roadmap_missions").insert(roadmap.map((item) => ({ ...item, advisory_id: stored.id })));
+    if (roadmap.length) {
+      const roadmapRows = roadmap.map((item) => ({ ...item, evidence_ids: item.evidence_ids || [], advisory_id: stored.id }));
+      let roadmapResult = await supabase.from("ai_roadmap_missions").insert(roadmapRows);
+      if (roadmapResult.error) roadmapResult = await supabase.from("ai_roadmap_missions").insert(roadmapRows.map(({ evidence_ids, ...row }) => row));
+      if (roadmapResult.error) throw roadmapResult.error;
+    }
     return savedSuggestions || [];
   }
-  if (roadmap.length) await supabase.from("ai_roadmap_missions").insert(roadmap.map((item) => ({ ...item, advisory_id: stored.id })));
+  if (roadmap.length) {
+    const roadmapRows = roadmap.map((item) => ({ ...item, evidence_ids: item.evidence_ids || [], advisory_id: stored.id }));
+    let roadmapResult = await supabase.from("ai_roadmap_missions").insert(roadmapRows);
+    if (roadmapResult.error) roadmapResult = await supabase.from("ai_roadmap_missions").insert(roadmapRows.map(({ evidence_ids, ...row }) => row));
+    if (roadmapResult.error) throw roadmapResult.error;
+  }
   return [];
 }
 
@@ -250,8 +286,12 @@ async function issueCorrective(suggestion) {
     await supabase.from("ai_mission_suggestions").update({ status: "acknowledged", resolved_at: new Date().toISOString() }).eq("id", suggestion.id);
     return;
   }
-  const mission = { title: suggestion.title, category: suggestion.category, priority: "Do now", completion_type: "binary", completion_definition: `System corrective from ${suggestion.advisor}: ${suggestion.rationale}`, completed: false, completed_count: 0, progress: 0 };
-  const { error } = await supabase.from("missions").insert(mission);
+  const mission = { title: suggestion.title, category: suggestion.category, priority: "Do now", completion_type: "binary", completion_definition: `System corrective from ${suggestion.advisor}: ${suggestion.rationale}`, completed: false, completed_count: 0, progress: 0, source_suggestion_id: suggestion.id, source_advisory_id: suggestion.advisory_id || null, evidence_ids: suggestion.evidence_ids || [], accepted_at: new Date().toISOString(), outcome_status: "accepted" };
+  let { error } = await supabase.from("missions").insert(mission);
+  if (error) {
+    const { source_suggestion_id, source_advisory_id, evidence_ids, accepted_at, outcome_status, ...legacyMission } = mission;
+    ({ error } = await supabase.from("missions").insert(legacyMission));
+  }
   if (error) throw error;
   await supabase.from("ai_mission_suggestions").update({ status: "acknowledged", resolved_at: new Date().toISOString() }).eq("id", suggestion.id);
   window.dispatchEvent(new Event("aegis:missions-changed"));
@@ -272,9 +312,9 @@ function showTransmissionQueue() {
   dialog.showModal();
 }
 
-async function gather(operatingDate = operatingDayKey()) {
+async function gather(operatingDate = operatingDayKey(), mode = "scan") {
   const optionalQuery = (query) => query.then((result) => result.error ? { data: [], error: null } : result);
-  const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews, occurrences, trainingSessions, trainingSets, weightLogs, foodLogs, activityEvents, accounts, groups, withdrawals, advisoryHistory, contentItems, tradeReviews, progressEvents, campaign] = await Promise.all([
+  const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews, occurrences, trainingSessions, trainingSets, weightLogs, foodLogs, activityEvents, accounts, groups, withdrawals, advisoryHistory, feedback, calibrationReviews, contentItems, tradeReviews, progressEvents, campaign] = await Promise.all([
     supabase.from("operations").select("*").order("scheduled_date", { ascending: false }).limit(180),
     supabase.from("missions").select("*").order("created_at", { ascending: false }).limit(180),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }).limit(1000),
@@ -297,6 +337,8 @@ async function gather(operatingDate = operatingDayKey()) {
     optionalQuery(supabase.from("account_groups").select("*").order("created_at", { ascending: true }).limit(24)),
     optionalQuery(supabase.from("account_group_withdrawals").select("*").order("withdrawn_at", { ascending: false }).limit(24)),
     optionalQuery(supabase.from("ai_advisories").select("id, advisory_type, payload, created_at").order("created_at", { ascending: false }).limit(6)),
+    optionalQuery(supabase.from("ai_recommendation_feedback").select("*").order("created_at", { ascending: false }).limit(60)),
+    optionalQuery(supabase.from("ai_calibration_reviews").select("*").order("week_start", { ascending: false }).limit(4)),
     optionalQuery(supabase.from("content_items").select("*").order("created_at", { ascending: false }).limit(12)),
     optionalQuery(supabase.from("trade_reviews").select("*").order("created_at", { ascending: false }).limit(8)),
     optionalQuery(supabase.from("mission_progress_events").select("*").order("occurred_at", { ascending: false }).limit(24)),
@@ -304,7 +346,7 @@ async function gather(operatingDate = operatingDayKey()) {
   ]);
   const values = [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews];
   if (values.some((result) => result.error)) throw new Error(values.find((result) => result.error)?.error.message || "Could not load command data.");
-  return buildContext({ operations: operations.data || [], occurrences: occurrences.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], contentItems: contentItems.data || [], tradeReviews: tradeReviews.data || [], progressEvents: progressEvents.data || [], campaign: campaign.data && !Array.isArray(campaign.data) ? campaign.data : null, phase: phase.data, directives: directives.data || [], roadmap: roadmap.data || [], deepWork: deepWork.data || [], challenges: challenges.data || [], directorReviews: directorReviews.data || [], trainingSessions: trainingSessions.data || [], trainingSets: trainingSets.data || [], weightLogs: weightLogs.data || [], foodLogs: foodLogs.data || [], activityEvents: activityEvents.data || [], accounts: accounts.data || [], groups: groups.data || [], withdrawals: withdrawals.data || [], advisoryHistory: advisoryHistory.data || [] }, operatingDate);
+  return sharedBuildContext({ operations: operations.data || [], occurrences: occurrences.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], contentItems: contentItems.data || [], tradeReviews: tradeReviews.data || [], progressEvents: progressEvents.data || [], campaign: campaign.data && !Array.isArray(campaign.data) ? campaign.data : null, phase: phase.data, directives: directives.data || [], roadmap: roadmap.data || [], deepWork: deepWork.data || [], challenges: challenges.data || [], directorReviews: directorReviews.data || [], trainingSessions: trainingSessions.data || [], trainingSets: trainingSets.data || [], weightLogs: weightLogs.data || [], foodLogs: foodLogs.data || [], activityEvents: activityEvents.data || [], accounts: accounts.data || [], groups: groups.data || [], withdrawals: withdrawals.data || [], advisoryHistory: advisoryHistory.data || [], feedback: feedback.data || [], calibration: calibrationReviews.data || [] }, operatingDate, mode);
 }
 
 function ensureScanOverlay() {
@@ -351,7 +393,7 @@ async function run(mode = "scan") {
   scanInFlight = true;
   try {
     setBusy(true, bedtime ? "COMPILING DEBRIEF…" : "ANALYZING…");
-    latestContext = await withTimeout(gather(operatingDate), 30000, "Command data took too long to load. No scan was saved.");
+    latestContext = await withTimeout(gather(operatingDate, mode), 30000, "Command data took too long to load. No scan was saved.");
     setFocusStreak(latestContext.streaks.execution);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
@@ -375,6 +417,7 @@ async function run(mode = "scan") {
     transmissionQueue = [...correctives, ...savedSuggestions.filter((item) => item.mission_kind === "challenge")];
     await loadSuggestions();
     await loadRoadmap();
+    await loadCalibration();
     showTransmissionQueue();
   } catch (error) { alert(`Intelligence scan unavailable: ${error.message}`); }
   finally { scanInFlight = false; setBusy(false); }
@@ -385,9 +428,18 @@ async function resolveSuggestion(id, action) {
   if (error || !suggestion) return alert("That transmission is no longer available.");
   if (action === "declined") {
     await supabase.from("ai_mission_suggestions").update({ status: "declined", resolved_at: new Date().toISOString() }).eq("id", id);
+  } else if (action === "acknowledged" && suggestion.mission_kind === "corrective") {
+    // Scheduled scans can already materialize a corrective mission. Reuse the
+    // duplicate-safe path instead of inserting a second copy when the user
+    // acknowledges that transmission in the sidebar.
+    await issueCorrective(suggestion);
   } else {
-    const mission = { title: suggestion.title, category: suggestion.category, priority: suggestion.priority, completion_type: "binary", completion_definition: `AI ${suggestion.mission_kind} from ${suggestion.advisor}: ${suggestion.rationale}`, completed: false, completed_count: 0, progress: 0 };
-    const { error: missionError } = await supabase.from("missions").insert(mission);
+    const mission = { title: suggestion.title, category: suggestion.category, priority: suggestion.priority, completion_type: "binary", completion_definition: `AI ${suggestion.mission_kind} from ${suggestion.advisor}: ${suggestion.rationale}`, completed: false, completed_count: 0, progress: 0, source_suggestion_id: suggestion.id, source_advisory_id: suggestion.advisory_id || null, evidence_ids: suggestion.evidence_ids || [], accepted_at: new Date().toISOString(), outcome_status: "accepted" };
+    let { error: missionError } = await supabase.from("missions").insert(mission);
+    if (missionError) {
+      const { source_suggestion_id, source_advisory_id, evidence_ids, accepted_at, outcome_status, ...legacyMission } = mission;
+      ({ error: missionError } = await supabase.from("missions").insert(legacyMission));
+    }
     if (missionError) return alert(`Mission could not be added: ${missionError.message}`);
     await supabase.from("ai_mission_suggestions").update({ status: action === "acknowledged" ? "acknowledged" : "accepted", resolved_at: new Date().toISOString() }).eq("id", id);
     window.dispatchEvent(new Event("aegis:missions-changed"));
@@ -403,8 +455,12 @@ async function resolveRoadmap(id, action) {
   if (action === "declined") {
     await supabase.from("ai_roadmap_missions").update({ status: "declined", resolved_at: new Date().toISOString() }).eq("id", id);
   } else {
-    const mission = { title: item.title, category: item.category, priority: item.priority, completion_type: "binary", completion_definition: `Five-year Roadmap Navigator / Phase ${item.phase}: ${item.objective}. Why now: ${item.rationale}`, completed: false, completed_count: 0, progress: 0 };
-    const { error: missionError } = await supabase.from("missions").insert(mission);
+    const mission = { title: item.title, category: item.category, priority: item.priority, completion_type: "binary", completion_definition: `Five-year Roadmap Navigator / Phase ${item.phase}: ${item.objective}. Why now: ${item.rationale}`, completed: false, completed_count: 0, progress: 0, source_advisory_id: item.advisory_id || null, evidence_ids: item.evidence_ids || [], accepted_at: new Date().toISOString(), outcome_status: "accepted" };
+    let { error: missionError } = await supabase.from("missions").insert(mission);
+    if (missionError) {
+      const { source_advisory_id, evidence_ids, accepted_at, outcome_status, ...legacyMission } = mission;
+      ({ error: missionError } = await supabase.from("missions").insert(legacyMission));
+    }
     if (missionError) return alert(`Mission could not be added: ${missionError.message}`);
     await supabase.from("ai_roadmap_missions").update({ status: "accepted", resolved_at: new Date().toISOString() }).eq("id", id);
     window.dispatchEvent(new Event("aegis:missions-changed"));
@@ -438,7 +494,7 @@ function mount() {
     const panel = document.createElement("section");
     panel.id = "ai-mission-control";
     panel.className = "panel ai-mission-control";
-    panel.innerHTML = '<div class="panel-head"><div><p class="eyebrow blue-text">ADAPTIVE DIRECTIVES</p><h3>Jarvis / Alfred transmissions</h3><p class="body-copy">Not routine. Correctives appear only when the evidence shows a meaningful repeating pattern; challenge transmissions appear when you have earned a higher standard.</p></div></div><div class="ai-suggestion-list" id="ai-suggestion-list"><p class="ai-status">No pending adaptive directives.</p></div>';
+    panel.innerHTML = '<div class="panel-head"><div><p class="eyebrow blue-text">ADAPTIVE DIRECTIVES</p><h3>Jarvis / Alfred transmissions</h3><p class="body-copy">Correctives respond to repeated patterns or a prolonged absence of evidence; challenge transmissions can arrive every few operating days when your evidence supports them.</p></div></div><div class="ai-suggestion-list" id="ai-suggestion-list"><p class="ai-status">No pending adaptive directives.</p></div><div class="ai-calibration-block"><p class="eyebrow amber">WEEKLY AI CALIBRATION</p><div id="ai-calibration-list"><p class="ai-status">Calibration is preparing.</p></div></div>';
     $("#ai-roadmap-navigator")?.insertAdjacentElement("afterend", panel);
   }
   ensureBedtimeAction();
@@ -447,6 +503,8 @@ function mount() {
 document.addEventListener("click", (event) => {
   const runButton = event.target.closest("[data-ai-run]");
   if (runButton) return run(runButton.dataset.aiRun);
+  const feedback = event.target.closest("[data-ai-feedback]");
+  if (feedback) return recordSuggestionFeedback(feedback.dataset.aiFeedbackId, feedback.dataset.aiFeedback);
   const accept = event.target.closest("[data-ai-accept]");
   if (accept) return resolveSuggestion(accept.dataset.aiAccept, "accepted");
   const acknowledge = event.target.closest("[data-ai-acknowledge]");
@@ -469,6 +527,7 @@ if (supabase) {
     await loadLatestAdvisory();
     await loadSuggestions();
     await loadRoadmap();
+    await loadCalibration();
   };
   supabase.auth.getSession().then(({ data: { session } }) => { if (session) restoreAdvisory(); });
   supabase.auth.onAuthStateChange((event, session) => {

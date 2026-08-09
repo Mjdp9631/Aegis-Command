@@ -121,10 +121,20 @@ function configureCreateDialog() {
   });
 }
 
+function outcomeMarkup(prefix) {
+  return `<div class="two-col"><label>Outcome <select id="${prefix}-outcome-status"><option value="accepted">Accepted</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="ineffective">Ineffective</option></select></label><label>Outcome rating <input id="${prefix}-outcome-rating" type="number" min="1" max="5" step="1" placeholder="1–5" /></label></div><label>Outcome note <textarea id="${prefix}-outcome-note" placeholder="What happened? Was this mission useful, too easy, or ineffective?"></textarea></label>`;
+}
+
+function readOutcomeFields(root, prefix, mission) {
+  const completed = Boolean(root.querySelector(`#${prefix}-completed`)?.checked);
+  return { outcome_status: root.querySelector(`#${prefix}-outcome-status`)?.value || (completed ? "completed" : mission?.outcome_status || "accepted"), outcome_rating: Number(root.querySelector(`#${prefix}-outcome-rating`)?.value || 0) || null, outcome_note: root.querySelector(`#${prefix}-outcome-note`)?.value.trim() || null };
+}
+
 function buildMissionEditor() {
   const dialog = document.createElement("dialog");
   dialog.id = "mission-editor-dialog";
   dialog.innerHTML = `<form id="mission-edit-form" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">x</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Define the evidence.</h2>${fieldMarkup("edit-mission", false)}<button class="primary" type="submit">Save mission</button></form>`;
+  dialog.querySelector("#edit-mission-form button[type=submit]").insertAdjacentHTML("beforebegin", outcomeMarkup("edit-mission"));
   document.body.appendChild(dialog);
   const form = $("#mission-edit-form");
   form.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
@@ -132,7 +142,7 @@ function buildMissionEditor() {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const mission = missions.find((item) => item.id === dialog.dataset.missionId);
-    const payload = readMission(form, "edit-mission", false, mission);
+    const payload = { ...readMission(form, "edit-mission", false, mission), ...readOutcomeFields(form, "edit-mission", mission) };
     if (!mission || !payload.title) return;
     const { data, error } = await client.from("missions").update(payload).eq("id", mission.id).select().single();
     if (error) return alert(`Mission could not be updated: ${error.message}`);
@@ -154,6 +164,9 @@ function openEditor(dialog, mission) {
   $(`#edit-mission-cadence`).value = mission.cadence_type || "";
   $(`#edit-mission-cadence-target`).value = mission.cadence_target || 1;
   $(`#edit-mission-completed`).checked = Boolean(mission.completed);
+  $(`#edit-mission-outcome-status`).value = mission.outcome_status || (mission.completed ? "completed" : "accepted");
+  $(`#edit-mission-outcome-rating`).value = mission.outcome_rating || "";
+  $(`#edit-mission-outcome-note`).value = mission.outcome_note || "";
   updateTrackingFields($("#mission-edit-form"), "edit-mission");
   dialog.showModal();
 }

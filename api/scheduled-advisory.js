@@ -1,6 +1,7 @@
 const SUPABASE_URL = "https://ifogfhaqozsyygbgwvzo.supabase.co";
 const DIRECTOR_EMAIL = "mat.investments.95@gmail.com";
 const { CAMPAIGN_CHARTER } = require("../campaign-charter.js");
+const { buildContext: sharedBuildContext, sanitizeAdvisory } = require("../ai-context.js");
 
 const schema = {
   type: "object", additionalProperties: false, required: ["morning", "signal", "evening", "sections", "roadmap", "directives"],
@@ -21,12 +22,12 @@ const schema = {
       mastery: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
       character: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } }
     } },
-    roadmap: { type: "array", maxItems: 1, items: { type: "object", additionalProperties: false, required: ["phase", "title", "category", "priority", "objective", "rationale", "evidence"], properties: { phase: { type: "integer", minimum: 0, maximum: 4 }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind", "Body"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, objective: { type: "string" }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } } } } },
-    directives: { type: "array", maxItems: 2, items: { type: "object", additionalProperties: false, required: ["advisor", "mission_kind", "title", "category", "priority", "rationale", "evidence", "cadence_key", "escalation_level"], properties: { advisor: { type: "string", enum: ["Jarvis", "Alfred"] }, mission_kind: { type: "string", enum: ["corrective", "challenge"] }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind", "Body"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } }, cadence_key: { type: "string" }, escalation_level: { type: "integer", minimum: 1, maximum: 3 } } } }
+    roadmap: { type: "array", maxItems: 1, items: { type: "object", additionalProperties: false, required: ["phase", "title", "category", "priority", "objective", "rationale", "evidence", "evidence_ids"], properties: { phase: { type: "integer", minimum: 0, maximum: 4 }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, objective: { type: "string" }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } }, evidence_ids: { type: "array", maxItems: 6, items: { type: "string" } } } } },
+    directives: { type: "array", maxItems: 2, items: { type: "object", additionalProperties: false, required: ["advisor", "mission_kind", "title", "category", "priority", "rationale", "evidence", "evidence_ids", "cadence_key", "escalation_level"], properties: { advisor: { type: "string", enum: ["Jarvis", "Alfred"] }, mission_kind: { type: "string", enum: ["corrective", "challenge"] }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } }, evidence_ids: { type: "array", maxItems: 6, items: { type: "string" } }, cadence_key: { type: "string" }, escalation_level: { type: "integer", minimum: 1, maximum: 3 } } } }
   }
 };
 
-const prompt = `You are the automated Jarvis/Alfred advisory system for a private five-year personal operating system. JARVIS is analytical and exact. ALFRED is grounded, demanding, and humane. Only use the evidence supplied. Do not give buy/sell/hold advice, price targets, position sizing, medical diagnoses, treatment plans, or instructions that conflict with clinicians. Discuss trading only as process quality, rule adherence, review, and risk discipline. Keep every message concise. Corrective missions are only for repeated/material evidence gaps and are non-negotiable. Challenge missions are optional stretch assignments. At most one corrective and two challenges. Use the exact JSON schema. The trading.authoritative_summary field is the final accounting record: never reinterpret it, never infer a perfect record from the closed-trade total, and never use a numerical trading claim that conflicts with it.`;
+const prompt = `You are the automated Jarvis/Alfred advisory system for a private five-year personal operating system. JARVIS is analytical and exact. ALFRED is grounded, demanding, and humane. Only use the evidence supplied. Do not give buy/sell/hold advice, price targets, position sizing, medical diagnoses, treatment plans, or instructions that conflict with clinicians. Discuss trading only as process quality, rule adherence, review, and risk discipline. Keep every message concise. Corrective missions are only for repeated/material evidence gaps and are non-negotiable. A complete absence of logged evidence for two or more operating days is itself a material evidence gap and should produce one corrective mission to re-establish the evidence loop. When recent evidence exists and no challenge was issued in the previous three operating days, issue one useful non-corrective challenge tied to the evidence. Challenge missions are optional stretch assignments, not filler. At most one corrective and two challenges. Use the exact JSON schema. The trading.authoritative_summary field is the final accounting record: never reinterpret it, never infer a perfect record from the closed-trade total, and never use a numerical trading claim that conflicts with it.`;
 
 const sectionInstructions = `Every scan must refresh EVERY area, not only the Command Center. In sections: detective is strictly trade-log/process/risk-discipline advice; missions is prioritization and follow-through; enterprise is Special Projects / CCFX execution; recovery is clinician-safe recovery and logging; mastery is Mind/Body learning, training, and personal development; character is earned levels, evidence, streaks, and phase readiness. Jarvis and Alfred must give distinct advice in every section. Do not repeat the same message across sections.
 
@@ -34,7 +35,7 @@ For trading statistics, use ONLY the exact supplied values for closed trades, wi
 
 For mode "morning", direct the morning section toward today's plan, signal toward current attention/risk, and evening toward what should be evaluated later without claiming results that have not happened. For mode "evening", make the evening section a true review of today's evidence and make the morning section the first priority for the next operating day. Fitness evidence is for safe consistency and visible progressive-training trends only. When repeated exercise sets exist, compare load, reps, sets, and total volume, but only report visible trends. Treat food macros as rough estimates. Do not diagnose, prescribe rehab, or override clinicians. Do not create fitness-only corrective or challenge directives.
 
-Two lanes: ROADMAP is the intentional five-year campaign toward a real-world Bruce Wayne / Tony Stark: capable body and recovery, disciplined Detective-grade trading process, intellectual range, financial independence, and useful enterprise. Return one roadmap item only when the supplied roadmap state has fewer than two active accepted items or shows a completed/obsolete item. Otherwise return []. DIRECTIVES are adaptive, not routine. Default to []. A corrective is non-negotiable only when the supplied history demonstrates a repeated meaningful pattern AND it directly repairs an accepted roadmap mission, active-phase requirement, or roadmap bottleneck. It may also impose a proportional consequence, but the consequence must reinforce the missed standard (extra evidence-based work or escalating XP loss), never be arbitrary. Escalation may rise only if that same pattern persists through past directives. A challenge is optional and only when a demonstrated strength has earned a stretch assignment; do not issue it if a recent challenge is in the supplied history. Never create a directive merely because a scan occurred. Jarvis and Alfred may each issue separate roadmap-supporting transmissions, but they must use the same active-phase priorities and must never contradict one another; if only one useful transmission exists, return only one. Deep-work logs, Director Reviews, and self-generated mastery transmissions inform advice and reflection, but must not independently trigger a corrective or challenge. At most one corrective and one challenge.`;
+Two lanes: ROADMAP is the intentional five-year campaign toward a real-world Bruce Wayne / Tony Stark: capable body and recovery, disciplined Detective-grade trading process, intellectual range, financial independence, and useful enterprise. Return one roadmap item only when the supplied roadmap state has fewer than two active accepted items or shows a completed/obsolete item. Otherwise return []. DIRECTIVES are adaptive, not routine. Default to []. A corrective is non-negotiable when the supplied history demonstrates a repeated meaningful pattern, a roadmap bottleneck, or a complete absence of logged evidence for two or more operating days. It must directly repair the gap. It may also impose a proportional consequence, but the consequence must reinforce the missed standard (extra evidence-based work or escalating XP loss), never be arbitrary. Escalation may rise only if that same pattern persists through past directives. A challenge is optional and only when a demonstrated strength has earned a stretch assignment; do not issue it if a recent challenge is in the supplied history. Never create a directive merely because a scan occurred. Jarvis and Alfred may each issue separate roadmap-supporting transmissions, but they must use the same active-phase priorities and must never contradict one another; if only one useful transmission exists, return only one. Deep-work logs, Director Reviews, and self-generated mastery transmissions inform advice and reflection, but must not independently trigger a corrective or challenge. At most one corrective and one challenge.`;
 
 const curatedScanRules = `For every scan, deliberately curate every Jarvis and Alfred field from the supplied current context. Anchor each message to a specific current operation, mission, logged result, streak, training or recovery record, phase, or an explicit absence of evidence. Never use stock motivational quotes, random filler, invented details, or generic advice that could be shown to any user. If the data did not change, keep the advice precise and state which current standard still matters. Jarvis must emphasize the most material system signal and next action. Alfred must address the human standard, recovery, character, and follow-through without merely paraphrasing Jarvis. Treat activity_ledger as the reconciliation layer across pages, compare advisory_history before repeating advice, and treat generated mastery transmissions as evidence to review rather than automatic reasons to create corrective missions.`;
 
@@ -88,11 +89,12 @@ function tradeStreaks(trades) {
   return { current_type, current_length, longest_win, longest_loss };
 }
 
-async function buildContext(serviceKey, userId) {
+async function buildContext(serviceKey, userId, operatingDate, mode = "morning") {
   const query = (table, order, limit) => rest(serviceKey, `${table}?user_id=eq.${encodeURIComponent(userId)}&select=*&order=${order}&limit=${limit}`).then((response) => response.ok ? response.json() : []);
-  const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews, trainingSessions, trainingSets, weightLogs, foodLogs, occurrences, activityEvents, accounts, groups, withdrawals, advisoryHistory, contentItems, tradeReviews, progressEvents, campaign] = await Promise.all([
-    query("operations", "scheduled_date.desc", 180), query("missions", "created_at.desc", 50), query("trade_debriefs", "traded_at.desc", 1000), query("recovery_logs", "logged_on.desc", 10), query("mastery_entries", "created_at.desc", 100), query("business_projects", "created_at.desc", 30), query("phase_protocols", "created_at.desc", 1), query("ai_mission_suggestions", "created_at.desc", 24), query("ai_roadmap_missions", "created_at.desc", 12), query("deep_work_logs", "created_at.desc", 60), query("mastery_challenges", "created_at.desc", 30), query("director_reviews", "updated_at.desc", 4), query("training_sessions", "logged_on.desc", 18), query("training_sets", "logged_on.desc", 120), query("health_weight_logs", "logged_on.desc", 28), query("health_food_logs", "logged_on.desc", 60), query("operation_occurrences", "occurrence_date.desc", 240), query("activity_events", "occurred_at.desc", 240), query("account_balances", "is_primary.desc", 8), query("account_groups", "created_at.desc", 24), query("account_group_withdrawals", "withdrawn_at.desc", 24), query("ai_advisories", "created_at.desc", 6), query("content_items", "created_at.desc", 12), query("trade_reviews", "created_at.desc", 8), query("mission_progress_events", "occurred_at.desc", 24), query("xp_campaigns", "created_at.desc", 1)
+  const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews, trainingSessions, trainingSets, weightLogs, foodLogs, occurrences, activityEvents, accounts, groups, withdrawals, advisoryHistory, feedback, calibrationReviews, contentItems, tradeReviews, progressEvents, campaign] = await Promise.all([
+    query("operations", "scheduled_date.desc", 180), query("missions", "created_at.desc", 50), query("trade_debriefs", "traded_at.desc", 1000), query("recovery_logs", "logged_on.desc", 10), query("mastery_entries", "created_at.desc", 100), query("business_projects", "created_at.desc", 30), query("phase_protocols", "created_at.desc", 1), query("ai_mission_suggestions", "created_at.desc", 24), query("ai_roadmap_missions", "created_at.desc", 12), query("deep_work_logs", "created_at.desc", 60), query("mastery_challenges", "created_at.desc", 30), query("director_reviews", "updated_at.desc", 4), query("training_sessions", "logged_on.desc", 18), query("training_sets", "logged_on.desc", 120), query("health_weight_logs", "logged_on.desc", 28), query("health_food_logs", "logged_on.desc", 60), query("operation_occurrences", "occurrence_date.desc", 240), query("activity_events", "occurred_at.desc", 240), query("account_balances", "is_primary.desc", 8), query("account_groups", "created_at.desc", 24), query("account_group_withdrawals", "withdrawn_at.desc", 24), query("ai_advisories", "created_at.desc", 6), query("ai_recommendation_feedback", "created_at.desc", 60), query("ai_calibration_reviews", "week_start.desc", 4), query("content_items", "created_at.desc", 12), query("trade_reviews", "created_at.desc", 8), query("mission_progress_events", "occurred_at.desc", 24), query("xp_campaigns", "created_at.desc", 1)
   ]);
+  return sharedBuildContext({ operations, occurrences, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews, trainingSessions, trainingSets, weightLogs, foodLogs, activityEvents, accounts, groups, withdrawals, advisoryHistory, feedback, calibration: calibrationReviews, contentItems, tradeReviews, progressEvents, campaign }, operatingDate, mode);
   const liveTrades = trades.filter((trade) => String(trade.account || "").trim().toLowerCase() !== "theoretical");
   const closed = liveTrades.filter((trade) => tradeOutcome(trade) !== "open");
   const wins = closed.filter((trade) => tradeOutcome(trade) === "win").length;
@@ -127,10 +129,40 @@ async function buildContext(serviceKey, userId) {
   };
 }
 
+function weekStart(date) {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() - value.getUTCDay());
+  return value.toISOString().slice(0, 10);
+}
+
+async function saveCalibrationReview(serviceKey, userId, date, context) {
+  const start = weekStart(date);
+  if (new Date(`${date}T12:00:00Z`).getUTCDay() !== 1) return false;
+  const existing = await rest(serviceKey, `ai_calibration_reviews?user_id=eq.${encodeURIComponent(userId)}&week_start=eq.${start}&select=id&limit=1`);
+  if (existing.ok && (await existing.json()).length) return false;
+  const feedback = context.recommendation_feedback || [];
+  const outcomes = context.mission_outcomes || [];
+  const counts = feedback.reduce((result, item) => { result[item.feedback_type] = (result[item.feedback_type] || 0) + 1; return result; }, {});
+  const completed = outcomes.filter((item) => item.completed).length;
+  const rated = outcomes.filter((item) => Number(item.outcome_rating) > 0);
+  const averageRating = rated.length ? Number((rated.reduce((sum, item) => sum + Number(item.outcome_rating), 0) / rated.length).toFixed(1)) : null;
+  const adjustments = [];
+  if ((counts.irrelevant || 0) + (counts.wrong || 0) > (counts.useful || 0)) adjustments.push("Tighten evidence matching before issuing another recommendation.");
+  if (counts.too_easy) adjustments.push("Increase challenge specificity and measurable finish lines.");
+  if (counts.already_done) adjustments.push("Check active missions and recent evidence before proposing repeats.");
+  if (!adjustments.length) adjustments.push("Maintain the current evidence-linked recommendation standard.");
+  const payload = { user_id: userId, week_start: start, summary: `${feedback.length} recommendation ratings, ${completed} completed tracked missions${averageRating ? `, average mission rating ${averageRating}/5` : ""}.`, adjustments, source_counts: { feedback: counts, completed_missions: completed, rated_missions: rated.length } };
+  const response = await rest(serviceKey, "ai_calibration_reviews", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" }, body: JSON.stringify(payload) });
+  return response.ok;
+}
+
 async function askOpenAI(context, mode) {
+  const modeRules = mode === "morning"
+    ? "This is the 5am morning scan. Use evidence_date as the previous operating day. First interpret the previous day's logs, then give today's directive and operational priorities. Do not create a bedtime debrief or rewrite historical evidence."
+    : "This scan is read-only and must not recommend or create operation changes.";
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST", headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({ model: "gpt-4.1-mini", temperature: 0, input: [{ role: "system", content: [{ type: "input_text", text: `${prompt}\n\n${sectionInstructions}\n\n${curatedScanRules}\n\n${CAMPAIGN_CHARTER}` }] }, { role: "user", content: [{ type: "input_text", text: `Generate the ${mode} automatic scan from this data:\n${JSON.stringify(context)}` }] }], text: { format: { type: "json_schema", name: "aegis_scheduled_advisory", strict: true, schema } } })
+    body: JSON.stringify({ model: "gpt-4.1-mini", temperature: 0, input: [{ role: "system", content: [{ type: "input_text", text: `${prompt}\n\n${sectionInstructions}\n\n${curatedScanRules}\n\n${modeRules}\n\n${CAMPAIGN_CHARTER}` }] }, { role: "user", content: [{ type: "input_text", text: `Generate the ${mode} automatic scan from this data:\n${JSON.stringify(context)}` }] }], text: { format: { type: "json_schema", name: "aegis_scheduled_advisory", strict: true, schema } } })
   });
   if (!response.ok) throw new Error("OpenAI did not return an advisory.");
   const payload = await response.json();
@@ -140,6 +172,82 @@ async function askOpenAI(context, mode) {
 
 function dateOnly(value) {
   return value ? String(value).slice(0, 10) : "";
+}
+
+function latestEvidenceDay(context, throughDate = "") {
+  const values = [
+    ...(context?.activity_ledger?.recent || []).map((item) => item.occurred_at),
+    ...(context?.trading?.recent || []).map((item) => item.date || item.traded_at),
+    ...(context?.mastery?.recent || []).map((item) => item.date || item.created_at),
+    ...(context?.recovery || []).map((item) => item.logged_on || item.created_at),
+    ...(context?.mastery?.fitness?.sessions || []).map((item) => item.date || item.logged_on),
+  ].map(dateOnly).filter((value) => value && (!throughDate || value <= throughDate));
+  return values.sort().at(-1) || "";
+}
+
+function addInactivityDirective(advisory, context, operatingDate) {
+  const directives = advisory.directives || [];
+  const history = context.directive_history || [];
+  const latest = latestEvidenceDay(context, context.evidence_date || operatingDate);
+  const gap = latest ? Math.floor((Date.parse(`${operatingDate}T12:00:00Z`) - Date.parse(`${latest}T12:00:00Z`)) / 86400000) : 2;
+  const latestEvidenceIds = (context.evidence_catalog || []).filter((item) => item.date === latest).slice(0, 3).map((item) => item.id);
+  const activeMissionTitles = new Set((context.missions || []).map((item) => item.title));
+  const hasCorrective = directives.some((item) => item.mission_kind === "corrective")
+    || history.some((item) => item.kind === "corrective" && ["pending", "accepted"].includes(item.status))
+    || history.some((item) => item.kind === "corrective" && item.status === "acknowledged" && activeMissionTitles.has(item.title));
+  if (gap >= 2 && !hasCorrective) {
+    const title = "Re-establish the daily evidence loop";
+    const alreadyOpen = [...(context.missions || []), ...history]
+      .some((item) => item.title === title && item.status !== "declined");
+    if (!alreadyOpen) return {
+      ...advisory,
+      directives: [{
+        advisor: "Alfred",
+        mission_kind: "corrective",
+        title,
+        category: "Mind",
+        priority: "Do now",
+        rationale: `No meaningful AEGIS evidence has been logged for ${gap} operating days. Complete one real action today and record the evidence so the system can coach from facts again.`,
+        evidence: [latest ? `Last recorded evidence: ${latest}` : "No recent evidence was found in the activity ledger."],
+        evidence_ids: latestEvidenceIds,
+        cadence_key: "inactivity-evidence-loop",
+        escalation_level: 1,
+      }, ...directives].slice(0, 2),
+    };
+    return advisory;
+  }
+  // Once the evidence loop is active, make a non-corrective transmission
+  // eligible every third operating day instead of waiting for a rare model
+  // decision. Never issue one while an unresolved challenge is still fresh.
+  if (gap >= 2 || directives.some((item) => item.mission_kind === "challenge")) return advisory;
+  const recentChallenge = history.find((item) => item.kind === "challenge" && item.status !== "declined" && item.created_at
+    && Date.now() - Date.parse(item.created_at) < 3 * 86400000);
+  if (recentChallenge) return advisory;
+  const challengePool = [
+    ["Capture one process lesson from today’s strongest signal", "Trading", "Review one current or recent decision, write the most important process lesson, and file the evidence."],
+    ["Complete one focused mastery block", "Mind", "Protect 30 minutes for deliberate learning, then record the idea and how it changes your next action."],
+    ["Make one recovery standard visible", "Recovery", "Complete one safe recovery or preparation action and log what you did instead of leaving the standard implicit."],
+  ];
+  const seed = operatingDate.replace(/-/g, "").split("").reduce((sum, value) => sum + Number(value), 0);
+  const [title, category, rationale] = challengePool[seed % challengePool.length];
+  const alreadyOpen = [...(context.missions || []), ...history]
+    .some((item) => item.title === title && item.status !== "declined");
+  if (alreadyOpen) return advisory;
+  return {
+    ...advisory,
+    directives: [{
+      advisor: "Jarvis",
+      mission_kind: "challenge",
+      title,
+      category,
+      priority: "Schedule",
+      rationale,
+      evidence: [latest ? `Recent evidence is available through ${latest}.` : "Recent evidence is available."],
+      evidence_ids: latestEvidenceIds,
+      cadence_key: "three-day-challenge-cadence",
+      escalation_level: 1,
+    }, ...directives].slice(0, 2),
+  };
 }
 
 function scheduleMode(operation) {
@@ -290,20 +398,42 @@ module.exports = async (req, res) => {
     const rollover = clock.hour === 5 ? await rolloverOperations(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date) : { operations: 0, occurrences: 0 };
     const recent = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, `ai_advisories?user_id=eq.${director.id}&select=advisory_type,payload&order=created_at.desc&limit=12`).then((response) => response.ok ? response.json() : []);
     if (recent.some((item) => item.advisory_type === mode && item.payload?.schedule_date === clock.date)) return res.status(200).json({ status: "already-complete", mode, date: clock.date });
-    const advisory = await askOpenAI(await buildContext(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id), mode);
+    const context = await buildContext(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date, mode);
+    const advisory = addInactivityDirective(sanitizeAdvisory(await askOpenAI(context, mode), context), context, clock.date);
     advisory.schedule_date = clock.date;
-    const stored = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_advisories", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ user_id: director.id, advisory_type: mode, payload: advisory }) });
+    let stored = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_advisories", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ user_id: director.id, advisory_type: mode, payload: advisory, scan_mode: mode, operating_date: clock.date }) });
+    if (!stored.ok) stored = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_advisories", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ user_id: director.id, advisory_type: mode, payload: advisory }) });
     if (!stored.ok) throw new Error("Could not store the scheduled advisory.");
     const [record] = await stored.json();
     const directives = advisory.directives || [];
     const roadmap = advisory.roadmap || [];
-    if (directives.length) await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_mission_suggestions", { method: "POST", body: JSON.stringify(directives.map((item) => ({ ...item, user_id: director.id, advisory_id: record.id }))) });
-    if (roadmap.length) await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_roadmap_missions", { method: "POST", body: JSON.stringify(roadmap.map((item) => ({ ...item, user_id: director.id, advisory_id: record.id }))) });
-    const corrective = directives.filter((item) => item.mission_kind === "corrective");
+    let savedSuggestions = [];
+    if (directives.length) {
+      const suggestionRows = directives.map((item) => ({ ...item, evidence_ids: item.evidence_ids || [], user_id: director.id, advisory_id: record.id }));
+      let suggestionResponse = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_mission_suggestions", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(suggestionRows) });
+      // Keep the scheduled scan compatible while migration 055 is being applied.
+      if (!suggestionResponse.ok) suggestionResponse = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_mission_suggestions", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(suggestionRows.map(({ evidence_ids, ...row }) => row)) });
+      if (!suggestionResponse.ok) throw new Error("Could not store the scheduled mission suggestions.");
+      savedSuggestions = await suggestionResponse.json();
+    }
+    if (roadmap.length) {
+      const roadmapRows = roadmap.map((item) => ({ ...item, evidence_ids: item.evidence_ids || [], user_id: director.id, advisory_id: record.id }));
+      let roadmapResponse = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_roadmap_missions", { method: "POST", body: JSON.stringify(roadmapRows) });
+      if (!roadmapResponse.ok) roadmapResponse = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_roadmap_missions", { method: "POST", body: JSON.stringify(roadmapRows.map(({ evidence_ids, ...row }) => row)) });
+      if (!roadmapResponse.ok) throw new Error("Could not store the scheduled roadmap objective.");
+    }
+    const corrective = savedSuggestions.filter((item) => item.mission_kind === "corrective");
     for (const item of corrective) {
       const existing = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, `missions?user_id=eq.${director.id}&title=eq.${encodeURIComponent(item.title)}&completed=eq.false&select=id&limit=1`).then((response) => response.ok ? response.json() : []);
-      if (!existing.length) await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "missions", { method: "POST", body: JSON.stringify({ user_id: director.id, title: item.title, category: item.category, priority: "Do now", completion_type: "binary", completion_definition: `System corrective from ${item.advisor}: ${item.rationale}`, completed: false, completed_count: 0, progress: 0 }) });
+      if (!existing.length) {
+        const missionPayload = { user_id: director.id, title: item.title, category: item.category, priority: "Do now", completion_type: "binary", completion_definition: `System corrective from ${item.advisor}: ${item.rationale}`, completed: false, completed_count: 0, progress: 0, source_suggestion_id: item.id, source_advisory_id: record.id, evidence_ids: item.evidence_ids || [], accepted_at: new Date().toISOString(), outcome_status: "accepted" };
+        let missionResponse = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "missions", { method: "POST", body: JSON.stringify(missionPayload) });
+        if (!missionResponse.ok) missionResponse = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "missions", { method: "POST", body: JSON.stringify(((payload) => { const { source_suggestion_id, source_advisory_id, evidence_ids, accepted_at, outcome_status, ...legacy } = payload; return legacy; })(missionPayload)) });
+        if (!missionResponse.ok) throw new Error("Could not create the scheduled corrective mission.");
+      }
+      if (item.id) await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, `ai_mission_suggestions?id=eq.${item.id}`, { method: "PATCH", body: JSON.stringify({ status: "acknowledged", resolved_at: new Date().toISOString() }) });
     }
+    await saveCalibrationReview(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date, context);
     return res.status(200).json({ status: "complete", mode, date: clock.date, rollover, directives: directives.length, roadmap: roadmap.length });
   } catch (error) { return res.status(500).json({ error: String(error.message || error) }); }
 };

@@ -2,6 +2,7 @@ const SUPABASE_URL = "https://ifogfhaqozsyygbgwvzo.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_6knh69A_xVRQOPDotPrTcA_6_D_-RMa";
 const DIRECTOR_EMAIL = "mat.investments.95@gmail.com";
 const { CAMPAIGN_CHARTER } = require("../campaign-charter.js");
+const { sanitizeAdvisory } = require("../ai-context.js");
 
 const responseSchema = {
   type: "object",
@@ -24,8 +25,8 @@ const responseSchema = {
       mastery: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
       character: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } }
     } },
-    roadmap: { type: "array", maxItems: 1, items: { type: "object", additionalProperties: false, required: ["phase", "title", "category", "priority", "objective", "rationale", "evidence"], properties: { phase: { type: "integer", minimum: 0, maximum: 4 }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, objective: { type: "string" }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } } } } },
-    directives: { type: "array", maxItems: 2, items: { type: "object", additionalProperties: false, required: ["advisor", "mission_kind", "title", "category", "priority", "rationale", "evidence", "cadence_key", "escalation_level"], properties: { advisor: { type: "string", enum: ["Jarvis", "Alfred"] }, mission_kind: { type: "string", enum: ["corrective", "challenge"] }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } }, cadence_key: { type: "string" }, escalation_level: { type: "integer", minimum: 1, maximum: 3 } } } }
+    roadmap: { type: "array", maxItems: 1, items: { type: "object", additionalProperties: false, required: ["phase", "title", "category", "priority", "objective", "rationale", "evidence", "evidence_ids"], properties: { phase: { type: "integer", minimum: 0, maximum: 4 }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, objective: { type: "string" }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } }, evidence_ids: { type: "array", maxItems: 6, items: { type: "string" } } } } },
+    directives: { type: "array", maxItems: 2, items: { type: "object", additionalProperties: false, required: ["advisor", "mission_kind", "title", "category", "priority", "rationale", "evidence", "evidence_ids", "cadence_key", "escalation_level"], properties: { advisor: { type: "string", enum: ["Jarvis", "Alfred"] }, mission_kind: { type: "string", enum: ["corrective", "challenge"] }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } }, evidence_ids: { type: "array", maxItems: 6, items: { type: "string" } }, cadence_key: { type: "string" }, escalation_level: { type: "integer", minimum: 1, maximum: 3 } } } }
   }
 };
 
@@ -57,6 +58,82 @@ function send(res, status, body) {
   res.status(status).json(body);
 }
 
+function latestEvidenceDay(context, throughDate = "") {
+  const values = [
+    ...(context?.activity_ledger?.recent || []).map((item) => item.occurred_at),
+    ...(context?.trading?.recent || []).map((item) => item.date || item.traded_at),
+    ...(context?.mastery?.recent || []).map((item) => item.date || item.created_at),
+    ...(context?.recovery || []).map((item) => item.logged_on || item.created_at),
+    ...(context?.mastery?.fitness?.sessions || []).map((item) => item.date || item.logged_on),
+  ].map((value) => value ? String(value).slice(0, 10) : "").filter((value) => value && (!throughDate || value <= throughDate));
+  return values.sort().at(-1) || "";
+}
+
+function addInactivityDirective(advisory, context, operatingDate) {
+  const directives = advisory.directives || [];
+  const history = context.directive_history || [];
+  const latest = latestEvidenceDay(context, context.evidence_date || operatingDate);
+  const gap = latest ? Math.floor((Date.parse(`${operatingDate}T12:00:00Z`) - Date.parse(`${latest}T12:00:00Z`)) / 86400000) : 2;
+  const latestEvidenceIds = (context.evidence_catalog || []).filter((item) => item.date === latest).slice(0, 3).map((item) => item.id);
+  const activeMissionTitles = new Set((context.missions || []).map((item) => item.title));
+  const hasCorrective = directives.some((item) => item.mission_kind === "corrective")
+    || history.some((item) => item.kind === "corrective" && ["pending", "accepted"].includes(item.status))
+    || history.some((item) => item.kind === "corrective" && item.status === "acknowledged" && activeMissionTitles.has(item.title));
+  if (gap >= 2 && !hasCorrective) {
+    const title = "Re-establish the daily evidence loop";
+    const alreadyOpen = [...(context.missions || []), ...history]
+      .some((item) => item.title === title && item.status !== "declined");
+    if (!alreadyOpen) return {
+      ...advisory,
+      directives: [{
+        advisor: "Alfred",
+        mission_kind: "corrective",
+        title,
+        category: "Mind",
+        priority: "Do now",
+        rationale: `No meaningful AEGIS evidence has been logged for ${gap} operating days. Complete one real action today and record the evidence so the system can coach from facts again.`,
+        evidence: [latest ? `Last recorded evidence: ${latest}` : "No recent evidence was found in the activity ledger."],
+        evidence_ids: latestEvidenceIds,
+        cadence_key: "inactivity-evidence-loop",
+        escalation_level: 1,
+      }, ...directives].slice(0, 2),
+    };
+    return advisory;
+  }
+  // Once the evidence loop is active, make a non-corrective transmission
+  // eligible every third operating day instead of waiting for a rare model
+  // decision. Never issue one while an unresolved challenge is still fresh.
+  if (gap >= 2 || directives.some((item) => item.mission_kind === "challenge")) return advisory;
+  const recentChallenge = history.find((item) => item.kind === "challenge" && item.status !== "declined" && item.created_at
+    && Date.now() - Date.parse(item.created_at) < 3 * 86400000);
+  if (recentChallenge) return advisory;
+  const challengePool = [
+    ["Capture one process lesson from today’s strongest signal", "Trading", "Review one current or recent decision, write the most important process lesson, and file the evidence."],
+    ["Complete one focused mastery block", "Mind", "Protect 30 minutes for deliberate learning, then record the idea and how it changes your next action."],
+    ["Make one recovery standard visible", "Recovery", "Complete one safe recovery or preparation action and log what you did instead of leaving the standard implicit."],
+  ];
+  const seed = operatingDate.replace(/-/g, "").split("").reduce((sum, value) => sum + Number(value), 0);
+  const [title, category, rationale] = challengePool[seed % challengePool.length];
+  const alreadyOpen = [...(context.missions || []), ...history]
+    .some((item) => item.title === title && item.status !== "declined");
+  if (alreadyOpen) return advisory;
+  return {
+    ...advisory,
+    directives: [{
+      advisor: "Jarvis",
+      mission_kind: "challenge",
+      title,
+      category,
+      priority: "Schedule",
+      rationale,
+      evidence: [latest ? `Recent evidence is available through ${latest}.` : "Recent evidence is available."],
+      evidence_ids: latestEvidenceIds,
+      cadence_key: "three-day-challenge-cadence",
+      escalation_level: 1,
+    }, ...directives].slice(0, 2),
+  };
+}
+
 module.exports = async (req, res) => {
   if (req.method !== "POST") return send(res, 405, { error: "Method not allowed." });
   if (!process.env.OPENAI_API_KEY) return send(res, 503, { error: "AI is not configured on this deployment yet." });
@@ -64,13 +141,16 @@ module.exports = async (req, res) => {
     if (!(await verifyDirector(req))) return send(res, 401, { error: "Secure AEGIS access is required." });
     const context = req.body?.context;
     if (!context || typeof context !== "object") return send(res, 400, { error: "No command data was provided." });
+    const modeRules = req.body?.mode === "bedtime"
+      ? "This is the user's Going to bed evening debrief. Review the operating day represented by evidence_date, including late activity before sleep. This is read-only: do not issue directives, missions, roadmap changes, or operation changes."
+      : "This is an analytical scan. Do not turn missing context into a mission unless the evidence supports it.";
     const openai = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "content-type": "application/json" },
       body: JSON.stringify({
         model: "gpt-4.1-mini",
         input: [
-          { role: "system", content: [{ type: "input_text", text: `${systemPrompt}\n\n${sectionInstructions}\n\n${CAMPAIGN_CHARTER}` }] },
+          { role: "system", content: [{ type: "input_text", text: `${systemPrompt}\n\n${sectionInstructions}\n\n${modeRules}\n\n${CAMPAIGN_CHARTER}` }] },
           { role: "user", content: [{ type: "input_text", text: `Analyze this AEGIS data. Current request mode: ${String(req.body?.mode || "scan")}.\n\n${JSON.stringify(context)}` }] }
         ],
         text: { format: { type: "json_schema", name: "aegis_dual_advisory", strict: true, schema: responseSchema } }
@@ -83,7 +163,13 @@ module.exports = async (req, res) => {
     const output = await openai.json();
     const raw = output.output_text || output.output?.flatMap((item) => item.content || []).find((item) => item.type === "output_text")?.text;
     if (!raw) return send(res, 502, { error: "The advisory engine returned no readable briefing." });
-    return send(res, 200, { advisory: JSON.parse(raw) });
+    const generated = sanitizeAdvisory(JSON.parse(raw), context);
+    // Going to bed is a read-only debrief. It can never create directives,
+    // missions, roadmap rows, or operation changes.
+    const advisory = req.body?.mode === "bedtime"
+      ? { ...generated, directives: [], roadmap: [] }
+      : addInactivityDirective(generated, context, context.operating_date || new Date().toISOString().slice(0, 10));
+    return send(res, 200, { advisory });
   } catch (error) {
     return send(res, 500, { error: "Command intelligence encountered an error.", detail: String(error.message || error).slice(0, 180) });
   }

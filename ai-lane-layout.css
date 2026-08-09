@@ -3,6 +3,12 @@
 .ai-suggestion .eyebrow{display:block;margin-bottom:10px;font-size:12px;letter-spacing:.14em}
 .ai-suggestion strong{display:block;font-size:16px;line-height:1.3}
 .ai-suggestion p{margin-top:10px}
+.ai-evidence-ids{display:block;margin-top:8px;opacity:.72;font-family:monospace;font-size:10px;word-break:break-word}
+.ai-feedback{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:12px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;opacity:.86}
+.ai-feedback button{padding:4px 7px;border:1px solid rgba(142,181,215,.32);border-radius:4px;background:rgba(10,22,34,.35);color:inherit;font:inherit;cursor:pointer}
+.ai-feedback button.selected,.ai-feedback button:hover{border-color:rgba(95,210,255,.85);color:#9fe8ff}
+.ai-calibration-block{margin-top:18px;padding-top:14px;border-top:1px solid rgba(142,181,215,.18)}
+.ai-calibration-block p{margin:4px 0}
 
 @media (min-width:761px){
   #command > .intel-strip .signal-columns article{position:relative;display:grid;grid-template-rows:auto 1fr;align-content:start;padding-top:21px}
