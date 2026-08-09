@@ -63,4 +63,4 @@ if (supabase) {
   supabase.auth.getSession().then(loadSectionAdvice);
   supabase.auth.onAuthStateChange((_event, session) => { if (session) setTimeout(loadSectionAdvice, 120); });
 }
-new MutationObserver(() => renderFooters()).observe(document.body, { childList: true, subtree: true });
+window.addEventListener("load", () => { styleCommandBriefing(); renderFooters(); }, { once: true });

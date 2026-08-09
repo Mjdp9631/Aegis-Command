@@ -1447,26 +1447,9 @@ const wireCalendar = () => {
   captureCalendarMove("#calendar-prev", -1);
   captureCalendarMove("#calendar-next", 1);
   wireCalendarPanels();
-  if (!window.MutationObserver) return;
-  let repairing = false;
-  const repaintIfNeeded = () => {
-    const targets = queueTargets();
-    // A queue can legitimately be empty while records are loading.  It still
-    // needs its own mounted placeholder; otherwise an older renderer can
-    // reclaim the panel and leave it blank after a tab change or refresh.
-    const needsPaint = targets.some((target) => (
-      target.dataset.aegisQueueMounted !== "true"
-      || (!target.querySelector(".operation-table-v2") && !target.querySelector(".empty-operations"))
-    ));
-    if (repairing || !targets.length || !needsPaint) return;
-    repairing = true;
-    requestAnimationFrame(() => { renderQueue(); repairing = false; });
-  };
-  // Watch the document, not an initial queue node. The command dashboard
-  // replaces queue markup after auth and after tab transitions.
-  const observer = new MutationObserver(repaintIfNeeded);
-  observer.observe(document.body, { childList: true, subtree: true });
-  [100, 500, 1500, 3000, 6000, 10000].forEach((delay) => setTimeout(repaintIfNeeded, delay));
+  // The queue is painted by startHub(), boot(), and the route hooks below.
+  // Avoid a document-wide observer here: queue repainting itself changes the
+  // dashboard DOM and can otherwise schedule an endless refresh loop.
 
   // Navigation swaps the active view without a full page reload. Repaint the
   // durable queue after the new Command Center surface is in the DOM instead
