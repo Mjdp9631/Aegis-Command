@@ -254,10 +254,13 @@ main { background: linear-gradient(90deg, rgba(4, 10, 17, .29), rgba(4, 10, 17, 
   letter-spacing: .17em;
 }
 .view.active:not(#command) > .section-intro {
-  position: relative;
+  position: sticky;
+  top: 34px;
+  z-index: 2;
   margin: 0 0 23px;
   padding: 3px 0 19px;
   border-bottom: 1px solid rgba(103, 164, 225, .17);
+  background: linear-gradient(135deg, rgba(5, 14, 24, .92), rgba(7, 15, 26, .86));
 }
 .view.active:not(#command) > .section-intro::after {
   content: "";
