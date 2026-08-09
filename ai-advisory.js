@@ -7,6 +7,7 @@ const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => 
 let latestContext = null;
 let latestAdvisory = null;
 let scanStageTimer = null;
+let scanInFlight = false;
 
 function dateKey(value) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return String(value);
@@ -258,7 +259,7 @@ function showTransmissionQueue() {
 async function gather(operatingDate = operatingDayKey()) {
   const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews] = await Promise.all([
     supabase.from("operations").select("*").order("scheduled_date", { ascending: false }).limit(180),
-    supabase.from("missions").select("*").order("created_at", { ascending: false }),
+    supabase.from("missions").select("*").order("created_at", { ascending: false }).limit(180),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }).limit(1000),
     supabase.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(10),
     supabase.from("mastery_entries").select("*").order("created_at", { ascending: false }).limit(100),
@@ -303,17 +304,32 @@ function setBusy(busy, label = "") {
   document.querySelectorAll("[data-ai-run]").forEach((button) => { button.disabled = busy; if (busy) button.dataset.original = button.textContent; button.textContent = busy ? label || "ANALYZING…" : button.dataset.original || button.textContent; });
 }
 
+function withTimeout(promise, milliseconds, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), milliseconds); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function run(mode = "scan") {
+  if (scanInFlight) return;
   if (!supabase) return alert("AI requires the secure AEGIS connection.");
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return alert("Sign in before opening the intelligence layer.");
   const bedtime = mode === "bedtime";
   const operatingDate = operatingDayKey();
+  scanInFlight = true;
   try {
     setBusy(true, bedtime ? "COMPILING DEBRIEF…" : "ANALYZING…");
-    latestContext = await gather(operatingDate);
+    latestContext = await withTimeout(gather(operatingDate), 30000, "Command data took too long to load. No scan was saved.");
     setFocusStreak(latestContext.streaks.execution);
-    const response = await fetch("/api/advisory", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ mode, context: latestContext }) });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+    let response;
+    try {
+      response = await fetch("/api/advisory", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ mode, context: latestContext }), signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "The advisory engine is unavailable.");
     latestAdvisory = payload.advisory;
@@ -330,7 +346,7 @@ async function run(mode = "scan") {
     await loadRoadmap();
     showTransmissionQueue();
   } catch (error) { alert(`Intelligence scan unavailable: ${error.message}`); }
-  finally { setBusy(false); }
+  finally { scanInFlight = false; setBusy(false); }
 }
 
 async function resolveSuggestion(id, action) {
