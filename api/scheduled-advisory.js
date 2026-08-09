@@ -168,7 +168,9 @@ function dailySeedFor(date) {
   const isRest = split === "Rest";
   return [
     { title: "Review charts and document one lesson", category: "Trading", brief: "Review one relevant chart or completed trade, capture one process lesson, and file it in Detective or Self Mastery.", metric_key: null },
+    { title: "Conquer the morning", category: "Self Mastery", brief: "Begin the day with one deliberate first action, protect the first block from avoidable distraction, and execute the morning standard before reactive work.", metric_key: null },
     { title: "Read one chapter", category: "Self Mastery", brief: "Read one chapter from your current book without notifications, then capture one useful idea, quote, or action in Self Mastery.", metric_key: "chapters_read" },
+    { title: "Journal", category: "Self Mastery", brief: "Write the facts, name what is within your control, and record one lesson or next right action.", metric_key: "mastery.entry" },
     { title: isRest ? "Recovery — rest and reset" : `Gym — ${split}`, category: isRest ? "Recovery" : "Body", brief: isRest ? "Protect recovery: light mobility only if it feels good, hydrate, sleep on time, and do not turn rest into a missed plan." : `Complete the ${split} session selected in Self Mastery. Log every exercise with weight, reps, and sets so AEGIS can evaluate progressive improvement.`, metric_key: "gym_session" },
   ];
 }

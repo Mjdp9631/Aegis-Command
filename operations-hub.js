@@ -127,7 +127,9 @@ const starterOperations = () => {
   return [
     ...(preMarketOperationForToday() ? [["Pre-market analysis", "Trading"]] : []),
     ["Review charts and document one lesson", "Trading"],
+    ["Conquer the morning", "Self Mastery"],
     ["Read one chapter", "Self Mastery"],
+    ["Journal", "Self Mastery"],
   ].map(([title, category]) => title === "Pre-market analysis"
     ? preMarketOperationForToday()
     : ({ title, category, completed: false, scheduled_date: null, scheduled_time: null, operation_date: todayKey(), is_daily: true, status: "Queued" }));
@@ -332,6 +334,16 @@ function checklistFor(operation) {
     "Capture one useful idea, quote, or action in Self Mastery.",
     "Only mark complete after the chapter and note are both finished.",
   ];
+  if (/conquer the morning/.test(name)) return [
+    "Start with the first deliberate action before the day starts making decisions for you.",
+    "Keep attention on the morning standard: no avoidable drift, no negotiation with the first duty.",
+    "Mark complete only after the morning was directed by choice rather than impulse.",
+  ];
+  if (/^journal$|journal/.test(name)) return [
+    "Write the facts of the day without flattering or condemning yourself.",
+    "Separate what is within your control from what is not, then name the next right action.",
+    "Record one lesson or correction so the experience becomes usable evidence.",
+  ];
   if (/mission debrief/.test(name)) return [
     "Read Jarvis and Alfred's evening reflection for the completed day.",
     "Compare the feedback with what was actually executed, not intention.",
@@ -375,6 +387,8 @@ function resolveMission(operation, includeCompleted = false) {
   if (/review charts|trade review/.test(title)) return byPhrase(["evidence-based trade reviews", "process review"]);
   if (/mission debrief|evening debrief/.test(title)) return byPhrase(["operating debrief rhythm", "operating baseline"]);
   if (/read one chapter|read chapter/.test(title)) return byPhrase(["learning rhythm", "chapters"]);
+  if (/conquer the morning/.test(title)) return byPhrase(["morning discipline", "operating baseline", "daily rhythm"]);
+  if (/^journal$|journal/.test(title)) return byPhrase(["journal", "operating debrief rhythm", "self mastery"]);
   if (/pre-market/.test(title)) return byPhrase(["trading preparation rhythm", "execution playbook", "pre-market"]);
   const category = String(operation.category || "").toLowerCase();
   const missionCategory = category === "self mastery" ? "mind" : category;
@@ -504,7 +518,7 @@ function queueTargets() {
   }
 
 function isDailyOperation(operation) {
-  return Boolean(operation.is_daily) || /pre-market|review charts|read one chapter|mission debrief|daily|^gym|rest and reset/i.test(String(operation.title || ""));
+  return Boolean(operation.is_daily) || /pre-market|review charts|conquer the morning|read one chapter|^journal$|mission debrief|daily|^gym|rest and reset/i.test(String(operation.title || ""));
 }
 
 function queueOperations() {
@@ -860,8 +874,10 @@ async function seedIfEmpty() {
 async function ensureTodayOperations(records = []) {
   const daily = [
     ["Review charts and document one lesson", "Trading", "Review one relevant chart or completed trade, capture one process lesson, and file it in Detective or Self Mastery."],
+    ["Conquer the morning", "Self Mastery", "Begin the day with one deliberate first action, protect the first block from avoidable distraction, and execute the morning standard before reactive work."],
     ["Read one chapter", "Self Mastery", readingBrief()],
-  ].map(([title, category, brief]) => ({ title, category, brief, priority: priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: todayKey(), metric_key: title === "Read one chapter" ? "chapters_read" : null }));
+    ["Journal", "Self Mastery", "Write the facts, name what is within your control, and record one lesson or next right action."],
+  ].map(([title, category, brief]) => ({ title, category, brief, priority: priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: todayKey(), metric_key: title === "Read one chapter" ? "chapters_read" : title === "Journal" ? "mastery.entry" : null }));
   const preMarket = preMarketOperationForToday();
   if (preMarket) daily.unshift(preMarket);
   daily.push(gymOperationForToday());
