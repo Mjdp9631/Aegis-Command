@@ -119,6 +119,136 @@ async function askOpenAI(context, mode) {
   return JSON.parse(raw);
 }
 
+function dateOnly(value) {
+  return value ? String(value).slice(0, 10) : "";
+}
+
+function scheduleMode(operation) {
+  const mode = String(operation?.schedule_mode || "one_time").toLowerCase();
+  return mode === "weekly" || mode === "recurring" ? "weekly" : mode === "daily" ? "daily" : "one_time";
+}
+
+function scheduledOn(operation, date) {
+  const start = dateOnly(operation?.scheduled_date);
+  if (!start || date < start) return false;
+  const end = dateOnly(operation?.scheduled_end_date);
+  if (end && date > end) return false;
+  const mode = scheduleMode(operation);
+  if (mode === "one_time") return date === start;
+  if (mode === "daily") return true;
+  return new Date(`${start}T12:00:00Z`).getUTCDay() === new Date(`${date}T12:00:00Z`).getUTCDay();
+}
+
+function operationIdentity(operation) {
+  return [operation?.title, operation?.category, operation?.mission_id, operation?.metric_key, operation?.scheduled_time]
+    .map((value) => String(value || "").trim().toLowerCase()).join("|");
+}
+
+function dailySeedFor(date) {
+  const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const splits = ["Rest", "Legs", "Push", "Pull", "Rest", "Upper Body", "Lower Body"];
+  const split = splits[weekday];
+  const isRest = split === "Rest";
+  return [
+    { title: "Review charts and document one lesson", category: "Trading", brief: "Review one relevant chart or completed trade, capture one process lesson, and file it in Detective or Self Mastery.", metric_key: null },
+    { title: "Read one chapter", category: "Self Mastery", brief: "Read one chapter from your current book without notifications, then capture one useful idea, quote, or action in Self Mastery.", metric_key: "chapters_read" },
+    { title: isRest ? "Recovery — rest and reset" : `Gym — ${split}`, category: isRest ? "Recovery" : "Body", brief: isRest ? "Protect recovery: light mobility only if it feels good, hydrate, sleep on time, and do not turn rest into a missed plan." : `Complete the ${split} session selected in Self Mastery. Log every exercise with weight, reps, and sets so AEGIS can evaluate progressive improvement.`, metric_key: "gym_session" },
+  ];
+}
+
+async function rolloverOperations(serviceKey, userId, date) {
+  const response = await rest(serviceKey, `operations?user_id=eq.${encodeURIComponent(userId)}&select=*`);
+  if (!response.ok) throw new Error("Could not load operations for the morning rollover.");
+  const records = await response.json();
+  const current = records.filter((operation) => dateOnly(operation.operation_date) === date || dateOnly(operation.scheduled_date) === date);
+  const currentKeys = new Set(current.map(operationIdentity));
+  const inserts = [];
+
+  dailySeedFor(date).forEach((seed) => {
+    if (current.some((operation) => String(operation.title || "").trim().toLowerCase() === seed.title.toLowerCase() && (dateOnly(operation.operation_date) === date || dateOnly(operation.scheduled_date) === date))) return;
+    const source = records
+      .filter((operation) => String(operation.title || "").trim().toLowerCase() === seed.title.toLowerCase() && Boolean(operation.is_daily))
+      .sort((left, right) => String(right.operation_date || right.created_at || "").localeCompare(String(left.operation_date || left.created_at || "")))[0];
+    inserts.push({
+      user_id: userId,
+      title: seed.title,
+      category: seed.category,
+      brief: seed.brief,
+      metric_key: source?.metric_key || seed.metric_key,
+      mission_id: source?.mission_id || null,
+      mission_increment: source?.mission_increment || 1,
+      status: "Queued",
+      completed: false,
+      scheduled_date: date,
+      scheduled_time: source?.scheduled_time || null,
+      schedule_mode: "one_time",
+      scheduled_end_date: null,
+      operation_date: date,
+      is_daily: true,
+    });
+  });
+
+  const customDaily = records
+    .filter((operation) => Boolean(operation.is_daily) && scheduleMode(operation) === "one_time")
+    .filter((operation) => dateOnly(operation.operation_date) && dateOnly(operation.operation_date) < date)
+    .filter((operation) => !/^gym — |^recovery — rest and reset$/i.test(String(operation.title || "")))
+    .sort((left, right) => String(right.operation_date || right.created_at || "").localeCompare(String(left.operation_date || left.created_at || "")));
+  const latestDaily = new Map();
+  customDaily.forEach((operation) => {
+    const key = operationIdentity(operation);
+    if (!latestDaily.has(key)) latestDaily.set(key, operation);
+  });
+  latestDaily.forEach((source, key) => {
+    if (currentKeys.has(key) || inserts.some((operation) => operationIdentity(operation) === key)) return;
+    inserts.push({
+      user_id: userId,
+      title: source.title,
+      category: source.category,
+      brief: source.brief || source.details || null,
+      details: source.details || null,
+      metric_key: source.metric_key || null,
+      mission_id: source.mission_id || null,
+      mission_increment: source.mission_increment || 1,
+      status: "Queued",
+      completed: false,
+      scheduled_date: date,
+      scheduled_time: source.scheduled_time || null,
+      schedule_mode: "one_time",
+      scheduled_end_date: null,
+      operation_date: date,
+      is_daily: true,
+    });
+  });
+
+  let created = [];
+  if (inserts.length) {
+    const inserted = await rest(serviceKey, "operations", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(inserts) });
+    if (!inserted.ok) throw new Error("Could not create today’s operations during the morning rollover.");
+    created = await inserted.json();
+  }
+
+  const recurring = records.filter((operation) => scheduleMode(operation) !== "one_time" && operation.id && scheduledOn(operation, date));
+  let occurrences = 0;
+  if (recurring.length) {
+    const occurrenceResponse = await rest(serviceKey, `operation_occurrences?user_id=eq.${encodeURIComponent(userId)}&occurrence_date=eq.${date}&select=operation_id`);
+    const existing = occurrenceResponse.ok ? await occurrenceResponse.json() : [];
+    const existingIds = new Set(existing.map((row) => String(row.operation_id)));
+    const missing = recurring.filter((operation) => !existingIds.has(String(operation.id))).map((operation) => ({
+      user_id: userId,
+      operation_id: operation.id,
+      occurrence_date: date,
+      scheduled_time: operation.scheduled_time || operation.recurrence_time || null,
+      status: operation.scheduled_time ? "Scheduled" : "Queued",
+      completed: false,
+    }));
+    if (missing.length) {
+      const inserted = await rest(serviceKey, "operation_occurrences", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" }, body: JSON.stringify(missing) });
+      if (inserted.ok) occurrences = (await inserted.json()).length;
+    }
+  }
+  return { operations: created.length, occurrences };
+}
+
 module.exports = async (req, res) => {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed." });
   if (!process.env.OPENAI_API_KEY || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.CRON_SECRET) return res.status(503).json({ error: "Scheduled intelligence is not configured." });
@@ -126,12 +256,13 @@ module.exports = async (req, res) => {
   try {
     const clock = easternClock();
     const requestedMode = new URL(req.url, "https://aegis-command.local").searchParams.get("mode");
-    // Automated runs are morning-only.  Evening is allowed only when the
-    // Command Center deliberately requests it and performs no queue rollover.
-    const mode = ["morning", "evening"].includes(requestedMode) ? requestedMode : clock.hour === 5 ? "morning" : null;
+    // The only automated scan is the 5am morning pass. Bedtime debriefs are
+    // initiated by the signed-in user through /api/advisory, never by cron.
+    const mode = requestedMode === "morning" || (!requestedMode && clock.hour === 5) ? "morning" : null;
     if (!mode) return res.status(204).end();
     const director = await adminUser(process.env.SUPABASE_SERVICE_ROLE_KEY);
     if (!director) throw new Error("Director account not found.");
+    const rollover = clock.hour === 5 ? await rolloverOperations(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date) : { operations: 0, occurrences: 0 };
     const recent = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, `ai_advisories?user_id=eq.${director.id}&select=advisory_type,payload&order=created_at.desc&limit=12`).then((response) => response.ok ? response.json() : []);
     if (recent.some((item) => item.advisory_type === mode && item.payload?.schedule_date === clock.date)) return res.status(200).json({ status: "already-complete", mode, date: clock.date });
     const advisory = await askOpenAI(await buildContext(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id), mode);
@@ -148,6 +279,6 @@ module.exports = async (req, res) => {
       const existing = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, `missions?user_id=eq.${director.id}&title=eq.${encodeURIComponent(item.title)}&completed=eq.false&select=id&limit=1`).then((response) => response.ok ? response.json() : []);
       if (!existing.length) await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "missions", { method: "POST", body: JSON.stringify({ user_id: director.id, title: item.title, category: item.category, priority: "Do now", completion_type: "binary", completion_definition: `System corrective from ${item.advisor}: ${item.rationale}`, completed: false, completed_count: 0, progress: 0 }) });
     }
-    return res.status(200).json({ status: "complete", mode, date: clock.date, directives: directives.length, roadmap: roadmap.length });
+    return res.status(200).json({ status: "complete", mode, date: clock.date, rollover, directives: directives.length, roadmap: roadmap.length });
   } catch (error) { return res.status(500).json({ error: String(error.message || error) }); }
 };

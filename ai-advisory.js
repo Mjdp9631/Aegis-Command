@@ -8,7 +8,21 @@ let latestContext = null;
 let latestAdvisory = null;
 let scanStageTimer = null;
 
-function dateKey(value) { const date = new Date(value); return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString("en-CA"); }
+function dateKey(value) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return String(value);
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString("en-CA");
+}
+function easternParts(value = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(value);
+  return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+}
+function operatingDayKey(value = new Date()) {
+  const parts = easternParts(value);
+  const day = new Date(`${parts.year}-${parts.month}-${parts.day}T12:00:00Z`);
+  if (Number(parts.hour) < 5) day.setUTCDate(day.getUTCDate() - 1);
+  return day.toISOString().slice(0, 10);
+}
 function daysBetween(newer, older) { return Math.round((new Date(`${newer}T00:00:00`) - new Date(`${older}T00:00:00`)) / 86400000); }
 function streakFor(dates) {
   const unique = [...new Set(dates.filter(Boolean))].sort().reverse();
@@ -69,7 +83,7 @@ function missionProgress(mission) {
   return mission.completed ? 100 : 0;
 }
 
-function buildContext({ operations, missions, trades, recovery, mastery, projects, phase, directives = [], roadmap = [], deepWork = [], challenges = [], directorReviews = [] }) {
+function buildContext({ operations, missions, trades, recovery, mastery, projects, phase, directives = [], roadmap = [], deepWork = [], challenges = [], directorReviews = [] }, operatingDate = operatingDayKey()) {
   const liveTrades = trades.filter((trade) => String(trade.account || "").trim().toLowerCase() !== "theoretical");
   const closed = liveTrades.filter((trade) => outcome(trade) !== "open");
   const wins = closed.filter((trade) => outcome(trade) === "win").length;
@@ -78,14 +92,14 @@ function buildContext({ operations, missions, trades, recovery, mastery, project
   const currentMonth = new Date().getMonth();
   const monthPnl = closed.filter((trade) => new Date(trade.traded_at || trade.created_at).getMonth() === currentMonth).reduce((sum, trade) => sum + Number(trade.pnl_percent || 0), 0);
   const tradeStreak = tradeStreaks(closed);
-  const today = new Date().toLocaleDateString("en-CA");
-  const todayOps = operations.filter((operation) => operation.scheduled_date === today);
+  const todayOps = operations.filter((operation) => dateKey(operation.scheduled_date) === operatingDate || dateKey(operation.operation_date) === operatingDate);
   const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
   const operationStreak = streakFor(operations.filter((operation) => operation.completed || operation.status === "Complete").map((operation) => operation.scheduled_date || operation.updated_at || operation.created_at));
   const tradingStreak = streakFor(liveTrades.map((trade) => trade.traded_at || trade.created_at));
   const masteryStreak = streakFor(mastery.map((entry) => entry.created_at));
   return {
     generated_on: new Date().toISOString(),
+    operating_date: operatingDate,
     active_phase: `Phase ${phase?.active_phase ?? 0}`,
     streaks: { execution: operationStreak, trading_journal: tradingStreak, mastery: masteryStreak },
     operations: { today_total: todayOps.length, today_complete: todayOps.filter((operation) => operation.completed || operation.status === "Complete").length, open_total: operations.filter((operation) => !operation.completed && operation.status !== "Complete").length, next: operations.filter((operation) => !operation.completed && operation.status !== "Complete").slice(0, 8).map((operation) => ({ title: operation.title, category: operation.category, status: operation.status || "Queued" })) },
@@ -185,9 +199,18 @@ function paintLatestAdvisory() {
   window.dispatchEvent(new CustomEvent("aegis:advisory-updated", { detail: latestAdvisory }));
 }
 
-async function persist(advisory, type) {
-  const { data: stored, error } = await supabase.from("ai_advisories").insert({ advisory_type: type, payload: advisory }).select().single();
+async function persist(advisory, type, { readOnly = false, operatingDate = operatingDayKey() } = {}) {
+  const payload = { ...advisory, scan_mode: type, operating_date: operatingDate, completed_at: new Date().toISOString() };
+  let result = await supabase.from("ai_advisories").insert({ advisory_type: type, payload }).select().single();
+  // Older Supabase projects still have the original four-value advisory check.
+  // Keep bedtime usable until migration 049 is applied without changing its
+  // read-only semantics.
+  if (result.error && type === "bedtime") {
+    result = await supabase.from("ai_advisories").insert({ advisory_type: "evening", payload }).select().single();
+  }
+  const { data: stored, error } = result;
   if (error) throw error;
+  if (readOnly) return [];
   const directives = advisory.directives || [];
   const roadmap = advisory.roadmap || [];
   if (directives.length) {
@@ -230,7 +253,7 @@ function showTransmissionQueue() {
   dialog.showModal();
 }
 
-async function gather() {
+async function gather(operatingDate = operatingDayKey()) {
   const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews] = await Promise.all([
     supabase.from("operations").select("*").order("scheduled_date", { ascending: false }).limit(180),
     supabase.from("missions").select("*").order("created_at", { ascending: false }),
@@ -247,7 +270,7 @@ async function gather() {
   ]);
   const values = [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews];
   if (values.some((result) => result.error)) throw new Error(values.find((result) => result.error)?.error.message || "Could not load command data.");
-  return buildContext({ operations: operations.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], phase: phase.data, directives: directives.data || [], roadmap: roadmap.data || [], deepWork: deepWork.data || [], challenges: challenges.data || [], directorReviews: directorReviews.data || [] });
+  return buildContext({ operations: operations.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], phase: phase.data, directives: directives.data || [], roadmap: roadmap.data || [], deepWork: deepWork.data || [], challenges: challenges.data || [], directorReviews: directorReviews.data || [] }, operatingDate);
 }
 
 function ensureScanOverlay() {
@@ -282,16 +305,22 @@ async function run(mode = "scan") {
   if (!supabase) return alert("AI requires the secure AEGIS connection.");
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return alert("Sign in before opening the intelligence layer.");
+  const bedtime = mode === "bedtime";
+  const operatingDate = operatingDayKey();
   try {
-    setBusy(true);
-    latestContext = await gather();
+    setBusy(true, bedtime ? "COMPILING DEBRIEF…" : "ANALYZING…");
+    latestContext = await gather(operatingDate);
     setFocusStreak(latestContext.streaks.execution);
     const response = await fetch("/api/advisory", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ mode, context: latestContext }) });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "The advisory engine is unavailable.");
     latestAdvisory = payload.advisory;
     paintLatestAdvisory();
-    const savedSuggestions = await persist(latestAdvisory, mode === "morning" || mode === "signal" || mode === "evening" ? mode : "scan");
+    const savedSuggestions = await persist(latestAdvisory, bedtime ? "bedtime" : (mode === "morning" || mode === "signal" || mode === "evening" ? mode : "scan"), { readOnly: bedtime, operatingDate });
+    if (bedtime) {
+      await loadSuggestions();
+      return;
+    }
     const correctives = savedSuggestions.filter((item) => item.mission_kind === "corrective");
     for (const corrective of correctives) await issueCorrective(corrective);
     transmissionQueue = [...correctives, ...savedSuggestions.filter((item) => item.mission_kind === "challenge")];
@@ -340,7 +369,7 @@ function ensureManualScan() {
   const panel = document.createElement("section");
   panel.id = "ai-manual-scan";
   panel.className = "panel ai-manual-scan";
-  panel.innerHTML = '<div><p class="eyebrow blue-text">ON-DEMAND INTELLIGENCE</p><h3>Midday command scan</h3><p>Ask Jarvis and Alfred to reassess the current data whenever the day changes.</p></div><button class="primary compact" data-ai-run="scan">Run manual scan</button>';
+  panel.innerHTML = '<div><p class="eyebrow blue-text">ON-DEMAND INTELLIGENCE</p><h3>Command scans</h3><p>Run a current-data scan during the day. When you are finished for the night, mark <strong>Going to bed</strong> so the debrief includes activity completed after midnight and leaves the operation queue untouched.</p></div><div class="ai-scan-actions"><button class="secondary compact" data-ai-run="scan">Run manual scan</button><button class="primary compact" data-ai-run="bedtime">Going to bed</button></div>';
   anchor.insertAdjacentElement("afterend", panel);
 }
 

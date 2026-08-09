@@ -3,7 +3,7 @@ name: AEGIS scheduled intelligence
 on:
   schedule:
     # 09:00/10:00 UTC covers 05:00 America/New_York through DST.
-    # Evening debriefs are deliberately manual from Command Center.
+    # Bedtime debriefs are deliberately user-triggered from Command Center.
     - cron: "0 9,10 * * *"
   workflow_dispatch:
     inputs:
@@ -14,7 +14,6 @@ on:
         type: choice
         options:
           - morning
-          - evening
 
 jobs:
   scan:
