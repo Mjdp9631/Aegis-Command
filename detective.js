@@ -16,6 +16,7 @@ let accountMemberships = [];
 let groupTradeLinks = [];
 let groupWithdrawals = [];
 let withdrawalAllocations = [];
+let accountTestTrades = [];
 let editingAccountId = null;
 let activeDetectiveTab = localStorage.getItem("aegis.detective-tab") || "journal";
 
@@ -173,6 +174,9 @@ function calculatedBalance(account) {
     (balance, trade) => balance * (1 + (Number(trade.pnl_percent) || 0) / 100),
     Number(account.starting_balance)
   );
+  balance += accountTestTrades
+    .filter((trade) => trade.account_id === account.id)
+    .reduce((total, trade) => total + Number(trade.pnl_usd || 0), 0);
   balance += groupLinksForAccount(account.id).reduce((total, link) => total + Number(link.actual_pnl_usd || 0), 0);
   balance -= withdrawalAllocations.filter((allocation) => allocation.account_id === account.id).reduce((total, allocation) => total + Number(allocation.gross_deduction_usd || 0), 0);
   return cents(balance);
@@ -191,12 +195,12 @@ function renderAccountAdminControls() {
   const host = $("#account-ledger-controls");
   const accountForm = $("#account-balance-form");
   if (!host || !accountForm) return;
-  if (!host.querySelector("#account-group-form")) host.innerHTML = `<form id="account-group-form" class="account-group-form"><div class="account-form-heading"><p class="eyebrow amber">CREATE GROUP</p><small>Separate live and prop-firm accounting.</small></div><label>Group name <input id="account-group-name" required maxlength="80" placeholder="e.g. Prop Group 1" /></label><label>Type <select id="account-group-type"><option>Live</option><option>Prop Firm</option></select></label><label id="account-group-split-wrap">Payout split (%) <input id="account-group-split" type="number" min="0" max="100" step="0.01" value="80" /></label><button class="primary compact" type="submit">Create group</button></form>`;
+  if (!host.querySelector("#account-group-form")) host.innerHTML = `<form id="account-group-form" class="account-group-form"><div class="account-form-heading"><p class="eyebrow amber">CREATE GROUP</p><small>Separate live, prop-firm, and theoretical accounting.</small></div><label>Group name <input id="account-group-name" required maxlength="80" placeholder="e.g. Prop Group 1" /></label><label>Type <select id="account-group-type"><option>Live</option><option>Prop Firm</option><option>Theoretical</option></select></label><label id="account-group-split-wrap">Payout split (%) <input id="account-group-split" type="number" min="0" max="100" step="0.01" placeholder="e.g. 80" /></label><button class="primary compact" type="submit">Create group</button></form>`;
   accountForm.classList.remove("account-balance-form");
   accountForm.classList.add("account-group-account-form");
   const typeField = $("#account-balance-type") || document.createElement("label");
   if (!$("#account-balance-type")) {
-    typeField.innerHTML = 'Type <select id="account-balance-type"><option>Live</option><option>Prop Firm</option></select>';
+    typeField.innerHTML = 'Type <select id="account-balance-type"><option>Live</option><option>Prop Firm</option><option>Theoretical</option></select>';
     accountForm.insertBefore(typeField, accountForm.querySelector(".account-primary") || accountForm.querySelector("button"));
   }
   if (!$("#account-balance-group")) {
@@ -240,6 +244,50 @@ function groupWithdrawalLedger(group) {
   return groupWithdrawals.filter((withdrawal) => withdrawal.group_id === group.id).sort((a, b) => new Date(b.withdrawn_at) - new Date(a.withdrawn_at));
 }
 
+function totalEarned() {
+  return cents(groupWithdrawals.reduce((total, withdrawal) => {
+    const group = accountGroups.find((item) => item.id === withdrawal.group_id);
+    const included = group?.account_type === "Theoretical"
+      ? withdrawal.include_in_total_earned === true
+      : withdrawal.include_in_total_earned !== false;
+    return total + (included ? Number(withdrawal.payout_total_usd || 0) : 0);
+  }, 0));
+}
+
+function renderEarnedSummary() {
+  const summary = $("#account-earned-summary");
+  if (!summary) return;
+  summary.querySelector("strong").textContent = money(totalEarned());
+}
+
+function renderTheoreticalTradeControls() {
+  const list = $("#account-balance-list");
+  if (!list) return;
+  let panel = $("#theoretical-account-controls");
+  if (!panel) {
+    panel = document.createElement("section");
+    panel.id = "theoretical-account-controls";
+    panel.className = "theoretical-account-controls";
+    list.before(panel);
+  }
+  const accounts = accountBalances.filter((account) => account.account_type === "Theoretical");
+  panel.innerHTML = accounts.length ? `<p class="account-group-kicker">THEORETICAL STRATEGY TESTING</p>${accounts.map((account) => {
+    const trades = accountTestTrades.filter((trade) => trade.account_id === account.id).sort((a, b) => new Date(b.traded_at) - new Date(a.traded_at));
+    const rows = trades.length ? trades.map((trade) => `<div class="theoretical-trade-row"><span>${escapeHtml(trade.strategy || "Unlabeled test")} · ${new Date(trade.traded_at).toLocaleDateString()}</span><b class="${Number(trade.pnl_usd) >= 0 ? "result-positive" : "result-negative"}">${Number(trade.pnl_usd) >= 0 ? "+" : ""}${money(trade.pnl_usd)}</b><button type="button" class="account-action danger" data-theoretical-trade-delete="${trade.id}">Delete</button></div>`).join("") : '<p class="ledger-empty">No strategy tests recorded yet.</p>';
+    return `<article class="theoretical-account-card"><div class="account-group-header"><div><p class="account-group-kicker">${escapeHtml(account.account_name)}</p><h4>Testing PnL</h4></div><strong>${money(accountTestTrades.filter((trade) => trade.account_id === account.id).reduce((sum, trade) => sum + Number(trade.pnl_usd || 0), 0))}</strong></div><form class="theoretical-trade-form" data-theoretical-trade-form="${account.id}"><label>Strategy / test<input name="strategy" maxlength="80" placeholder="e.g. London sweep" /></label><label>Trade date<input name="traded_at" type="date" required value="${localDateTimeInput().slice(0, 10)}" /></label><label>Win / loss amount<input name="pnl_usd" type="number" step="0.01" required placeholder="250 or -125" /></label><label>Note<input name="note" maxlength="240" placeholder="Optional" /></label><button class="primary compact" type="submit">Add test trade</button></form><div class="theoretical-trade-ledger">${rows}</div></article>`;
+  }).join("")}` : "";
+}
+
+function decorateTheoreticalWithdrawalForms() {
+  document.querySelectorAll("[data-group-withdrawal-form]").forEach((form) => {
+    const group = accountGroups.find((item) => item.id === form.dataset.groupWithdrawalForm);
+    if (!group || group.account_type !== "Theoretical" || form.querySelector("[data-withdrawal-include]")) return;
+    form.insertAdjacentHTML("beforeend", `<label class="withdrawal-earned-toggle"><input type="checkbox" data-withdrawal-include="${group.id}" /> Include in Total Earned</label>`);
+    const preview = form.querySelector(`[data-withdrawal-preview="${group.id}"]`);
+    if (preview) preview.textContent = "Excluded from Total Earned unless you check the box.";
+  });
+}
+
 function renderAccountBalances() {
   const list = $("#account-balance-list");
   if (!list) return;
@@ -261,6 +309,9 @@ function renderGroupedAccountBalances() {
   const list = $("#account-balance-list");
   if (!list) return;
   renderAccountAdminControls();
+  renderEarnedSummary();
+  renderTheoreticalTradeControls();
+  setTimeout(decorateTheoreticalWithdrawalForms, 0);
   const groups = accountGroups.map((group) => {
     const members = accountGroupAccounts(group.id);
     const total = members.reduce((sum, account) => sum + calculatedBalance(account), 0);
@@ -303,7 +354,7 @@ async function saveAccountBalance(event) {
   if (!sessionData.session) return alert("Please sign in before saving an account.");
   const accountName = $("#account-balance-name").value.trim();
   const startingBalance = numberOrNull($("#account-starting-balance").value);
-  const primary = $("#account-primary").checked;
+  const primary = accountType !== "Theoretical" && $("#account-primary").checked;
   if (!accountName || !startingBalance || startingBalance <= 0) return;
   if (primary) await supabase.from("account_balances").update({ is_primary: false }).eq("user_id", sessionData.session.user.id);
   const { error } = await supabase.from("account_balances").upsert({ user_id: sessionData.session.user.id, account_name: accountName, starting_balance: startingBalance, is_primary: primary }, { onConflict: "user_id,account_name" });
@@ -318,13 +369,14 @@ async function loadAccountLedger() {
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
   const userId = sessionData.session.user.id;
-  const [accountsResult, groupsResult, membershipsResult, linksResult, withdrawalsResult, allocationsResult] = await Promise.all([
+  const [accountsResult, groupsResult, membershipsResult, linksResult, withdrawalsResult, allocationsResult, testTradesResult] = await Promise.all([
     supabase.from("account_balances").select("*").order("is_primary", { ascending: false }).order("created_at", { ascending: true }),
     supabase.from("account_groups").select("*").order("created_at", { ascending: true }),
     supabase.from("account_group_memberships").select("*").order("joined_at", { ascending: true }),
     supabase.from("account_group_trade_links").select("*").order("created_at", { ascending: true }),
     supabase.from("account_group_withdrawals").select("*").order("withdrawn_at", { ascending: false }),
-    supabase.from("account_group_withdrawal_allocations").select("*").order("created_at", { ascending: true })
+    supabase.from("account_group_withdrawal_allocations").select("*").order("created_at", { ascending: true }),
+    supabase.from("account_test_trades").select("*").order("traded_at", { ascending: false })
   ]);
   if (accountsResult.error) { console.error(accountsResult.error); return; }
   accountBalances = (accountsResult.data || []).map((account) => ({ ...account, account_type: account.account_type || "Live" }));
@@ -333,6 +385,7 @@ async function loadAccountLedger() {
   groupTradeLinks = linksResult.data || [];
   groupWithdrawals = withdrawalsResult.data || [];
   withdrawalAllocations = allocationsResult.data || [];
+  accountTestTrades = testTradesResult.data || [];
   renderGroupedAccountBalances();
 }
 
@@ -389,7 +442,7 @@ async function saveAccountGroup(event) {
   const { error } = await supabase.from("account_groups").insert({ user_id: sessionData.session.user.id, name, account_type: accountType, profit_split_percent: split });
   if (error) return alert(`The group could not be created: ${error.message}`);
   event.target.reset();
-  $("#account-group-split").value = "80";
+  $("#account-group-split").value = "";
   await loadAccountLedger();
   window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
 }
@@ -442,18 +495,40 @@ async function saveGroupTrade(groupId, form) {
   await loadAccountLedger();
 }
 
+async function saveTheoreticalTrade(accountId, form) {
+  const account = accountBalances.find((item) => item.id === accountId);
+  const pnl = numberOrNull(form.querySelector('[name="pnl_usd"]')?.value);
+  const tradedAt = form.querySelector('[name="traded_at"]')?.value;
+  if (!account || account.account_type !== "Theoretical") return;
+  if (pnl == null || !Number.isFinite(pnl) || !tradedAt) return alert("Enter a valid testing win/loss amount and date.");
+  const { data: sessionData } = await supabase.auth.getSession();
+  const { error } = await supabase.from("account_test_trades").insert({ user_id: sessionData.session.user.id, account_id: accountId, traded_at: isoFromLocalDateTime(`${tradedAt}T12:00`), strategy: form.querySelector('[name="strategy"]')?.value.trim() || null, pnl_usd: cents(pnl), note: form.querySelector('[name="note"]')?.value.trim() || null });
+  if (error) return alert(`The theoretical trade could not be saved: ${error.message}`);
+  await loadAccountLedger();
+}
+
+async function deleteTheoreticalTrade(tradeId) {
+  if (!tradeId || !confirm("Delete this theoretical test trade?")) return;
+  const { error } = await supabase.from("account_test_trades").delete().eq("id", tradeId);
+  if (error) return alert(`The theoretical trade could not be deleted: ${error.message}`);
+  await loadAccountLedger();
+}
+
 async function saveGroupWithdrawal(groupId, form) {
   const group = accountGroups.find((item) => item.id === groupId);
   const accounts = accountGroupAccounts(groupId);
   const gross = numberOrNull(form.querySelector(`[data-withdrawal-gross="${groupId}"]`)?.value);
   const withdrawnAt = form.querySelector(`[data-withdrawal-date="${groupId}"]`)?.value;
   const note = form.querySelector(`[data-withdrawal-note="${groupId}"]`)?.value.trim() || null;
+  const includeInEarned = group?.account_type === "Theoretical"
+    ? Boolean(form.querySelector(`[data-withdrawal-include="${groupId}"]`)?.checked)
+    : true;
   if (!group || !accounts.length) return alert("Add at least one matching account to this group before recording a withdrawal.");
   if (!gross || gross <= 0 || !withdrawnAt) return alert("Enter a positive gross withdrawal and date.");
   const split = group.account_type === "Prop Firm" ? Number(group.profit_split_percent) : 100;
   const net = cents(gross * split / 100);
   const { data: sessionData } = await supabase.auth.getSession();
-  const withdrawalResult = await supabase.from("account_group_withdrawals").insert({ user_id: sessionData.session.user.id, group_id: groupId, withdrawn_at: isoFromLocalDateTime(withdrawnAt), gross_amount_per_account_usd: cents(gross), payout_amount_per_account_usd: net, gross_total_usd: cents(gross * accounts.length), payout_total_usd: cents(net * accounts.length), profit_split_percent: split, account_count: accounts.length, note }).select().single();
+  const withdrawalResult = await supabase.from("account_group_withdrawals").insert({ user_id: sessionData.session.user.id, group_id: groupId, withdrawn_at: isoFromLocalDateTime(withdrawnAt), gross_amount_per_account_usd: cents(gross), payout_amount_per_account_usd: net, gross_total_usd: cents(gross * accounts.length), payout_total_usd: cents(net * accounts.length), profit_split_percent: split, account_count: accounts.length, include_in_total_earned: includeInEarned, note }).select().single();
   if (withdrawalResult.error) return alert(`The withdrawal could not be recorded: ${withdrawalResult.error.message}`);
   const allocationResult = await supabase.from("account_group_withdrawal_allocations").insert(accounts.map((account) => ({ user_id: sessionData.session.user.id, withdrawal_id: withdrawalResult.data.id, account_id: account.id, gross_deduction_usd: cents(gross), payout_amount_usd: net })));
   if (allocationResult.error) {
@@ -853,6 +928,8 @@ function init() {
     if (tradeForm) { event.preventDefault(); saveGroupTrade(tradeForm.dataset.groupTradeForm, tradeForm); }
     const withdrawalForm = event.target.closest("[data-group-withdrawal-form]");
     if (withdrawalForm) { event.preventDefault(); saveGroupWithdrawal(withdrawalForm.dataset.groupWithdrawalForm, withdrawalForm); }
+    const theoreticalForm = event.target.closest("[data-theoretical-trade-form]");
+    if (theoreticalForm) { event.preventDefault(); saveTheoreticalTrade(theoreticalForm.dataset.theoreticalTradeForm, theoreticalForm); }
   });
   document.addEventListener("input", (event) => { const input = event.target.closest("[data-withdrawal-gross]"); if (input) updateWithdrawalPreview(input.dataset.withdrawalGross); });
   document.addEventListener("change", (event) => { const move = event.target.closest("[data-account-move]"); if (move) moveAccount(move.dataset.accountMove, move.value); });
@@ -875,6 +952,8 @@ function init() {
     if (accountEditButton) editAccount(accountEditButton.dataset.accountEdit);
     const accountDeleteButton = event.target.closest("[data-account-delete]");
     if (accountDeleteButton) deleteAccount(accountDeleteButton.dataset.accountDelete);
+    const theoreticalDeleteButton = event.target.closest("[data-theoretical-trade-delete]");
+    if (theoreticalDeleteButton) deleteTheoreticalTrade(theoreticalDeleteButton.dataset.theoreticalTradeDelete);
     if (event.target.closest("#detective-trade-dialog .dialog-close")) dialog.close();
   });
   dialog.querySelector("form").addEventListener("submit", saveTrade);
