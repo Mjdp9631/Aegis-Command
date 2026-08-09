@@ -582,6 +582,21 @@ async function generateChallenge(kind) {
   await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
 }
 
+async function readApiResponse(response, routeName) {
+  const body = await response.text();
+  let result = null;
+  try {
+    result = body ? JSON.parse(body) : null;
+  } catch {
+    const deploymentHint = response.status === 404
+      ? `The ${routeName} endpoint is not available on this deployment. Redeploy the current GitHub branch so the server route is included.`
+      : `The ${routeName} endpoint returned a non-JSON response (HTTP ${response.status}).`;
+    throw new Error(deploymentHint);
+  }
+  if (!response.ok) throw new Error(result?.error || `${routeName} failed with HTTP ${response.status}.`);
+  return result || {};
+}
+
 async function actOnChallenge(id, action) {
   const challenge = challenges.find(item => item.id === id); if (!challenge) return;
   if (!db) { challenges = challenges.filter(item => action === "clear" ? item.id !== id : true).map(item => item.id === id ? { ...item, status: action === "accept" ? "accepted" : "denied" } : item); render(); return; }
@@ -616,8 +631,7 @@ async function saveSystem(event) {
       try {
         const { data: { session } } = await db.auth.getSession();
         const response = await fetch("/api/mastery-review", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session?.access_token || ""}` }, body: JSON.stringify({ topic: challenge.title, category: challenge.category, definition, personal_meaning: personalMeaning, application }) });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "AEGIS could not review this synthesis.");
+        const result = await readApiResponse(response, "mastery review");
         assessment = result.assessment;
       } catch (reviewError) {
         if (reviewStatus) reviewStatus.textContent = reviewError.message || "The accuracy check failed. This transmission was not filed.";

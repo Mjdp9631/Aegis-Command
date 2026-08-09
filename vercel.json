@@ -2,6 +2,9 @@
   "functions": {
     "api/trade-review.js": {
       "includeFiles": "brain/**"
+    },
+    "api/mastery-review.js": {
+      "maxDuration": 60
     }
   }
 }
