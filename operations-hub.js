@@ -348,12 +348,12 @@ async function loadOccurrences() {
   // prevents scheduled dates from disappearing after leaving/reopening the
   // calendar, including completed prior-day occurrences.
   const merged = new Map((Array.isArray(data) ? data : []).map((row) => [occurrenceIdentity(row), row]));
-  cachedOccurrences().filter(cachedOccurrenceIsCurrent).forEach((row) => {
+  for (const row of cachedOccurrences().filter(cachedOccurrenceIsCurrent)) {
     const key = occurrenceIdentity(row);
     const remote = merged.get(key);
     if (!remote) {
       merged.set(key, row);
-      return;
+      continue;
     }
     // Authenticated browsers use Supabase as the shared source of truth. If a
     // cached row has a newer explicit click than the remote snapshot, first
@@ -369,7 +369,7 @@ async function loadOccurrences() {
         .single();
       if (!syncError && synced) merged.set(key, synced);
     }
-  });
+  }
   operationOccurrences = [...merged.values()];
   saveCachedOccurrences();
 }
@@ -418,8 +418,15 @@ async function refreshDurableOperationState() {
       client.from("operation_occurrences").select("*").eq("user_id", currentUser.id),
     ]);
     if (operationResult.error || occurrenceResult.error) return;
-    operations = operationResult.data || [];
-    operationOccurrences = occurrenceResult.data || [];
+    const remoteOperations = Array.isArray(operationResult.data) ? operationResult.data : null;
+    const remoteOccurrences = Array.isArray(occurrenceResult.data) ? occurrenceResult.data : null;
+    if (!remoteOperations || !remoteOccurrences) return;
+    // Realtime can deliver an event while the auth/session snapshot is still
+    // settling. Never turn a populated queue into an empty one because of
+    // that transient response; the next realtime event or boot will retry.
+    if (!remoteOperations.length && operations.length) return;
+    operations = remoteOperations;
+    operationOccurrences = remoteOccurrences;
     await reconcileRecurringCompletion();
     saveCachedOperations();
     renderQueue();
@@ -431,11 +438,18 @@ async function refreshDurableOperationState() {
 
 function subscribeToOperationSync() {
   if (!client || !currentUser || typeof client.channel !== "function") return;
-  if (operationSyncChannel) client.removeChannel(operationSyncChannel);
-  operationSyncChannel = client.channel(`aegis-operation-sync-${currentUser.id}`)
-    .on("postgres_changes", { event: "*", schema: "public", table: "operations", filter: `user_id=eq.${currentUser.id}` }, () => { void refreshDurableOperationState(); })
-    .on("postgres_changes", { event: "*", schema: "public", table: "operation_occurrences", filter: `user_id=eq.${currentUser.id}` }, () => { void refreshDurableOperationState(); })
-    .subscribe();
+  try {
+    if (operationSyncChannel) client.removeChannel(operationSyncChannel);
+    operationSyncChannel = client.channel(`aegis-operation-sync-${currentUser.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "operations", filter: `user_id=eq.${currentUser.id}` }, () => { void refreshDurableOperationState(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "operation_occurrences", filter: `user_id=eq.${currentUser.id}` }, () => { void refreshDurableOperationState(); })
+      .subscribe();
+  } catch (error) {
+    // Realtime is an enhancement only. A channel failure must not abort boot
+    // or replace the already-renderable local/cloud queue with starter data.
+    console.warn("Operation realtime sync unavailable", error);
+    operationSyncChannel = null;
+  }
 }
 
 function normalizedStatus(operation) {
