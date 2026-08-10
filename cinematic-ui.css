@@ -1494,3 +1494,27 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   #mastery .mastery-input-dock { grid-template-columns: 1fr; }
   #mastery .mastery-input-actions { justify-content: flex-start; }
 }
+
+/* Pointer-controlled sidebar: clicking a link must not pin the rail open. */
+@media (min-width: 761px) {
+  .app-shell { grid-template-columns: 74px minmax(0, 1fr) !important; }
+  .sidebar {
+    width: 74px !important;
+    min-width: 74px !important;
+    padding: 0 14px 20px !important;
+    transition: width .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease !important;
+  }
+  .sidebar:hover {
+    width: 224px !important;
+    min-width: 224px !important;
+    box-shadow: 14px 0 38px rgba(0,0,0,.34), inset -1px 0 rgba(105,176,246,.18) !important;
+  }
+  .sidebar nav { min-width: 216px; }
+  .nav-link { min-width: 216px; font-size: 14px !important; }
+  .brand > span:last-child,
+  .system-label,
+  .sidebar-foot span { opacity: 0; transform: translateX(-8px); }
+  .sidebar:hover .brand > span:last-child,
+  .sidebar:hover .system-label,
+  .sidebar:hover .sidebar-foot span { opacity: 1; transform: translateX(0); }
+}
