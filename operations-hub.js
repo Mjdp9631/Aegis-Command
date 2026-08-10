@@ -492,6 +492,22 @@ function subscribeToOperationSync() {
   }
 }
 
+let operationRefreshTimer = null;
+function scheduleDurableOperationRefresh() {
+  if (!client || !currentUser) return;
+  clearTimeout(operationRefreshTimer);
+  operationRefreshTimer = setTimeout(() => { void refreshDurableOperationState(); }, 80);
+}
+
+window.addEventListener("focus", scheduleDurableOperationRefresh);
+window.addEventListener("online", scheduleDurableOperationRefresh);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") scheduleDurableOperationRefresh();
+});
+window.addEventListener("storage", (event) => {
+  if (event.key === operationsCacheKey() || event.key === occurrenceCacheKey()) scheduleDurableOperationRefresh();
+});
+
 function normalizedStatus(operation) {
   if (operation.completed || String(operation.status || "").toLowerCase() === "complete") return "Complete";
   if (operation._occurrence?.completed || String(operation._occurrence?.status || "").toLowerCase() === "complete") return "Complete";

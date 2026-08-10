@@ -84,6 +84,7 @@ const phases = [
 
 let currentPhase = 0;
 let existingMissionTitles = new Set();
+let phaseSyncChannel = null;
 
 function currentLevels() {
   try { return JSON.parse(localStorage.getItem("aegis-character-levels") || "{}"); }
@@ -165,9 +166,10 @@ async function persistPhase(nextPhase) {
 
 async function load() {
   currentPhase = Number(localStorage.getItem("aegis-active-phase") || 0);
+  let userId = null;
   if (db) {
     const { data: sessionData } = await db.auth.getSession();
-    const userId = sessionData.session?.user?.id;
+    userId = sessionData.session?.user?.id;
     if (userId) {
       const { data, error } = await db.from("phase_protocols").select("active_phase").eq("user_id", userId).maybeSingle();
       if (!error && data) currentPhase = Number(data.active_phase) || 0;
@@ -177,6 +179,12 @@ async function load() {
     }
   }
   dispatchPhase(); render();
+  if (db && userId && typeof db.channel === "function") {
+    if (phaseSyncChannel) db.removeChannel(phaseSyncChannel);
+    phaseSyncChannel = db.channel(`aegis-phase-sync-${userId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "phase_protocols", filter: `user_id=eq.${userId}` }, () => { void load(); })
+      .subscribe();
+  }
 }
 
 document.addEventListener("click", (event) => {
@@ -204,3 +212,6 @@ load();
 if (db) db.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 100); });
 window.addEventListener("aegis:character-levels-changed", render);
 window.addEventListener("aegis:missions-changed", () => setTimeout(load, 100));
+window.addEventListener("focus", () => { void load(); });
+window.addEventListener("online", () => { void load(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void load(); });
