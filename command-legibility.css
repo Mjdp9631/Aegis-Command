@@ -45,6 +45,23 @@
   background: linear-gradient(135deg, rgba(10, 25, 43, .14), rgba(5, 14, 25, .05)) !important;
   backdrop-filter: blur(1px) saturate(105%);
 }
+#detective.active .trade-panel table {
+  color: #edf6ff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .95), 0 0 8px rgba(2, 10, 19, .78);
+}
+#detective.active .trade-panel th {
+  color: rgba(202, 226, 249, .88);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
+}
+#detective.active .trade-panel td {
+  color: rgba(231, 243, 255, .94);
+  font-weight: 600;
+}
+#detective.active .trade-panel td.result-positive { color: #75e7ad; }
+#detective.active .trade-panel td.result-negative { color: #ff9b9b; }
+#detective.active .trade-panel tbody tr:not(.empty-row) {
+  background: rgba(2, 10, 19, .18);
+}
 @media (min-width: 761px) {
   /* Right rail: directive, markets, and the linked department summaries. */
   .market-tickers > span,
