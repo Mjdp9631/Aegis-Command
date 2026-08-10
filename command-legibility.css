@@ -32,6 +32,19 @@
   top: auto !important;
   z-index: auto !important;
 }
+/* Detective uses the same transparent glass treatment as Mission Control so
+   the desk scene remains part of the working surface. */
+#detective.active .metric,
+#detective.active .panel,
+#detective.active .detective-filter-bar,
+#detective.active .account-balance-card,
+#detective.active .account-group-card,
+#detective.active .theoretical-account-card,
+#detective.active .account-earned-summary,
+#detective.active .account-balance-summary article {
+  background: linear-gradient(135deg, rgba(10, 25, 43, .14), rgba(5, 14, 25, .05)) !important;
+  backdrop-filter: blur(1px) saturate(105%);
+}
 @media (min-width: 761px) {
   /* Right rail: directive, markets, and the linked department summaries. */
   .market-tickers > span,
