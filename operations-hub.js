@@ -153,7 +153,8 @@ const starterOperations = () => {
     ["Journal", "Self Mastery"],
   ].map(([title, category]) => title === "Pre-market analysis"
     ? preMarketOperationForToday()
-    : ({ title, category, completed: false, scheduled_date: null, scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, status: "Queued" }));
+    : ({ title, category, completed: false, scheduled_date: null, scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, status: "Queued" }))
+    .concat(gymOperationForToday());
 };
 
 const gymSplitForToday = () => {
@@ -338,8 +339,10 @@ function isCompleteToday(operation) {
   if (normalizedStatus(operation) !== "Complete") return false;
   const completedOn = dateOnly(operation.completed_on || operation.local_completed_on);
   // Older saved operations may not have the new completion stamp yet. Keep a
-  // just-completed item visible for the current browser session in that case.
-  return completedOn ? completedOn === operatingDayKey() : Boolean(operation.local_completed_today);
+  // current-day item visible by its assigned operating date in that case.
+  if (completedOn) return completedOn === operatingDayKey();
+  const assignedDay = dateOnly(operation.operation_date || operation.scheduled_date);
+  return assignedDay === operatingDayKey() || Boolean(operation.local_completed_today);
 }
 
 function checklistFor(operation) {
@@ -631,8 +634,6 @@ function queueOperations() {
 function queueFallback() {
   const planned = starterOperations()
     .filter((operation) => !operation.scheduled_date || dateOnly(operation.scheduled_date) === operatingDayKey());
-  const gym = gymOperationForToday();
-  if (gym) planned.push(gym);
   return { today: planned, upcoming: [] };
 }
 
@@ -1471,7 +1472,7 @@ async function boot() {
     await ensureRecurringOccurrences();
     await reconcileMeasuredMissionCounts();
   } else {
-    operations = local;
+    operations = await ensureTodayOperations(local.length ? local : starterOperations());
     operationOccurrences = cachedOccurrences();
   }
   if (!operations.length) operations = local.length ? local : starterOperations();
