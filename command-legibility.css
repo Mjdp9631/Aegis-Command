@@ -1,4 +1,15 @@
 /* Command Center readability pass — intentionally excludes the hero objective panel. */
+/* Keep the two live work panels readable without turning them into opaque slabs. */
+#command > .command-stage > .content-grid .operations-panel,
+#command > .command-stage > .content-grid .mission-panel {
+  background: linear-gradient(135deg, rgba(8, 25, 42, .34), rgba(4, 13, 24, .16)) !important;
+  backdrop-filter: blur(2px) saturate(108%);
+  border-color: rgba(112, 190, 245, .24) !important;
+}
+#command > .command-stage > .content-grid .operations-panel::before,
+#command > .command-stage > .content-grid .mission-panel::before {
+  opacity: .18;
+}
 @media (min-width: 761px) {
   /* Right rail: directive, markets, and the linked department summaries. */
   .market-tickers > span,

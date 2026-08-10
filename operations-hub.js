@@ -153,7 +153,7 @@ const starterOperations = () => {
     ["Journal", "Self Mastery"],
   ].map(([title, category]) => title === "Pre-market analysis"
     ? preMarketOperationForToday()
-    : ({ title, category, completed: false, scheduled_date: null, scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, status: "Queued" }))
+    : ({ title, category, completed: false, scheduled_date: operatingDayKey(), scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, status: "Queued" }))
     .concat(gymOperationForToday());
 };
 
@@ -173,6 +173,7 @@ const gymOperationForToday = () => {
     completed: false,
     is_daily: true,
     operation_date: operatingDayKey(),
+    scheduled_date: operatingDayKey(),
     brief: isRest
       ? "Protect recovery: light mobility only if it feels good, hydrate, sleep on time, and do not turn rest into a missed plan."
       : `Complete the ${split} session selected in Self Mastery. Log every exercise with weight, reps, and sets so AEGIS can evaluate progressive improvement.`,
@@ -754,7 +755,6 @@ async function persist(operation) {
     user_id: currentUser.id,
     title: operation.title,
     category: operation.category || "Mission",
-    priority: operation.priority || priorityFor(operation.category),
     brief: operation.brief || operation.notes || null,
     status: operation.status,
     completed: operation.completed,
@@ -928,7 +928,7 @@ async function seedIfEmpty() {
   // The server-side 5 AM morning pass owns the durable rollover. Do not seed
   // a new calendar day from a page load at 1–4 AM.
   if (!morningRolloverReached()) return [];
-  const seed = starterOperations().map((operation) => ({ ...operation, user_id: currentUser.id }));
+  const seed = starterOperations().map(({ priority, ...operation }) => ({ ...operation, user_id: currentUser.id }));
   const { data: inserted, error: insertError } = await client.from("operations").insert(seed).select();
   if (insertError) {
     console.warn("Could not seed operations", insertError.message);
@@ -948,7 +948,7 @@ async function ensureTodayOperations(records = []) {
     ["Conquer the morning", "Self Mastery", "Begin the day with one deliberate first action, protect the first block from avoidable distraction, and execute the morning standard before reactive work."],
     ["Read one chapter", "Self Mastery", readingBrief()],
     ["Journal", "Self Mastery", "Write the facts, name what is within your control, and record one lesson or next right action."],
-  ].map(([title, category, brief]) => ({ title, category, brief, priority: priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: activeDay, metric_key: title === "Read one chapter" ? "chapters_read" : title === "Journal" ? "mastery.entry" : null }));
+  ].map(([title, category, brief]) => ({ title, category, brief, priority: priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: activeDay, scheduled_date: activeDay, metric_key: title === "Read one chapter" ? "chapters_read" : title === "Journal" ? "mastery.entry" : null }));
   const preMarket = preMarketOperationForToday();
   if (preMarket) daily.unshift(preMarket);
   daily.push(gymOperationForToday());
@@ -970,8 +970,9 @@ async function ensureTodayOperations(records = []) {
   if (!additions.length) return records;
   if (!client || !currentUser) return appendOperationsWithoutTouchingExisting(records, additions.map((item, index) => ({ ...item, id: `local-${activeDay}-${index}-${item.title}` })));
   const prepared = additions.map((item) => {
+    const { priority, ...operationFields } = item;
     const mission = item.mission_id ? missions.find((candidate) => candidate.id === item.mission_id) : resolveMission(item);
-    return { ...item, user_id: currentUser.id, mission_id: mission?.id || null, metric_key: item.metric_key || mission?.metric_key || null };
+    return { ...operationFields, user_id: currentUser.id, mission_id: mission?.id || null, metric_key: item.metric_key || mission?.metric_key || null };
   });
   const { data, error } = await client.from("operations").insert(prepared).select();
   if (error) {
