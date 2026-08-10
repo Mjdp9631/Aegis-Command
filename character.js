@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=activity-counters-v2";
+import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=activity-counters-v3";
 
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
@@ -91,8 +91,8 @@ function directorReviewPanel() {
   return `<section class="panel director-review-panel"><div><p class="eyebrow amber">QUARTERLY DIRECTOR REVIEW</p><h3>${quarterKey()} · Measure the whole system.</h3><p>Review the person behind the data: wins, bottlenecks, standards, and the next quarter’s focus.</p></div><button class="primary compact" type="button" id="open-director-review">${review.id ? "Update Director Review" : "Open Director Review"}</button>${review.id ? `<div class="director-review-preview"><span><b>Wins</b>${escape(review.wins || "Not recorded")}</span><span><b>Next focus</b>${escape(review.next_focus || "Not recorded")}</span></div>` : ""}</section>`;
 }
 
-function render({ operations, occurrences, trades, missions, projects, contentItems, masteryEntries, masteryChallenges, trainingSessions }) {
-  const metrics = characterMetrics({ operations, occurrences, trades, projects, contentItems, masteryEntries, masteryChallenges, trainingSessions }, xpCampaign?.started_at);
+function render({ operations, occurrences, trades, missions, projects, contentItems, masteryEntries, masteryChallenges, trainingSessions, capabilityLogs, financialFoundation }) {
+  const metrics = characterMetrics({ operations, occurrences, trades, projects, contentItems, masteryEntries, masteryChallenges, trainingSessions, capabilityLogs, financialFoundation }, xpCampaign?.started_at);
   const { discipline, trading, ccfx, mastery } = metrics;
   const recovery = missions.find((mission) => mission.category === "Recovery");
   const levels = { discipline: levelFromXp(discipline.xp).level, trading: levelFromXp(trading.xp).level, ccfx: levelFromXp(ccfx.xp).level, mind: levelFromXp(mastery.mind.xp).level, body: levelFromXp(mastery.body.xp).level };
@@ -107,7 +107,7 @@ async function load() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [operationsResult, occurrenceResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, campaignResult, reviewResult, challengeResult] = await Promise.all([
+  const [operationsResult, occurrenceResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, campaignResult, reviewResult, challengeResult, capabilityLogsResult, financialFoundationResult] = await Promise.all([
     supabase.from("operations").select("id, title, scheduled_date, operation_date, completed_on, completed, schedule_mode"),
     supabase.from("operation_occurrences").select("id, operation_id, occurrence_date, completed_on, completed"),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }),
@@ -118,12 +118,14 @@ async function load() {
     supabase.from("training_sessions").select("*").order("logged_on", { ascending: false }),
     supabase.from("xp_campaigns").select("started_at").maybeSingle(),
     supabase.from("director_reviews").select("*").order("updated_at", { ascending: false }).limit(4),
-    supabase.from("mastery_challenges").select("*").order("completed_at", { ascending: false }).limit(100)
+    supabase.from("mastery_challenges").select("*").order("completed_at", { ascending: false }).limit(100),
+    supabase.from("capability_skill_logs").select("*, capability_skills(skill_type, title)").order("practiced_on", { ascending: false }),
+    supabase.from("financial_foundations").select("*").maybeSingle()
   ]);
   xpCampaign = campaignResult.data || null;
   directorReviews = reviewResult.data || [];
   xpCampaignError = campaignResult.error ? "XP campaign setup is awaiting its one-time database migration." : null;
-  render({ operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], trades: tradesResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [] });
+  render({ operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], trades: tradesResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], capabilityLogs: capabilityLogsResult.data || [], financialFoundation: financialFoundationResult.data || null });
 }
 
 document.addEventListener("click", async (event) => {

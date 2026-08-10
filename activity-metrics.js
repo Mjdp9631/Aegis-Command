@@ -126,14 +126,22 @@ export function disciplineXp(operations = [], occurrences = [], startedAt) {
   return { xp: Math.max(0, ledger.reduce((total, entry) => total + entry.change, 0)), ledger: ledger.sort((a, b) => b.label.localeCompare(a.label)) };
 }
 
-export function enterpriseXp(projects = [], contentItems = [], startedAt) {
+export function enterpriseXp(projects = [], contentItems = [], financialFoundation = null, startedAt) {
   const ledger = [];
-  projects.filter((project) => isOnOrAfter(project.created_at, startedAt) && project.status === "Complete").forEach((project) => ledger.push({ label: new Date(project.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `Completed project: ${project.title || "project"}`, change: 30 }));
+  projects.filter((project) => isOnOrAfter(project.created_at, startedAt)).forEach((project) => {
+    const label = new Date(project.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    ledger.push({ label, detail: `Started project: ${project.title || "project"}`, change: 5 });
+    if (project.status === "Complete") ledger.push({ label, detail: `Completed project: ${project.title || "project"}`, change: 30 });
+  });
   contentItems.filter((item) => isOnOrAfter(item.created_at, startedAt) && item.status === "Published").forEach((item) => ledger.push({ label: new Date(item.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `Published ${item.platform || "content"}: ${item.title || "item"}`, change: 8 }));
+  if (financialFoundation && isOnOrAfter(financialFoundation.updated_at || financialFoundation.created_at, startedAt)) {
+    const timestamp = financialFoundation.updated_at || financialFoundation.created_at;
+    ledger.push({ label: new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: "Financial foundation baseline recorded", change: 20 });
+  }
   return { xp: ledger.reduce((total, entry) => total + entry.change, 0), ledger: ledger.sort((a, b) => b.label.localeCompare(a.label)) };
 }
 
-export function masteryXp(entries = [], challenges = [], trainingSessions = [], startedAt) {
+export function masteryXp(entries = [], challenges = [], trainingSessions = [], capabilityLogs = [], startedAt) {
   const ledgerFor = (awards) => entries.filter((entry) => isOnOrAfter(entry.created_at, startedAt) && awards[entry.category]).map((entry) => ({
     label: new Date(entry.created_at || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     detail: `${entry.category}: ${entry.title || "entry"} · base evidence XP`,
@@ -150,6 +158,13 @@ export function masteryXp(entries = [], challenges = [], trainingSessions = [], 
     const ledger = challenge.lane === "body" ? bodyLedger : mindLedger;
     ledger.push({ label: new Date(challenge.completed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `${challenge.category || "Mastery"} transmission: ${challenge.title || "challenge"} · bonus XP`, change: Number(challenge.xp_reward) });
   });
+  capabilityLogs.filter((log) => isOnOrAfter(log.created_at || log.practiced_on, startedAt)).forEach((log) => {
+    const skillType = log.skill_type || log.capability_skills?.skill_type || "Practical";
+    const skillTitle = log.skill_title || log.capability_skills?.title || "capability practice";
+    const pressureBonus = log.pressure_level === "High" ? 3 : log.pressure_level === "Moderate" ? 1 : 0;
+    const change = (skillType === "Adversarial" ? 12 : 10) + pressureBonus;
+    mindLedger.push({ label: new Date(log.created_at || `${log.practiced_on}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `${skillType}: ${skillTitle} · practice evidence`, change });
+  });
   return {
     mind: { xp: mindLedger.reduce((total, entry) => total + entry.change, 0), ledger: mindLedger.sort((a, b) => b.label.localeCompare(a.label)) },
     body: { xp: bodyLedger.reduce((total, entry) => total + entry.change, 0), ledger: bodyLedger.sort((a, b) => b.label.localeCompare(a.label)) },
@@ -161,8 +176,8 @@ export function characterMetrics(data = {}, startedAt) {
   if (!startedAt) return { discipline: empty, trading: empty, ccfx: empty, mastery: { mind: empty, body: empty }, totalXp: 0 };
   const discipline = disciplineXp(data.operations, data.occurrences, startedAt);
   const trading = tradingXp(data.trades, startedAt);
-  const ccfx = enterpriseXp(data.projects, data.contentItems, startedAt);
-  const mastery = masteryXp(data.masteryEntries, data.masteryChallenges, data.trainingSessions, startedAt);
+  const ccfx = enterpriseXp(data.projects, data.contentItems, data.financialFoundation, startedAt);
+  const mastery = masteryXp(data.masteryEntries, data.masteryChallenges, data.trainingSessions, data.capabilityLogs, startedAt);
   const totalXp = discipline.xp + trading.xp + ccfx.xp + mastery.mind.xp + mastery.body.xp;
   return { discipline, trading, ccfx, mastery, totalXp };
 }

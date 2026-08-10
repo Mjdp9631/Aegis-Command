@@ -87,7 +87,8 @@ begin
   values (new.user_id, 'capability_skill_logs', new.id,
     case when v_type = 'Adversarial' then 'mastery.adversarial_skill' else 'mastery.practical_skill' end,
     coalesce(new.practiced_on::timestamptz, now()), 1,
-    jsonb_build_object('skill_type', v_type, 'skill_title', v_title, 'pressure_level', new.pressure_level, 'duration_minutes', new.duration_minutes, 'result', new.result))
+    jsonb_build_object('skill_type', v_type, 'skill_title', v_title, 'pressure_level', new.pressure_level, 'duration_minutes', new.duration_minutes, 'result', new.result,
+      'xp_reward', (case when v_type = 'Adversarial' then 12 else 10 end) + case when new.pressure_level = 'High' then 3 when new.pressure_level = 'Moderate' then 1 else 0 end))
   on conflict (source_type, source_id) do update
     set metric_key = excluded.metric_key, occurred_at = excluded.occurred_at, metadata = excluded.metadata;
   return new;
@@ -96,3 +97,20 @@ end $$;
 drop trigger if exists aegis_activity_capability_practice on public.capability_skill_logs;
 create trigger aegis_activity_capability_practice after insert or update on public.capability_skill_logs
   for each row execute function public.aegis_log_capability_practice();
+
+-- Keep the durable financial baseline in the shared evidence stream as well.
+create or replace function public.aegis_log_financial_foundation()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.activity_events(user_id, source_type, source_id, metric_key, occurred_at, quantity, metadata)
+  values (new.user_id, 'financial_foundations', new.id, 'business.financial_foundation', coalesce(new.updated_at, now()), 1,
+    jsonb_build_object('monthly_income', new.monthly_income, 'monthly_expenses', new.monthly_expenses, 'liquid_reserves', new.liquid_reserves,
+      'emergency_fund_target', new.emergency_fund_target, 'debt_balance', new.debt_balance, 'business_revenue', new.business_revenue, 'xp_reward', 20))
+  on conflict (source_type, source_id) do update
+    set occurred_at = excluded.occurred_at, metadata = excluded.metadata;
+  return new;
+end $$;
+
+drop trigger if exists aegis_activity_financial_foundation on public.financial_foundations;
+create trigger aegis_activity_financial_foundation after insert or update on public.financial_foundations
+  for each row execute function public.aegis_log_financial_foundation();

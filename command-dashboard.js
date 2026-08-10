@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=activity-counters-v1";
+import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=activity-counters-v3";
 import { effectiveOperations } from "./operation-state.js?v=shared-operation-state-v2";
 
 const config = window.AEGIS_CONFIG || {};
@@ -213,7 +213,7 @@ async function load() {
   if (!supabase) return;
   const { data: session } = await supabase.auth.getSession();
   if (!session.session) return;
-  const [tradesResult, operationsResult, occurrenceResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, challengeResult, campaignResult, accountsResult, groupsResult, membershipsResult, tradeLinksResult, withdrawalsResult, allocationsResult] = await Promise.all([
+  const [tradesResult, operationsResult, occurrenceResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, challengeResult, capabilityLogsResult, foundationResult, campaignResult, accountsResult, groupsResult, membershipsResult, tradeLinksResult, withdrawalsResult, allocationsResult] = await Promise.all([
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }),
     supabase.from("operations").select("id, title, scheduled_date, operation_date, completed_on, completed, schedule_mode"),
     supabase.from("operation_occurrences").select("id, operation_id, occurrence_date, completed_on, completed"),
@@ -223,6 +223,8 @@ async function load() {
     supabase.from("mastery_entries").select("category, title, created_at"),
     supabase.from("training_sessions").select("session_type, title, logged_on, created_at"),
     supabase.from("mastery_challenges").select("lane, category, title, status, completed_at, xp_reward"),
+    supabase.from("capability_skill_logs").select("*, capability_skills(skill_type, title)"),
+    supabase.from("financial_foundations").select("*").maybeSingle(),
     supabase.from("xp_campaigns").select("started_at").maybeSingle(),
     supabase.from("account_balances").select("*").order("is_primary", { ascending: false }).order("created_at", { ascending: true }),
     supabase.from("account_groups").select("*").order("created_at", { ascending: true }),
@@ -231,7 +233,7 @@ async function load() {
     supabase.from("account_group_withdrawals").select("*").order("withdrawn_at", { ascending: false }),
     supabase.from("account_group_withdrawal_allocations").select("*").order("created_at", { ascending: true })
   ]);
-  dashboardData = { trades: tradesResult.data || [], operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], mastery: masteryResult.data || [], xpCampaign: campaignResult.data || null, accounts: accountsResult.data || [] };
+  dashboardData = { trades: tradesResult.data || [], operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], capabilityLogs: capabilityLogsResult.data || [], financialFoundation: foundationResult.data || null, mastery: masteryResult.data || [], xpCampaign: campaignResult.data || null, accounts: accountsResult.data || [] };
   accountLedger = { groups: groupsResult.data || [], memberships: membershipsResult.data || [], tradeLinks: tradeLinksResult.data || [], withdrawals: withdrawalsResult.data || [], allocations: allocationsResult.data || [] };
   render();
 }
