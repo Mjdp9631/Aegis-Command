@@ -19,10 +19,24 @@ const dayKey = (date = new Date()) => {
   return `${parts.year}-${parts.month}-${parts.day}`;
 };
 const todayKey = () => dayKey();
+const newYorkHour = (date = new Date()) => Number(new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York", hour: "2-digit", hourCycle: "h23",
+}).format(date));
 // Use an instant that is safely inside the New York calendar day.  Parsing a
 // bare YYYY-MM-DD string otherwise lets the browser timezone move labels back
 // a day for some visitors.
 const dateForKey = (key) => key ? new Date(`${key}T17:00:00.000Z`) : null;
+// AEGIS operates on a 5 AM boundary.  Between midnight and 4:59 AM, the
+// previous day's operations remain active so the bedtime review can include
+// late work without creating or displaying the next day's plan early.
+const operatingDayKey = (date = new Date()) => {
+  const key = dayKey(date);
+  if (newYorkHour(date) >= 5) return key;
+  const previous = dateForKey(key);
+  previous?.setUTCDate(previous.getUTCDate() - 1);
+  return previous ? dayKey(previous) : key;
+};
+const morningRolloverReached = () => newYorkHour() >= 5;
 const formatKey = (key, options = { month: "short", day: "numeric" }) => {
   const date = dateForKey(key);
   return date ? new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", ...options }).format(date) : "";
@@ -112,7 +126,9 @@ function scheduleLabel(operation, fromKey = todayKey()) {
 
 // Forex preparation is deliberate calendar work, not a generic everyday
 // placeholder.  It belongs at 18:00 ET Sunday through Thursday only.
-const preMarketOperationForToday = () => isPreMarketDay() ? ({
+const preMarketOperationForToday = () => {
+  const operationDay = operatingDayKey();
+  return isPreMarketDay(dateForKey(operationDay)) ? ({
   title: "Pre-market analysis",
   category: "Trading",
   priority: "High",
@@ -120,11 +136,12 @@ const preMarketOperationForToday = () => isPreMarketDay() ? ({
   status: "Scheduled",
   completed: false,
   is_daily: true,
-  operation_date: todayKey(),
-  scheduled_date: todayKey(),
+  operation_date: operationDay,
+  scheduled_date: operationDay,
   scheduled_time: "18:00",
   schedule_mode: "recurring",
-}) : null;
+  }) : null;
+};
 
 const starterOperations = () => {
   return [
@@ -135,12 +152,12 @@ const starterOperations = () => {
     ["Journal", "Self Mastery"],
   ].map(([title, category]) => title === "Pre-market analysis"
     ? preMarketOperationForToday()
-    : ({ title, category, completed: false, scheduled_date: null, scheduled_time: null, operation_date: todayKey(), is_daily: true, status: "Queued" }));
+    : ({ title, category, completed: false, scheduled_date: null, scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, status: "Queued" }));
 };
 
 const gymSplitForToday = () => {
   const split = ["Rest", "Legs", "Push", "Pull", "Rest", "Upper Body", "Lower Body"];
-  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short" }).format(new Date());
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short" }).format(dateForKey(operatingDayKey()));
   return split[["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday)];
 };
 const gymOperationForToday = () => {
@@ -153,7 +170,7 @@ const gymOperationForToday = () => {
     status: "Queued",
     completed: false,
     is_daily: true,
-    operation_date: todayKey(),
+    operation_date: operatingDayKey(),
     brief: isRest
       ? "Protect recovery: light mobility only if it feels good, hydrate, sleep on time, and do not turn rest into a missed plan."
       : `Complete the ${split} session selected in Self Mastery. Log every exercise with weight, reps, and sets so AEGIS can evaluate progressive improvement.`,
@@ -165,7 +182,7 @@ let operationOccurrences = [];
 let missions = [];
 let currentBook = null;
 let cursor = newYorkTodayDate();
-let selectedDay = todayKey();
+let selectedDay = operatingDayKey();
 
 const occurrenceCacheKey = () => `aegis-operation-occurrences:${currentUser?.id || "anonymous"}`;
 const cachedOccurrences = () => {
@@ -186,9 +203,11 @@ function cachedOccurrenceIsCurrent(row) {
   const key = dateOnly(row?.occurrence_date);
   if (!key) return false;
   const series = operations.find((operation) => String(operation.id) === String(row.operation_id));
-  if (!series) return key >= todayKey();
+  // Occurrences are historical calendar records as well as live queue rows.
+  // Keep prior-day entries when a refresh has to use the local cache.
+  if (!series) return true;
   const end = dateOnly(series.scheduled_end_date);
-  return key >= todayKey() && (!end || key <= end);
+  return !end || key <= end;
 }
 
 function recurringDateKeys(operation, maxDays = 370) {
@@ -262,7 +281,7 @@ async function loadOccurrences() {
   }
   // Keep locally-created current/future rows while Supabase catches up. This
   // prevents scheduled dates from disappearing after leaving/reopening the
-  // calendar, while deliberately dropping stale past one-time rows.
+  // calendar, including completed prior-day occurrences.
   const merged = new Map((Array.isArray(data) ? data : []).map((row) => [occurrenceIdentity(row), row]));
   cachedOccurrences().filter(cachedOccurrenceIsCurrent).forEach((row) => {
     const key = occurrenceIdentity(row);
@@ -319,7 +338,7 @@ function isCompleteToday(operation) {
   const completedOn = dateOnly(operation.completed_on || operation.local_completed_on);
   // Older saved operations may not have the new completion stamp yet. Keep a
   // just-completed item visible for the current browser session in that case.
-  return completedOn ? completedOn === todayKey() : Boolean(operation.local_completed_today);
+  return completedOn ? completedOn === operatingDayKey() : Boolean(operation.local_completed_today);
 }
 
 function checklistFor(operation) {
@@ -483,8 +502,10 @@ function mergeSavedStatus(remote = []) {
     const start = dateOnly(operation?.scheduled_date);
     if (!start) return scheduleMode(operation) !== "one_time";
     const end = dateOnly(operation?.scheduled_end_date);
-    if (end && end < todayKey()) return false;
-    return scheduleMode(operation) !== "one_time" || start >= todayKey();
+    if (end && end < operatingDayKey()) return false;
+    // Keep dated history available to the calendar when the local cache is
+    // merged with a fresh cloud response.
+    return true;
   };
   const known = new Set(merged.map(identity));
   cached.filter((candidate) => currentOrUpcoming(candidate)).forEach((candidate) => {
@@ -556,8 +577,8 @@ function appendOperationsWithoutTouchingExisting(existing, additions) {
 }
 
 function queueOperations() {
-  const start = todayKey();
-  const horizon = newYorkTodayDate();
+  const start = operatingDayKey();
+  const horizon = dateForKey(start);
   horizon.setUTCDate(horizon.getUTCDate() + 14);
   const end = dayKey(horizon);
   const displayOperations = operationInstances();
@@ -608,7 +629,7 @@ function queueOperations() {
 // rows; this simply gives the director a usable queue during that hand-off.
 function queueFallback() {
   const planned = starterOperations()
-    .filter((operation) => !operation.scheduled_date || dateOnly(operation.scheduled_date) === todayKey());
+    .filter((operation) => !operation.scheduled_date || dateOnly(operation.scheduled_date) === operatingDayKey());
   const gym = gymOperationForToday();
   if (gym) planned.push(gym);
   return { today: planned, upcoming: [] };
@@ -653,7 +674,7 @@ function renderQueue() {
       const priority = operation.priority || priorityFor(operation.category);
       const scheduled = dateOnly(operation.scheduled_date);
       const time = operation.scheduled_time ? ` · ${String(operation.scheduled_time).slice(0, 5)}` : "";
-      const timing = scheduleLabel(operation, todayKey());
+      const timing = scheduleLabel(operation, operatingDayKey());
       const doneClass = status === "Complete" ? " done operation-complete" : "";
       return `<article class="operation operation-table-row operation-table-v2${doneClass}">
         <button type="button" class="operation-status ${status.toLowerCase()}" data-hub-status="${esc(operation.id || operation.title)}"><i></i>${esc(status)}</button>
@@ -839,7 +860,7 @@ async function cycleStatus(key) {
   operation.status = next;
   operation.completed = next === "Complete";
   if (next === "Complete") {
-    operation.completed_on = todayKey();
+  operation.completed_on = operatingDayKey();
   } else if (wasComplete) {
     operation.completed_on = null;
   }
@@ -901,6 +922,9 @@ async function seedIfEmpty() {
     return ensureTodayOperations(local.length ? local : starterOperations());
   }
   if (data?.length) return ensureTodayOperations(mergeSavedStatus(data));
+  // The server-side 5 AM morning pass owns the durable rollover. Do not seed
+  // a new calendar day from a page load at 1–4 AM.
+  if (!morningRolloverReached()) return [];
   const seed = starterOperations().map((operation) => ({ ...operation, user_id: currentUser.id }));
   const { data: inserted, error: insertError } = await client.from("operations").insert(seed).select();
   if (insertError) {
@@ -911,12 +935,17 @@ async function seedIfEmpty() {
 }
 
 async function ensureTodayOperations(records = []) {
+  // Bedtime belongs to the prior operating day. New daily rows may only be
+  // created by/after the 5 AM rollover, never while the user is closing out
+  // the night before.
+  if (!morningRolloverReached()) return records;
+  const activeDay = operatingDayKey();
   const daily = [
     ["Review charts and document one lesson", "Trading", "Review one relevant chart or completed trade, capture one process lesson, and file it in Detective or Self Mastery."],
     ["Conquer the morning", "Self Mastery", "Begin the day with one deliberate first action, protect the first block from avoidable distraction, and execute the morning standard before reactive work."],
     ["Read one chapter", "Self Mastery", readingBrief()],
     ["Journal", "Self Mastery", "Write the facts, name what is within your control, and record one lesson or next right action."],
-  ].map(([title, category, brief]) => ({ title, category, brief, priority: priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: todayKey(), metric_key: title === "Read one chapter" ? "chapters_read" : title === "Journal" ? "mastery.entry" : null }));
+  ].map(([title, category, brief]) => ({ title, category, brief, priority: priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: activeDay, metric_key: title === "Read one chapter" ? "chapters_read" : title === "Journal" ? "mastery.entry" : null }));
   const preMarket = preMarketOperationForToday();
   if (preMarket) daily.unshift(preMarket);
   daily.push(gymOperationForToday());
@@ -929,14 +958,14 @@ async function ensureTodayOperations(records = []) {
     // Only a row explicitly assigned to today can satisfy today's plan.  The
     // legacy system created undated daily rows, which caused old July work to
     // block the new day and produced an empty queue on later dates.
-    return operationDay === todayKey() || scheduledDay === todayKey();
+    return operationDay === activeDay || scheduledDay === activeDay;
   });
   const additions = daily.filter((planned) => !hasTodayPlan(planned));
   // Measured work such as PT sessions is deliberately scheduled from Mission
   // Control.  Auto-creating an undated next session made the calendar invent
   // appointments and caused duplicate recovery operations.
   if (!additions.length) return records;
-  if (!client || !currentUser) return appendOperationsWithoutTouchingExisting(records, additions.map((item, index) => ({ ...item, id: `local-${todayKey()}-${index}-${item.title}` })));
+  if (!client || !currentUser) return appendOperationsWithoutTouchingExisting(records, additions.map((item, index) => ({ ...item, id: `local-${activeDay}-${index}-${item.title}` })));
   const prepared = additions.map((item) => {
     const mission = item.mission_id ? missions.find((candidate) => candidate.id === item.mission_id) : resolveMission(item);
     return { ...item, user_id: currentUser.id, mission_id: mission?.id || null, metric_key: item.metric_key || mission?.metric_key || null };
@@ -944,7 +973,7 @@ async function ensureTodayOperations(records = []) {
   const { data, error } = await client.from("operations").insert(prepared).select();
   if (error) {
     console.warn("Could not create today's operations", error.message);
-    return appendOperationsWithoutTouchingExisting(records, prepared.map((item, index) => ({ ...item, id: `local-${todayKey()}-${index}-${item.title}` })));
+    return appendOperationsWithoutTouchingExisting(records, prepared.map((item, index) => ({ ...item, id: `local-${activeDay}-${index}-${item.title}` })));
   }
   return appendOperationsWithoutTouchingExisting(records, data || prepared);
 }
@@ -974,7 +1003,7 @@ async function loadCurrentBook() {
 }
 
 async function syncDailyReadingOperation() {
-  const operation = operations.find((item) => isReadingOperation(item) && dateOnly(item.operation_date) === todayKey() && !item._occurrence);
+  const operation = operations.find((item) => isReadingOperation(item) && dateOnly(item.operation_date) === operatingDayKey() && !item._occurrence);
   if (!operation) return;
   const before = `${operation.brief || ""}|${operation.mission_id || ""}|${operation.metric_key || ""}`;
   operation.brief = readingBrief();
@@ -1200,7 +1229,7 @@ function openScheduleDialog(operation) {
   const createFields = dialog.querySelector("#operation-schedule-create-fields");
   if (createFields) createFields.hidden = true;
   const input = $("#operation-schedule-date");
-  if (input) input.value = dateOnly(operation.scheduled_date) || todayKey();
+  if (input) input.value = dateOnly(operation.scheduled_date) || operatingDayKey();
   const time = $("#operation-schedule-time");
   if (time) time.value = operation.scheduled_time || "";
   const mode = $("#operation-schedule-mode");
@@ -1240,7 +1269,7 @@ function openMissionScheduleDialog(missionId) {
   const createFields = dialog.querySelector("#operation-schedule-create-fields");
   if (createFields) createFields.hidden = true;
   const date = dialog.querySelector("#operation-schedule-date");
-  if (date) date.value = todayKey();
+  if (date) date.value = operatingDayKey();
   const time = dialog.querySelector("#operation-schedule-time");
   if (time) time.value = "";
   const mode = dialog.querySelector("#operation-schedule-mode");
@@ -1369,7 +1398,7 @@ function openCalendar() {
   // A previous legacy cursor must never reopen July after the calendar has moved
   // into a later month.
   cursor = newYorkTodayDate();
-  selectedDay = todayKey();
+  selectedDay = operatingDayKey();
   renderCalendar();
   const dialog = $("#operations-calendar-dialog");
   if (dialog && !dialog.open) dialog.showModal();
