@@ -1135,7 +1135,7 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
 }
 
 /* Mission Control schedule and operation briefs. */
-.mission-calendar{margin-top:24px}.mission-calendar-head{align-items:center;gap:22px}.mission-calendar-head>div{min-width:0}.mission-calendar-head .body-copy{max-width:720px;margin:8px 0 0;color:rgba(175,205,235,.68)}.mission-calendar-shell{width:100%}.mission-calendar-shell .calendar-toolbar{margin-top:18px}.mission-calendar-shell .calendar-panel-tabs{margin-top:18px}
+.mission-calendar{margin-top:24px}.mission-calendar-head{align-items:center;gap:22px}.mission-calendar-head>div{min-width:0}.mission-calendar-head .body-copy{max-width:720px;margin:8px 0 0;color:rgba(175,205,235,.68)}.mission-calendar-shell{width:100%}.mission-calendar-shell .calendar-toolbar{margin-top:18px}
 .mission-actions,.operation-panel-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .mission-actions{margin-top:18px}.mission-calendar-button{padding:0;background:transparent;border:0;color:#67bfff;font:700 11px/1.2 "Space Mono",ui-monospace,monospace;cursor:pointer}.mission-calendar-button:hover{color:#efb54f}
 .operation-title{border:0;background:transparent;color:inherit;padding:0;min-width:0;text-align:left;cursor:pointer;font:inherit}.operation-title:hover strong{color:#efb54f;text-decoration:underline;text-underline-offset:3px}.operation-empty{margin:16px 0;color:rgba(184,210,235,.58);font-size:13px}

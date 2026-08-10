@@ -1313,6 +1313,8 @@ function ensurePermanentMissionCalendar() {
   source.querySelector(".dialog-close")?.remove();
   source.querySelector(".eyebrow")?.remove();
   source.querySelector("h2")?.remove();
+  source.querySelector(".calendar-panel-tabs")?.remove();
+  source.querySelector('[data-calendar-panel-body="needed"]')?.remove();
   const shell = document.createElement("div");
   shell.className = "mission-calendar-shell";
   while (source.firstChild) shell.append(source.firstChild);
