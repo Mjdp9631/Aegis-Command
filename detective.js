@@ -715,7 +715,38 @@ function renderMetrics(trades) {
   $("#detective-violations").textContent = displayNumber(totalPnl, "%");
 }
 
+let tradeHoverTimer = null;
+let focusedTradeRow = null;
+function clearTradeHoverFocus() {
+  if (tradeHoverTimer) clearTimeout(tradeHoverTimer);
+  tradeHoverTimer = null;
+  focusedTradeRow?.classList.remove("trade-hover-focus");
+  focusedTradeRow = null;
+}
+function wireTradeHoverFocus() {
+  const table = $("#trade-log")?.closest("table");
+  if (!table || table.dataset.hoverFocusWired === "true") return;
+  table.dataset.hoverFocusWired = "true";
+  table.addEventListener("pointerover", (event) => {
+    if (event.pointerType === "touch") return;
+    const row = event.target.closest?.("tbody tr:not(.empty-row)");
+    if (!row || !table.contains(row) || (event.relatedTarget && row.contains(event.relatedTarget))) return;
+    clearTradeHoverFocus();
+    tradeHoverTimer = setTimeout(() => {
+      focusedTradeRow = row;
+      row.classList.add("trade-hover-focus");
+    }, 550);
+  });
+  table.addEventListener("pointerout", (event) => {
+    const row = event.target.closest?.("tbody tr:not(.empty-row)");
+    if (!row || (event.relatedTarget && row.contains(event.relatedTarget))) return;
+    if (focusedTradeRow === row) clearTradeHoverFocus();
+    else if (tradeHoverTimer) { clearTimeout(tradeHoverTimer); tradeHoverTimer = null; }
+  });
+}
+
 function renderTrades(trades) {
+  clearTradeHoverFocus();
   const table = $("#trade-log");
   if (!trades.length) {
     table.innerHTML = '<tr class="empty-row"><td colspan="20">No trade debriefs yet. Preserve data; log the next execution.</td></tr>';
@@ -1025,6 +1056,7 @@ function init() {
   const header = $("#trade-log").closest("table").querySelector("thead tr");
   header.insertAdjacentHTML("afterbegin", "<th>#</th>");
   header.insertAdjacentHTML("beforeend", "<th>ACTION</th>");
+  wireTradeHoverFocus();
   buildFilters();
   const pnlMetric = $("#detective-violations").closest(".metric");
   pnlMetric.querySelector("p").textContent = "TOTAL PNL";
