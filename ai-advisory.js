@@ -54,6 +54,20 @@ function normalizedOutcome(value) {
   return null;
 }
 
+function hasUnsupportedWinRateClaim(item) {
+  const text = `${item?.title || ""} ${item?.rationale || ""} ${(item?.evidence || []).join(" ")}`.toLowerCase();
+  return /\bperfect\s+win\s+rate\b/.test(text) || /\b100(?:\.0+)?%\s+win\s+rate\b/.test(text);
+}
+
+async function retireUnsupportedSuggestions(items = []) {
+  const stale = items.filter(hasUnsupportedWinRateClaim);
+  if (stale.length && supabase) {
+    await supabase.from("ai_mission_suggestions").update({ status: "declined", resolved_at: new Date().toISOString() }).in("id", stale.map((item) => item.id));
+  }
+  const staleIds = new Set(stale.map((item) => String(item.id)));
+  return items.filter((item) => !staleIds.has(String(item.id)));
+}
+
 // This must match Detective exactly. The AI is not allowed to reinterpret a journal field.
 function outcome(trade) {
   if (String(trade.trade_status || "").trim().toLowerCase() === "open") return "open";
@@ -203,30 +217,12 @@ async function loadSuggestions() {
   // Pending transmissions remain actionable until resolved. Looking only at
   // the newest advisory hid morning suggestions whenever a later bedtime
   // debrief was saved without directives.
-  const [response, tradeResponse] = await Promise.all([
-    supabase.from("ai_mission_suggestions").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(8),
-    supabase.from("trade_debriefs").select("account, trade_status, outcome, win_loss, result, r_multiple")
-  ]);
+  const response = await supabase.from("ai_mission_suggestions").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(8);
   if (response.error) throw response.error;
   let data = response.data || [];
-  // A pending challenge can outlive the trade data that justified it. Retire
-  // factual claims that the current journal disproves before rendering them.
-  if (!tradeResponse.error) {
-    const liveTrades = (tradeResponse.data || []).filter((trade) => String(trade.account || "").trim().toLowerCase() !== "theoretical");
-    const closed = liveTrades.filter((trade) => outcome(trade) !== "open");
-    const wins = closed.filter((trade) => outcome(trade) === "win").length;
-    const losses = closed.filter((trade) => outcome(trade) === "loss").length;
-    const currentWinRate = wins + losses ? Math.round((wins / (wins + losses)) * 100) : null;
-    const stale = data.filter((item) => {
-      const text = `${item.title || ""} ${item.rationale || ""} ${(item.evidence || []).join(" ")}`.toLowerCase();
-      return currentWinRate !== 100 && (/\bperfect\s+win\s+rate\b/.test(text) || /\b100(?:\.0+)?%\s+win\s+rate\b/.test(text));
-    });
-    if (stale.length) {
-      await supabase.from("ai_mission_suggestions").update({ status: "declined", resolved_at: new Date().toISOString() }).in("id", stale.map((item) => item.id));
-      const staleIds = new Set(stale.map((item) => String(item.id)));
-      data = data.filter((item) => !staleIds.has(String(item.id)));
-    }
-  }
+  // A pending challenge can outlive the data that justified it. Retire the
+  // unsupported claim before rendering it, regardless of which UI opened it.
+  data = await retireUnsupportedSuggestions(data);
   const target = $("#ai-suggestion-list");
   if (target) target.innerHTML = data.length ? data.map(proposalMarkup).join("") : '<p class="ai-status">No current scan transmissions. Run an intelligence scan when you want a fresh assessment.</p>';
 }
@@ -324,6 +320,10 @@ let transmissionQueue = [];
 function showTransmissionQueue() {
   const next = transmissionQueue.shift();
   if (!next) return;
+  if (hasUnsupportedWinRateClaim(next)) {
+    void retireUnsupportedSuggestions([next]).then(() => showTransmissionQueue());
+    return;
+  }
   const dialog = $("#ai-transmission-dialog");
   if (!dialog) return;
   const challenge = next.mission_kind === "challenge";
@@ -430,7 +430,7 @@ async function run(mode = "scan") {
     if (!response.ok) throw new Error(payload.error || "The advisory engine is unavailable.");
     latestAdvisory = payload.advisory;
     paintLatestAdvisory();
-    const savedSuggestions = await persist(latestAdvisory, bedtime ? "bedtime" : (mode === "morning" || mode === "signal" || mode === "evening" ? mode : "scan"), { readOnly: bedtime, operatingDate });
+    const savedSuggestions = await retireUnsupportedSuggestions(await persist(latestAdvisory, bedtime ? "bedtime" : (mode === "morning" || mode === "signal" || mode === "evening" ? mode : "scan"), { readOnly: bedtime, operatingDate }));
     if (bedtime) {
       await loadSuggestions();
       return;
