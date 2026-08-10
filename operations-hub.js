@@ -331,6 +331,41 @@ function operationInstances() {
   return instances;
 }
 
+function operationDisplayIdentity(operation) {
+  if (operation?._occurrence?.id) return `occurrence:${operation._occurrence.id}`;
+  const title = String(operation?.title || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const date = dateOnly(operation?.scheduled_date) || dateOnly(operation?.operation_date) || "standing";
+  const time = String(operation?.scheduled_time || "").slice(0, 5);
+  const mission = String(operation?.mission_id || operation?._series?.mission_id || "");
+  return [title, date, time, mission].join("|");
+}
+
+function dedupeOperationInstances(items) {
+  const unique = new Map();
+  items.forEach((operation) => {
+    const key = operationDisplayIdentity(operation);
+    const existing = unique.get(key);
+    const completion = normalizedStatus(operation) === "Complete" || operation.completed ? 1 : 0;
+    const timestamp = Date.parse(operation.updated_at || operation.created_at || operation.local_updated_at || 0) || 0;
+    const existingCompletion = existing && (normalizedStatus(existing) === "Complete" || existing.completed) ? 1 : 0;
+    const existingTimestamp = Date.parse(existing?.updated_at || existing?.created_at || existing?.local_updated_at || 0) || 0;
+    if (!existing || completion > existingCompletion || (completion === existingCompletion && timestamp >= existingTimestamp)) {
+      unique.set(key, operation);
+    }
+  });
+  return [...unique.values()];
+}
+
+function duplicateScheduledOperation(candidate) {
+  if (scheduleMode(candidate) !== "one_time" || !dateOnly(candidate?.scheduled_date)) return null;
+  const candidateKey = operationDisplayIdentity(candidate);
+  return dedupeOperationInstances(operationInstances()).find((operation) => (
+    String(operation.id || "") !== String(candidate.id || "")
+    && scheduleMode(operation) === "one_time"
+    && operationDisplayIdentity(operation) === candidateKey
+  )) || null;
+}
+
 async function loadOccurrences() {
   if (!client || !currentUser) {
     operationOccurrences = cachedOccurrences();
@@ -793,7 +828,7 @@ function queueOperations() {
   const horizon = dateForKey(start);
   horizon.setUTCDate(horizon.getUTCDate() + 14);
   const end = dayKey(horizon);
-  const displayOperations = operationInstances();
+  const displayOperations = dedupeOperationInstances(operationInstances());
   const today = displayOperations.filter((operation) => {
     if (normalizedStatus(operation) === "Complete" && !isCompleteToday(operation)) return false;
     const scheduled = dateOnly(operation.scheduled_date);
@@ -816,31 +851,15 @@ function queueOperations() {
     const bDate = nextScheduledDate(b, start, true) || dateOnly(b.operation_date) || "9999-12-31";
     return aDate.localeCompare(bDate) || String(a.title).localeCompare(String(b.title));
   });
-  const queueIdentity = (operation) => operation._occurrence?.id
-    ? `occurrence:${operation._occurrence.id}`
-    : [
-      String(operation.title || "").trim().toLowerCase(),
-      dateOnly(operation.scheduled_date) || dateOnly(operation.operation_date) || "standing",
-      String(operation.scheduled_time || "").slice(0, 5),
-    ].join("|");
   const uniqueItems = (items) => {
-    const unique = new Map();
-    items.forEach((operation) => {
-      const key = queueIdentity(operation);
-      const existing = unique.get(key);
-      const timestamp = Date.parse(operation.updated_at || operation.created_at || 0) || 0;
-      const existingTimestamp = Date.parse(existing?.updated_at || existing?.created_at || 0) || 0;
-      // Keep the most recently saved record when older duplicate rows exist.
-      if (!existing || timestamp >= existingTimestamp) unique.set(key, operation);
-    });
-    return [...unique.values()];
+    return dedupeOperationInstances(items);
   };
   const todayItems = uniqueItems(sort(today));
-  const todayKeys = new Set(todayItems.map(queueIdentity));
+  const todayKeys = new Set(todayItems.map(operationDisplayIdentity));
   // The upcoming query includes its start boundary so a dated item can be
   // found by both filters. Once it is in TODAY, never render it a second time
   // under UPCOMING / NEXT 14 DAYS.
-  const upcomingItems = uniqueItems(sort(upcoming).filter((operation) => !todayKeys.has(queueIdentity(operation))));
+  const upcomingItems = uniqueItems(sort(upcoming).filter((operation) => !todayKeys.has(operationDisplayIdentity(operation))));
   return { today: todayItems, upcoming: upcomingItems };
 }
 
@@ -1477,6 +1496,23 @@ function ensureScheduleDialog() {
     const selectedMode = dialog.returnValue === "clear" ? "one_time" : ($("#operation-schedule-mode")?.value || "one_time");
     const endDate = dialog.returnValue === "clear" || selectedMode === "one_time" ? "" : ($("#operation-schedule-end-date")?.value || "");
     if (dialog.returnValue === "schedule" && (!date || (endDate && endDate < date))) return;
+    if (dialog.returnValue === "schedule") {
+      const candidate = {
+        ...operation,
+        scheduled_date: date || null,
+        scheduled_time: time || null,
+        scheduled_end_date: endDate || null,
+        schedule_mode: selectedMode === "weekly" ? "recurring" : selectedMode,
+      };
+      const duplicate = duplicateScheduledOperation(candidate);
+      if (duplicate) {
+        window.alert(`This operation is already scheduled for ${date}${time ? ` at ${time}` : ""}.`);
+        removePickerCreatedOperation(dialog);
+        renderQueue();
+        renderCalendar();
+        return;
+      }
+    }
     operation.scheduled_date = date || null;
     operation.scheduled_time = time || null;
     operation.scheduled_end_date = endDate || null;
@@ -1620,16 +1656,19 @@ function monthTitle(date) {
 // writing the occurrence records yet.
 function scheduledCountForMission(missionId) {
   const seen = new Set();
-  operations.forEach((operation) => {
+  dedupeOperationInstances(operationInstances()).forEach((operation) => {
+    const series = operation._series || operation;
     const linkedMissionId = operation.mission_id || resolveMission(operation)?.id;
     if (String(linkedMissionId || "") !== String(missionId)) return;
-    const mode = scheduleMode(operation);
+    const mode = scheduleMode(series);
     if (mode !== "one_time") {
-      recurringDateKeys(operation).forEach((date) => seen.add(`series:${operation.id || operation.title}|${date}`));
+      const date = dateOnly(operation.scheduled_date || operation._occurrence?.occurrence_date);
+      if (date) seen.add(`series:${series.id || series.title}|${date}`);
+      else recurringDateKeys(series).forEach((itemDate) => seen.add(`series:${series.id || series.title}|${itemDate}`));
       return;
     }
     const scheduledDate = dateOnly(operation.scheduled_date);
-    if (scheduledDate) seen.add(`${String(linkedMissionId)}|${String(operation.title || "").trim().toLowerCase()}|${scheduledDate}|${operation.scheduled_time || ""}`);
+    if (scheduledDate) seen.add(`${String(linkedMissionId)}|${operationDisplayIdentity(operation)}`);
   });
   return seen.size;
 }
@@ -1671,7 +1710,7 @@ function renderCalendar() {
   const agenda = $("#calendar-agenda-list");
   const needsScheduling = $("#calendar-needs-scheduling");
   if (!grid) return;
-  const displayOperations = operationInstances();
+  const displayOperations = dedupeOperationInstances(operationInstances());
   if (label) label.textContent = monthTitle(cursor);
   const year = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric" }).format(cursor));
   const month = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "numeric" }).format(cursor)) - 1;
