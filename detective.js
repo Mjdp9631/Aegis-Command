@@ -933,6 +933,7 @@ function clearForm() {
   $("#detective-outcome").value = "Open";
   $("#detective-followed-plan").value = "yes";
   $("#detective-debrief-note").value = "";
+  $("#detective-additional-note").value = "";
   syncPlanAdherenceUi();
   syncSetupUi();
   currentTradeId = null;
@@ -966,10 +967,21 @@ function ensurePlanAdherenceFields() {
 }
 
 function ensureDebriefNoteField() {
-  if ($("#detective-debrief-note")) return;
+  if ($("#detective-debrief-note")) {
+    ensureAdditionalNoteField();
+    return;
+  }
   const saveButton = $("#save-detective-trade");
   if (!saveButton) return;
   saveButton.insertAdjacentHTML("beforebegin", `<label class="debrief-note-field">Debrief note<textarea id="detective-debrief-note" rows="3" placeholder="What happened, what did you notice, and what should the record remember?"></textarea></label>`);
+  ensureAdditionalNoteField();
+}
+
+function ensureAdditionalNoteField() {
+  if ($("#detective-additional-note")) return;
+  const saveButton = $("#save-detective-trade");
+  if (!saveButton) return;
+  saveButton.insertAdjacentHTML("beforebegin", `<label class="debrief-note-field">Additional note<textarea id="detective-additional-note" rows="3" placeholder="Separate note for context, emotion, or anything else worth preserving."></textarea></label>`);
 }
 
 function setSelectValue(selector, value) {
@@ -1003,6 +1015,7 @@ function readTradeFormValues() {
     plan_violation: $("#detective-followed-plan").value === "no",
     violation_type: $("#detective-followed-plan").value === "no" ? $("#detective-violation-reason").value.trim() || null : null,
     debrief_note: $("#detective-debrief-note").value.trim() || null,
+    note: $("#detective-additional-note").value.trim() || null,
     traded_at_local: $("#detective-time").value
   };
 }
@@ -1033,6 +1046,7 @@ function editTrade(trade) {
   $("#detective-followed-plan").value = trade.plan_violation ? "no" : "yes";
   $("#detective-violation-reason").value = trade.violation_type || "";
   $("#detective-debrief-note").value = trade.debrief_note || "";
+  $("#detective-additional-note").value = trade.note || "";
   syncPlanAdherenceUi();
   syncSetupUi();
   editFormSnapshot = readTradeFormValues();

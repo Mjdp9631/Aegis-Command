@@ -100,7 +100,15 @@ export function disciplineXp(operations = [], occurrences = [], startedAt) {
     return { ...parent, operation_date: occurrence.occurrence_date, scheduled_date: occurrence.occurrence_date, completed_on: occurrence.completed_on, completed: occurrence.completed, id: `occurrence:${occurrence.id}` };
   });
   const rows = [...operations.filter((operation) => !recurringIds.has(String(operation.id)) || !occurrences.some((occurrence) => String(occurrence.operation_id) === String(operation.id))), ...occurrenceRows];
+  const uniqueRows = new Map();
   rows.forEach((operation) => {
+    const key = String(operation.id || "").startsWith("occurrence:")
+      ? String(operation.id)
+      : [String(operation.title || "").trim().toLowerCase().replace(/\s+/g, " "), campaignDay(operation.scheduled_date || operation.operation_date), String(operation.scheduled_time || "").slice(0, 5), String(operation.mission_id || "")].join("|");
+    const existing = uniqueRows.get(key);
+    if (!existing || (!existing.completed && operation.completed)) uniqueRows.set(key, operation);
+  });
+  [...uniqueRows.values()].forEach((operation) => {
     const dayKey = campaignDay(operation.operation_date || operation.completed_on || operation.scheduled_date);
     if (!dayKey || !isOnOrAfterCampaignDay(dayKey, startedAt)) return;
     if (/evening\s+(mission\s+)?debrief/i.test(operation.title || "")) return;
@@ -128,7 +136,7 @@ export function enterpriseXp(projects = [], contentItems = [], startedAt) {
 export function masteryXp(entries = [], challenges = [], trainingSessions = [], startedAt) {
   const ledgerFor = (awards) => entries.filter((entry) => isOnOrAfter(entry.created_at, startedAt) && awards[entry.category]).map((entry) => ({
     label: new Date(entry.created_at || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    detail: `${entry.category}: ${entry.title || "entry"}`,
+    detail: `${entry.category}: ${entry.title || "entry"} · base evidence XP`,
     change: awards[entry.category],
   }));
   const mindLedger = ledgerFor(MIND_AWARDS);
@@ -140,7 +148,7 @@ export function masteryXp(entries = [], challenges = [], trainingSessions = [], 
   });
   challenges.filter((challenge) => challenge.status === "completed" && isOnOrAfter(challenge.completed_at, startedAt) && Number(challenge.xp_reward || 0) > 0).forEach((challenge) => {
     const ledger = challenge.lane === "body" ? bodyLedger : mindLedger;
-    ledger.push({ label: new Date(challenge.completed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `${challenge.category || "Mastery"} transmission: ${challenge.title || "challenge"}`, change: Number(challenge.xp_reward) });
+    ledger.push({ label: new Date(challenge.completed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `${challenge.category || "Mastery"} transmission: ${challenge.title || "challenge"} · bonus XP`, change: Number(challenge.xp_reward) });
   });
   return {
     mind: { xp: mindLedger.reduce((total, entry) => total + entry.change, 0), ledger: mindLedger.sort((a, b) => b.label.localeCompare(a.label)) },

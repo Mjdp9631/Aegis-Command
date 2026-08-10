@@ -14,6 +14,7 @@ create table if not exists public.trade_debriefs (
   pair text not null check (char_length(pair) between 1 and 24),
   r_multiple numeric not null check (r_multiple between -100 and 100),
   setup text,
+  note text,
   execution_grade text not null check (execution_grade in ('A', 'B', 'C', 'D')),
   traded_at timestamptz not null default now(),
   created_at timestamptz not null default now()
