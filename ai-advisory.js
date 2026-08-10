@@ -171,13 +171,13 @@ function renderEvening(evening) {
 
 function legacyProposalMarkup(item) {
   const corrective = item.mission_kind === "corrective";
-  const action = corrective ? `<button data-ai-acknowledge="${item.id}">Acknowledge directive</button>` : `<button data-ai-accept="${item.id}">Accept mission</button><button class="decline" data-ai-decline="${item.id}">Decline</button>`;
+  const action = corrective ? `<button type="button" class="primary compact" data-ai-acknowledge="${item.id}">Acknowledge directive</button>` : `<button type="button" class="primary compact" data-ai-accept="${item.id}">Accept mission</button><button type="button" class="secondary compact decline" data-ai-decline="${item.id}">Decline</button>`;
   return `<article class="ai-suggestion ${item.mission_kind}"><div><span class="eyebrow ${corrective ? "amber" : "blue-text"}">${corrective ? "SYSTEM DIRECTIVE" : "CHALLENGE TRANSMISSION"} / ${escape(item.advisor).toUpperCase()}</span><strong>${escape(item.title)}</strong><p>${escape(item.rationale)}</p><small>${(item.evidence || []).map(escape).join(" · ")}</small></div><div class="ai-actions">${action}</div></article>`;
 }
 
 function proposalMarkup(item) {
   const corrective = item.mission_kind === "corrective";
-  const action = corrective ? `<button data-ai-acknowledge="${item.id}">Acknowledge directive</button>` : `<button data-ai-accept="${item.id}">Accept mission</button><button class="decline" data-ai-decline="${item.id}">Decline</button>`;
+  const action = corrective ? `<button type="button" class="primary compact" data-ai-acknowledge="${item.id}">Acknowledge directive</button>` : `<button type="button" class="primary compact" data-ai-accept="${item.id}">Accept mission</button><button type="button" class="secondary compact decline" data-ai-decline="${item.id}">Decline</button>`;
   const evidenceIds = item.evidence_ids?.length ? `<small class="ai-evidence-ids">Evidence: ${item.evidence_ids.map(escape).join(" · ")}</small>` : "";
   const feedback = `<div class="ai-feedback" aria-label="Recommendation feedback"><span>Calibrate:</span><button type="button" data-ai-feedback="useful" data-ai-feedback-id="${item.id}">Useful</button><button type="button" data-ai-feedback="irrelevant" data-ai-feedback-id="${item.id}">Not relevant</button><button type="button" data-ai-feedback="already_done" data-ai-feedback-id="${item.id}">Already done</button></div>`;
   return `<article class="ai-suggestion ${item.mission_kind}"><div><span class="eyebrow ${corrective ? "amber" : "blue-text"}">${corrective ? "SYSTEM DIRECTIVE" : "CHALLENGE TRANSMISSION"} / ${escape(item.advisor).toUpperCase()}</span><strong>${escape(item.title)}</strong><p>${escape(item.rationale)}</p><small>${(item.evidence || []).map(escape).join(" · ")}</small>${evidenceIds}${feedback}</div><div class="ai-actions">${action}</div></article>`;

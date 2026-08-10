@@ -189,7 +189,14 @@ function bindDialogs() {
     const mission = missions.find((item) => item.id === card.dataset.missionId);
     if (mission) openEditor(editor, mission);
   });
-  document.querySelectorAll('[data-action="add-mission"]').forEach((button) => button.addEventListener("click", () => { if (!session) return alert("Sign in before opening a mission."); $("#mission-dialog").showModal(); }));
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest('[data-action="add-mission"]');
+    if (!button) return;
+    event.preventDefault();
+    if (!session) return alert("Sign in before opening a mission.");
+    const dialog = $("#mission-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
+  });
   document.querySelectorAll('[data-action="log-recovery"]').forEach((button) => button.addEventListener("click", () => { if (!session) return alert("Sign in before logging recovery."); $("#recovery-dialog").showModal(); }));
   $("#save-recovery").addEventListener("click", async (event) => { const pain = Number($("#recovery-pain").value), swelling = Number($("#recovery-swelling").value); if (!Number.isInteger(pain) || !Number.isInteger(swelling) || pain < 0 || pain > 10 || swelling < 0 || swelling > 10) return event.preventDefault(); const { data, error } = await client.from("recovery_logs").insert({ pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single(); if (error) { event.preventDefault(); return console.error(error); } renderRecovery(data); $("#recovery-notes").value = ""; publishDataChange("recovery"); });
 }

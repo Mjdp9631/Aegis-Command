@@ -1323,10 +1323,11 @@ function ensurePermanentMissionCalendar() {
   panel.className = "mission-calendar panel";
   panel.innerHTML = '<div class="panel-head mission-calendar-head"><div><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h3>Mission calendar</h3><p class="body-copy">Select a date to review its tasks. Use Add operation to schedule an unscheduled item or create something new.</p></div><button class="primary compact" id="mission-add-operation" type="button">+ Add operation</button></div>';
   panel.append(shell);
-  missionsView.querySelector("#mission-cards")?.before(panel);
+  const phaseProtocol = missionsView.querySelector("#phase-protocol");
+  if (phaseProtocol) phaseProtocol.after(panel);
+  else missionsView.querySelector("#mission-cards")?.before(panel);
   dialog.remove();
-  const legacyButton = $("#open-operations-calendar");
-  if (legacyButton) legacyButton.textContent = "Jump to mission calendar ↓";
+  $("#open-operations-calendar")?.remove();
   wireCalendarPanels();
   $("#mission-add-operation")?.addEventListener("click", () => openDaySchedulePicker(selectedDay || operatingDayKey()));
 }
