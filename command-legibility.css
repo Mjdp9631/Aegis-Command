@@ -22,8 +22,13 @@
 .operation-status.morning-gated {
   color: #ff8d81;
   border-color: rgba(255, 141, 129, .35);
-  cursor: not-allowed;
+  cursor: pointer;
   opacity: .78;
+}
+.operation-status.morning-gated:hover {
+  color: #ffd0c9;
+  border-color: rgba(255, 141, 129, .78);
+  opacity: 1;
 }
 /* Department headings should scroll with their tab content. Keep only local
    table/list headers sticky when the component itself needs orientation. */

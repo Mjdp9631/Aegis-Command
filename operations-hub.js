@@ -880,7 +880,7 @@ function emergencyQueueMarkup() {
     const gateExpired = gate?.state === "expired";
     const priority = operation.priority || priorityFor(operation.category);
     return `<article class="operation operation-table-row operation-table-v2">
-      <button type="button" class="operation-status ${gateExpired ? "morning-gated" : "queued"}" ${gateExpired ? "disabled" : `data-hub-status="${esc(operation.title)}"`}><i></i>${gateExpired ? "Missed" : "Queued"}</button>
+      <button type="button" class="operation-status ${gateExpired ? "morning-gated" : "queued"}" ${gateExpired ? `data-hub-change-status="${esc(operation.title)}" title="Missed — click to change status"` : `data-hub-status="${esc(operation.title)}"`}><i></i>${gateExpired ? "Missed" : "Queued"}</button>
       <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.title)}">${esc(operation.title)}</button>
       <button type="button" class="operation-schedule-control" data-hub-schedule="${esc(operation.title)}">+ Schedule</button>
       <span>${esc(operation.category || "Mission")}</span>
@@ -928,7 +928,7 @@ function renderQueue() {
           ? `Conquer the morning window: ${formatRemaining(gate.remaining)} remaining.`
           : "";
       return `<article class="operation operation-table-row operation-table-v2${doneClass}">
-        <button type="button" class="operation-status ${gateExpired ? "morning-gated" : status.toLowerCase()}" ${gateExpired ? "disabled" : `data-hub-status="${esc(operation.id || operation.title)}"`} title="${esc(gateTitle)}"><i></i>${esc(statusLabel)}</button>
+        <button type="button" class="operation-status ${gateExpired ? "morning-gated" : status.toLowerCase()}" ${gateExpired ? `data-hub-change-status="${esc(operation.id || operation.title)}"` : `data-hub-status="${esc(operation.id || operation.title)}"`} title="${esc(gateExpired ? `${gateTitle} Click to change status.` : gateTitle)}"><i></i>${esc(statusLabel)}</button>
         <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.id || operation.title)}">${esc(operation.title)}${gateNote}</button>
         <button type="button" class="operation-schedule-control ${scheduled ? "is-scheduled" : ""}" data-hub-schedule="${esc(operation.id || operation.title)}">${esc(timing)}</button>
         <span>${esc(operation.category || "Mission")}</span>
@@ -950,6 +950,7 @@ function renderQueue() {
       target.innerHTML = markup;
       target.dataset.aegisQueueMounted = "true";
       target.querySelectorAll("[data-hub-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.hubStatus)));
+      target.querySelectorAll("[data-hub-change-status]").forEach((button) => button.addEventListener("click", () => changeGatedStatus(button.dataset.hubChangeStatus)));
       target.querySelectorAll("[data-hub-schedule]").forEach((button) => button.addEventListener("click", () => openScheduleDialog(findOperation(button.dataset.hubSchedule))));
       target.querySelectorAll("[data-hub-detail]").forEach((button) => button.addEventListener("click", () => showOperationDetail(button.dataset.hubDetail)));
     });
@@ -959,6 +960,7 @@ function renderQueue() {
       target.innerHTML = emergencyQueueMarkup();
       target.dataset.aegisQueueMounted = "true";
       target.querySelectorAll("[data-hub-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.hubStatus)));
+      target.querySelectorAll("[data-hub-change-status]").forEach((button) => button.addEventListener("click", () => changeGatedStatus(button.dataset.hubChangeStatus)));
       target.querySelectorAll("[data-hub-schedule]").forEach((button) => button.addEventListener("click", () => openScheduleDialog(findOperation(button.dataset.hubSchedule))));
       target.querySelectorAll("[data-hub-detail]").forEach((button) => button.addEventListener("click", () => showOperationDetail(button.dataset.hubDetail)));
     });
@@ -1145,17 +1147,33 @@ async function reconcileMeasuredMissionCounts() {
   if (updates.length) window.dispatchEvent(new CustomEvent("aegis:missions-refresh", { detail: { source: "operations-hub-reconcile" } }));
 }
 
-async function cycleStatus(key) {
+async function changeGatedStatus(key) {
+  const operation = findOperation(key);
+  if (!operation || morningGate(operation)?.state !== "expired") return;
+  const choice = window.prompt("This operation is marked Missed. Enter Complete to correct it, or Cancel to leave it missed.", "Complete");
+  const next = String(choice || "").trim().toLowerCase();
+  if (next === "missed" || !next) {
+    renderQueue();
+    return;
+  }
+  if (next !== "complete") {
+    window.alert("Enter Complete to apply the correction, or cancel to leave the operation marked Missed.");
+    return;
+  }
+  await cycleStatus(key, "Complete");
+}
+
+async function cycleStatus(key, forcedStatus = null) {
   const operation = findOperation(key);
   if (!operation) return;
-  if (morningGate(operation)?.state === "expired") {
+  if (!forcedStatus && morningGate(operation)?.state === "expired") {
     renderQueue();
     return;
   }
   const currentStatus = displayStatus(operation);
   const cycle = isDayOfOperation(operation) ? ["Queued", "Ongoing", "Complete"] : statusOrder;
   const index = cycle.indexOf(currentStatus);
-  const next = cycle[(index + 1) % cycle.length];
+  const next = forcedStatus || cycle[(index + 1) % cycle.length];
   const wasComplete = currentStatus === "Complete";
   operation.status = next;
   operation.completed = next === "Complete";
