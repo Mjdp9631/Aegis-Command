@@ -63,6 +63,8 @@ function outcome(trade) {
   if (explicit) return explicit;
   if (Number(trade.r_multiple) > 0) return "win";
   if (Number(trade.r_multiple) < 0) return "loss";
+  if (Number(trade.pnl_percent) > 0) return "win";
+  if (Number(trade.pnl_percent) < 0) return "loss";
   return "be";
 }
 
@@ -201,9 +203,30 @@ async function loadSuggestions() {
   // Pending transmissions remain actionable until resolved. Looking only at
   // the newest advisory hid morning suggestions whenever a later bedtime
   // debrief was saved without directives.
-  const response = await supabase.from("ai_mission_suggestions").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(8);
+  const [response, tradeResponse] = await Promise.all([
+    supabase.from("ai_mission_suggestions").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(8),
+    supabase.from("trade_debriefs").select("account, trade_status, outcome, win_loss, result, r_multiple")
+  ]);
   if (response.error) throw response.error;
-  const data = response.data || [];
+  let data = response.data || [];
+  // A pending challenge can outlive the trade data that justified it. Retire
+  // factual claims that the current journal disproves before rendering them.
+  if (!tradeResponse.error) {
+    const liveTrades = (tradeResponse.data || []).filter((trade) => String(trade.account || "").trim().toLowerCase() !== "theoretical");
+    const closed = liveTrades.filter((trade) => outcome(trade) !== "open");
+    const wins = closed.filter((trade) => outcome(trade) === "win").length;
+    const losses = closed.filter((trade) => outcome(trade) === "loss").length;
+    const currentWinRate = wins + losses ? Math.round((wins / (wins + losses)) * 100) : null;
+    const stale = data.filter((item) => {
+      const text = `${item.title || ""} ${item.rationale || ""} ${(item.evidence || []).join(" ")}`.toLowerCase();
+      return currentWinRate !== 100 && (/\bperfect\s+win\s+rate\b/.test(text) || /\b100(?:\.0+)?%\s+win\s+rate\b/.test(text));
+    });
+    if (stale.length) {
+      await supabase.from("ai_mission_suggestions").update({ status: "declined", resolved_at: new Date().toISOString() }).in("id", stale.map((item) => item.id));
+      const staleIds = new Set(stale.map((item) => String(item.id)));
+      data = data.filter((item) => !staleIds.has(String(item.id)));
+    }
+  }
   const target = $("#ai-suggestion-list");
   if (target) target.innerHTML = data.length ? data.map(proposalMarkup).join("") : '<p class="ai-status">No current scan transmissions. Run an intelligence scan when you want a fresh assessment.</p>';
 }

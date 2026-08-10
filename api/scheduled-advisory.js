@@ -77,6 +77,8 @@ function tradeOutcome(trade) {
   if (explicit) return explicit;
   if (Number(trade.r_multiple) > 0) return "win";
   if (Number(trade.r_multiple) < 0) return "loss";
+  if (Number(trade.pnl_percent) > 0) return "win";
+  if (Number(trade.pnl_percent) < 0) return "loss";
   return "be";
 }
 

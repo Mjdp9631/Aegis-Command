@@ -69,6 +69,8 @@ function resolvedOutcome(trade) {
   if (explicit) return explicit;
   if (Number(trade.r_multiple) > 0) return "Win";
   if (Number(trade.r_multiple) < 0) return "Loss";
+  if (Number(trade.pnl_percent) > 0) return "Win";
+  if (Number(trade.pnl_percent) < 0) return "Loss";
   return "B/E";
 }
 

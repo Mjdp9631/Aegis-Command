@@ -25,8 +25,13 @@
   };
   const tradeOutcome = (trade) => {
     if (String(trade?.trade_status || "").trim().toLowerCase() === "open") return "open";
-    return [trade?.outcome, trade?.win_loss, trade?.result].map(normalizedOutcome).find(Boolean)
-      || (Number(trade?.r_multiple) > 0 ? "win" : Number(trade?.r_multiple) < 0 ? "loss" : "be");
+    const explicit = [trade?.outcome, trade?.win_loss, trade?.result].map(normalizedOutcome).find(Boolean);
+    if (explicit) return explicit;
+    const r = Number(trade?.r_multiple);
+    if (r > 0) return "win";
+    if (r < 0) return "loss";
+    const pnl = Number(trade?.pnl_percent);
+    return pnl > 0 ? "win" : pnl < 0 ? "loss" : "be";
   };
   const tradeStreaks = (trades) => {
     const decisive = [...trades].sort((a, b) => new Date(a.traded_at || a.created_at || 0) - new Date(b.traded_at || b.created_at || 0)).map(tradeOutcome).filter((item) => item === "win" || item === "loss");
@@ -150,10 +155,15 @@
   }
   function sanitizeAdvisory(advisory = {}, context = {}) {
     const allowed = new Set((context.evidence_catalog || []).map((item) => item.id));
+    const winRate = Number(context.trading?.win_rate);
+    const unsupportedPerfectWinRate = (item) => {
+      const text = `${item?.title || ""} ${item?.rationale || ""} ${(item?.evidence || []).join(" ")}`.toLowerCase();
+      return winRate !== 100 && (/\bperfect\s+win\s+rate\b/.test(text) || /\b100(?:\.0+)?%\s+win\s+rate\b/.test(text));
+    };
     return {
       ...advisory,
       roadmap: (advisory.roadmap || []).map((item) => ({ ...item, evidence_ids: (item.evidence_ids || []).filter((id) => allowed.has(id)).slice(0, 6) })),
-      directives: (advisory.directives || []).map((item) => ({ ...item, evidence_ids: (item.evidence_ids || []).filter((id) => allowed.has(id)).slice(0, 6) }))
+      directives: (advisory.directives || []).filter((item) => !unsupportedPerfectWinRate(item)).map((item) => ({ ...item, evidence_ids: (item.evidence_ids || []).filter((id) => allowed.has(id)).slice(0, 6) }))
     };
   }
   return { buildContext, evidenceId, dateOnly, sanitizeAdvisory };
