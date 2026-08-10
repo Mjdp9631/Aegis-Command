@@ -18,7 +18,13 @@ let groupWithdrawals = [];
 let withdrawalAllocations = [];
 let accountTestTrades = [];
 let editingAccountId = null;
+let editingGroupId = null;
 let activeDetectiveTab = localStorage.getItem("aegis.detective-tab") || "journal";
+const PROP_STATUSES = ["pending", "funded"];
+
+function normalizedPropStatus(value) {
+  return PROP_STATUSES.includes(value) ? value : "funded";
+}
 
 function numberOrNull(value) {
   return value === "" || value == null ? null : Number(value);
@@ -195,7 +201,7 @@ function renderAccountAdminControls() {
   const host = $("#account-ledger-controls");
   const accountForm = $("#account-balance-form");
   if (!host || !accountForm) return;
-  if (!host.querySelector("#account-group-form")) host.innerHTML = `<form id="account-group-form" class="account-group-form"><div class="account-form-heading"><p class="eyebrow amber">CREATE GROUP</p><small>Separate live, prop-firm, and theoretical accounting.</small></div><label>Group name <input id="account-group-name" required maxlength="80" placeholder="e.g. Prop Group 1" /></label><label>Type <select id="account-group-type"><option>Live</option><option>Prop Firm</option><option>Theoretical</option></select></label><label id="account-group-split-wrap">Payout split (%) <input id="account-group-split" type="number" min="0" max="100" step="0.01" placeholder="e.g. 80" /></label><button class="primary compact" type="submit">Create group</button></form>`;
+  if (!host.querySelector("#account-group-form")) host.innerHTML = `<form id="account-group-form" class="account-group-form"><div class="account-form-heading"><p class="eyebrow amber">CREATE GROUP</p><small>Separate live, prop-firm, and theoretical accounting.</small></div><label>Group name <input id="account-group-name" required maxlength="80" placeholder="e.g. Prop Group 1" /></label><label>Type <select id="account-group-type"><option>Live</option><option>Prop Firm</option><option>Theoretical</option></select></label><label id="account-group-split-wrap">Payout split (%) <input id="account-group-split" type="number" min="0" max="100" step="0.01" placeholder="e.g. 80" /></label><label id="account-group-status-wrap">Prop status <select id="account-group-status"><option value="pending">Pending</option><option value="funded">Funded</option></select></label><button class="primary compact" type="submit">Create group</button></form>`;
   accountForm.classList.remove("account-balance-form");
   accountForm.classList.add("account-group-account-form");
   const typeField = $("#account-balance-type") || document.createElement("label");
@@ -222,6 +228,10 @@ function syncGroupSplitVisibility() {
   wrap.hidden = type !== "Prop Firm";
   input.disabled = type !== "Prop Firm";
   input.required = type === "Prop Firm";
+  const statusWrap = $("#account-group-status-wrap");
+  const status = $("#account-group-status");
+  if (statusWrap) statusWrap.hidden = type !== "Prop Firm";
+  if (status) status.disabled = type !== "Prop Firm";
 }
 
 function syncGroupOptionsForAccountType() {
@@ -262,6 +272,24 @@ function renderEarnedSummary() {
   summary.querySelector("strong").textContent = money(totalEarned());
 }
 
+function renderBalanceSummary() {
+  const summary = $("#account-balance-summary");
+  if (!summary) return;
+  const liveTotal = accountBalances
+    .filter((account) => (account.account_type || "Live") === "Live")
+    .reduce((total, account) => total + calculatedBalance(account), 0);
+  const fundedTotal = accountBalances
+    .filter((account) => (account.account_type || "Live") === "Prop Firm")
+    .filter((account) => {
+      const membership = currentMembership(account.id);
+      const group = membership ? accountGroups.find((item) => item.id === membership.group_id) : null;
+      return group && normalizedPropStatus(group.prop_status) === "funded";
+    })
+    .reduce((total, account) => total + calculatedBalance(account), 0);
+  summary.querySelector("[data-account-live-total]").textContent = money(liveTotal);
+  summary.querySelector("[data-account-funded-total]").textContent = money(fundedTotal);
+}
+
 function renderTheoreticalTradeControls() {
   const list = $("#account-balance-list");
   if (!list) return;
@@ -290,6 +318,27 @@ function decorateTheoreticalWithdrawalForms() {
   });
 }
 
+function decoratePropStatusControls() {
+  document.querySelectorAll(".account-group-card[data-group-id]").forEach((card) => {
+    const group = accountGroups.find((item) => item.id === card.dataset.groupId);
+    const header = card.querySelector(".account-group-header");
+    if (!group || group.account_type !== "Prop Firm" || !header || header.querySelector("[data-group-status]")) return;
+    const details = document.createElement("details");
+    details.className = "account-group-status-details";
+    details.innerHTML = `<summary>Account stage</summary><select data-group-status="${group.id}" aria-label="Prop firm account stage"><option value="pending">Pending</option><option value="funded">Funded</option></select>`;
+    details.querySelector("select").value = normalizedPropStatus(group.prop_status);
+    header.querySelector(".account-group-total")?.before(details);
+  });
+}
+
+function decorateGroupAdminControls() {
+  document.querySelectorAll(".account-group-card[data-group-id]").forEach((card) => {
+    const header = card.querySelector(".account-group-header");
+    if (!header || header.querySelector("[data-group-edit]")) return;
+    header.insertAdjacentHTML("beforeend", `<span class="account-actions group-admin-actions"><button type="button" class="account-action" data-group-edit="${card.dataset.groupId}">Edit</button><button type="button" class="account-action danger" data-group-delete="${card.dataset.groupId}">Delete</button></span>`);
+  });
+}
+
 function renderAccountBalances() {
   const list = $("#account-balance-list");
   if (!list) return;
@@ -312,8 +361,11 @@ function renderGroupedAccountBalances() {
   if (!list) return;
   renderAccountAdminControls();
   renderEarnedSummary();
+  renderBalanceSummary();
   renderTheoreticalTradeControls();
   setTimeout(decorateTheoreticalWithdrawalForms, 0);
+  setTimeout(decoratePropStatusControls, 0);
+  setTimeout(decorateGroupAdminControls, 0);
   const groups = accountGroups.map((group) => {
     const members = accountGroupAccounts(group.id);
     const total = members.reduce((sum, account) => sum + calculatedBalance(account), 0);
@@ -439,12 +491,67 @@ async function saveAccountGroup(event) {
   if (!sessionData.session) return alert("Please sign in before creating a group.");
   const accountType = $("#account-group-type").value;
   const split = accountType === "Prop Firm" ? numberOrNull($("#account-group-split").value) : null;
+  const propStatus = accountType === "Prop Firm" ? normalizedPropStatus($("#account-group-status")?.value) : "funded";
   const name = $("#account-group-name").value.trim();
   if (!name || (accountType === "Prop Firm" && (split == null || split < 0 || split > 100))) return alert("Enter a valid group name and payout split.");
-  const { error } = await supabase.from("account_groups").insert({ user_id: sessionData.session.user.id, name, account_type: accountType, profit_split_percent: split });
-  if (error) return alert(`The group could not be created: ${error.message}`);
+  const existingGroup = editingGroupId ? accountGroups.find((item) => item.id === editingGroupId) : null;
+  if (existingGroup && existingGroup.account_type !== accountType && accountGroupAccounts(existingGroup.id).length) return alert("Move or remove the group accounts before changing its type.");
+  const groupPayload = { user_id: sessionData.session.user.id, name, account_type: accountType, profit_split_percent: split, prop_status: propStatus };
+  const request = editingGroupId
+    ? supabase.from("account_groups").update(groupPayload).eq("id", editingGroupId)
+    : supabase.from("account_groups").insert(groupPayload);
+  const { error } = await request;
+  if (error) return alert(`The group could not be saved: ${error.message}`);
   event.target.reset();
   $("#account-group-split").value = "";
+  editingGroupId = null;
+  event.target.querySelector("button[type=submit]").textContent = "Create group";
+  syncGroupSplitVisibility();
+  await loadAccountLedger();
+  window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
+}
+
+async function updatePropStatus(groupId, status) {
+  if (!supabase || !PROP_STATUSES.includes(status)) return;
+  const group = accountGroups.find((item) => item.id === groupId);
+  if (!group || group.account_type !== "Prop Firm") return;
+  const previous = normalizedPropStatus(group.prop_status);
+  if (previous === status) return;
+  const { error } = await supabase.from("account_groups").update({ prop_status: status }).eq("id", groupId);
+  if (error) {
+    alert(`The prop status could not be updated: ${error.message}`);
+    await loadAccountLedger();
+    return;
+  }
+  group.prop_status = status;
+  renderGroupedAccountBalances();
+}
+
+function editGroup(groupId) {
+  const group = accountGroups.find((item) => item.id === groupId);
+  if (!group) return;
+  editingGroupId = groupId;
+  $("#account-group-name").value = group.name;
+  $("#account-group-type").value = group.account_type || "Live";
+  $("#account-group-split").value = group.account_type === "Prop Firm" ? group.profit_split_percent : "";
+  $("#account-group-status").value = normalizedPropStatus(group.prop_status);
+  $("#account-group-form button[type=submit]").textContent = "Update group";
+  syncGroupSplitVisibility();
+  $("#account-group-name").focus();
+}
+
+async function deleteGroup(groupId) {
+  const group = accountGroups.find((item) => item.id === groupId);
+  if (!group || !confirm(`Delete group “${group.name}”? Accounts will remain, but group links, withdrawals, and memberships will be removed.`)) return;
+  const { error } = await supabase.from("account_groups").delete().eq("id", groupId);
+  if (error) return alert(`The group could not be deleted: ${error.message}`);
+  if (editingGroupId === groupId) {
+    editingGroupId = null;
+    $("#account-group-form")?.reset();
+    const submit = $("#account-group-form button[type=submit]");
+    if (submit) submit.textContent = "Create group";
+    syncGroupSplitVisibility();
+  }
   await loadAccountLedger();
   window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
 }
@@ -934,7 +1041,12 @@ function init() {
     if (theoreticalForm) { event.preventDefault(); saveTheoreticalTrade(theoreticalForm.dataset.theoreticalTradeForm, theoreticalForm); }
   });
   document.addEventListener("input", (event) => { const input = event.target.closest("[data-withdrawal-gross]"); if (input) updateWithdrawalPreview(input.dataset.withdrawalGross); });
-  document.addEventListener("change", (event) => { const move = event.target.closest("[data-account-move]"); if (move) moveAccount(move.dataset.accountMove, move.value); });
+  document.addEventListener("change", (event) => {
+    const move = event.target.closest("[data-account-move]");
+    if (move) moveAccount(move.dataset.accountMove, move.value);
+    const status = event.target.closest("[data-group-status]");
+    if (status) updatePropStatus(status.dataset.groupStatus, status.value);
+  });
   setDetectiveTab(activeDetectiveTab);
   document.addEventListener("click", (event) => {
     if (event.target.closest('[data-action="add-trade-v2"]')) {
@@ -954,6 +1066,10 @@ function init() {
     if (accountEditButton) editAccount(accountEditButton.dataset.accountEdit);
     const accountDeleteButton = event.target.closest("[data-account-delete]");
     if (accountDeleteButton) deleteAccount(accountDeleteButton.dataset.accountDelete);
+    const groupEditButton = event.target.closest("[data-group-edit]");
+    if (groupEditButton) editGroup(groupEditButton.dataset.groupEdit);
+    const groupDeleteButton = event.target.closest("[data-group-delete]");
+    if (groupDeleteButton) deleteGroup(groupDeleteButton.dataset.groupDelete);
     const theoreticalDeleteButton = event.target.closest("[data-theoretical-trade-delete]");
     if (theoreticalDeleteButton) deleteTheoreticalTrade(theoreticalDeleteButton.dataset.theoreticalTradeDelete);
     if (event.target.closest("#detective-trade-dialog .dialog-close")) dialog.close();
