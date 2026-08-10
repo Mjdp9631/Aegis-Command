@@ -262,6 +262,24 @@ function paintLatestAdvisory() {
   window.dispatchEvent(new CustomEvent("aegis:advisory-updated", { detail: latestAdvisory }));
 }
 
+function renderDerivedInsights() {
+  const panel = $("#ai-derived-insights");
+  const derived = latestContext?.derived_insights;
+  if (!panel || !derived) return;
+  const month = derived.windows?.last_30_days || {};
+  const readiness = derived.morning_readiness || {};
+  const readyTrades = readiness.trading_days_after_morning || {};
+  const unreadyTrades = readiness.trading_days_without_morning || {};
+  const recovery = derived.recovery_vs_trading || {};
+  const scenarios = derived.ai_scenario_ledger || {};
+  const missions = derived.mission_effectiveness || {};
+  const feedback = missions.feedback || {};
+  const xp = derived.xp_integrity || {};
+  const tradeLine = (summary) => summary?.sample_size ? `${summary.sample_size} trades · ${summary.win_rate ?? "—"}% WR · ${summary.pnl_percent ?? 0}% PnL` : "No comparable trades";
+  panel.hidden = false;
+  panel.innerHTML = `<div class="ai-derived-head"><div><p class="eyebrow blue-text">CROSS-DOMAIN INTELLIGENCE</p><h3>Evidence relationships</h3></div><small>As of ${escape(derived.as_of || "—")}</small></div><p class="ai-derived-note">Deterministic associations from the shared activity ledger. Small samples are directional only; they are not causal claims.</p><div class="ai-derived-grid"><article class="ai-derived-card"><span>30-DAY EXECUTION</span><strong>${escape(month.operations?.completion_rate == null ? "—" : `${month.operations.completion_rate}%`)}</strong><small>${month.operations?.completed || 0} of ${month.operations?.planned || 0} planned operations</small></article><article class="ai-derived-card"><span>MORNING READY</span><strong>${escape(String(readiness.morning_completed_days || 0))}</strong><small>${escape(tradeLine(readyTrades))}</small></article><article class="ai-derived-card"><span>WITHOUT MORNING</span><strong>${escape(String(readiness.trading_days - readiness.morning_completed_days || 0))}</strong><small>${escape(tradeLine(unreadyTrades))}</small></article><article class="ai-derived-card"><span>RECOVERY COHORT</span><strong>${escape(String(recovery.trading_days_with_recovery || 0))}</strong><small>${escape(tradeLine(recovery.with_recovery))}</small></article><article class="ai-derived-card"><span>AI BLIND LEDGER</span><strong>${escape(`${scenarios.ai_pnl_r ?? 0}R`)}</strong><small>${escape(`${scenarios.scenarios || 0} scenarios · ${scenarios.entry_call_accuracy ?? "—"}% entry accuracy`)}</small></article></div><div class="ai-derived-chain"><b>Mission learning:</b> ${escape(`${missions.completed_missions || 0}/${missions.converted_to_missions || 0} recommendation-linked missions completed · ${feedback.useful_rate ?? "—"}% useful feedback`)} &nbsp; <b>Observed XP:</b> ${escape(`${xp.observed_rewards ?? 0} across ${xp.observed_reward_events || 0} reward events`)}.</div>`;
+}
+
 function rememberBedtime(operatingDate, bedtimeAt, userId) {
   if (!operatingDate || !bedtimeAt) return;
   const key = `aegis-bedtime:${userId || "anonymous"}:${operatingDate}`;
@@ -345,7 +363,7 @@ function showTransmissionQueue() {
 
 async function gather(operatingDate = operatingDayKey(), mode = "scan") {
   const optionalQuery = (query) => query.then((result) => result.error ? { data: [], error: null } : result);
-  const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews, occurrences, trainingSessions, trainingSets, weightLogs, foodLogs, activityEvents, accounts, groups, withdrawals, advisoryHistory, feedback, calibrationReviews, contentItems, tradeReviews, progressEvents, campaign] = await Promise.all([
+  const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews, occurrences, trainingSessions, trainingSets, weightLogs, foodLogs, activityEvents, accounts, groups, withdrawals, advisoryHistory, feedback, calibrationReviews, contentItems, tradeReviews, progressEvents, campaign, scenarios] = await Promise.all([
     supabase.from("operations").select("*").order("scheduled_date", { ascending: false }).limit(180),
     supabase.from("missions").select("*").order("created_at", { ascending: false }).limit(180),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }).limit(1000),
@@ -373,11 +391,12 @@ async function gather(operatingDate = operatingDayKey(), mode = "scan") {
     optionalQuery(supabase.from("content_items").select("*").order("created_at", { ascending: false }).limit(12)),
     optionalQuery(supabase.from("trade_reviews").select("*").order("created_at", { ascending: false }).limit(8)),
     optionalQuery(supabase.from("mission_progress_events").select("*").order("occurred_at", { ascending: false }).limit(24)),
-    optionalQuery(supabase.from("xp_campaigns").select("started_at").maybeSingle())
+    optionalQuery(supabase.from("xp_campaigns").select("started_at").maybeSingle()),
+    optionalQuery(supabase.from("ai_trade_scenarios").select("*").order("created_at", { ascending: false }).limit(100))
   ]);
   const values = [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews];
   if (values.some((result) => result.error)) throw new Error(values.find((result) => result.error)?.error.message || "Could not load command data.");
-  return sharedBuildContext({ operations: operations.data || [], occurrences: occurrences.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], contentItems: contentItems.data || [], tradeReviews: tradeReviews.data || [], progressEvents: progressEvents.data || [], campaign: campaign.data && !Array.isArray(campaign.data) ? campaign.data : null, phase: phase.data, directives: directives.data || [], roadmap: roadmap.data || [], deepWork: deepWork.data || [], challenges: challenges.data || [], directorReviews: directorReviews.data || [], trainingSessions: trainingSessions.data || [], trainingSets: trainingSets.data || [], weightLogs: weightLogs.data || [], foodLogs: foodLogs.data || [], activityEvents: activityEvents.data || [], accounts: accounts.data || [], groups: groups.data || [], withdrawals: withdrawals.data || [], advisoryHistory: advisoryHistory.data || [], feedback: feedback.data || [], calibration: calibrationReviews.data || [] }, operatingDate, mode);
+  return sharedBuildContext({ operations: operations.data || [], occurrences: occurrences.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], contentItems: contentItems.data || [], tradeReviews: tradeReviews.data || [], scenarios: scenarios.data || [], progressEvents: progressEvents.data || [], campaign: campaign.data && !Array.isArray(campaign.data) ? campaign.data : null, phase: phase.data, directives: directives.data || [], roadmap: roadmap.data || [], deepWork: deepWork.data || [], challenges: challenges.data || [], directorReviews: directorReviews.data || [], trainingSessions: trainingSessions.data || [], trainingSets: trainingSets.data || [], weightLogs: weightLogs.data || [], foodLogs: foodLogs.data || [], activityEvents: activityEvents.data || [], accounts: accounts.data || [], groups: groups.data || [], withdrawals: withdrawals.data || [], advisoryHistory: advisoryHistory.data || [], feedback: feedback.data || [], calibration: calibrationReviews.data || [] }, operatingDate, mode);
 }
 
 function ensureScanOverlay() {
@@ -426,6 +445,7 @@ async function run(mode = "scan") {
   try {
     setBusy(true, bedtime ? "COMPILING DEBRIEF…" : "ANALYZING…");
     latestContext = await withTimeout(gather(operatingDate, mode), 30000, "Command data took too long to load. No scan was saved.");
+    renderDerivedInsights();
     setFocusStreak(latestContext.streaks.execution);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);

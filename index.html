@@ -25,7 +25,7 @@
     <link rel="stylesheet" href="tab-advisory.css" />
     <link rel="stylesheet" href="command-summary.css" />
     <link rel="stylesheet" href="mastery.css?v=three-column-tabs-v1" />
-    <link rel="stylesheet" href="ai-advisory.css?v=ai-intelligence-v1" />
+    <link rel="stylesheet" href="ai-advisory.css?v=derived-insights-v1" />
     <style>.ai-manual-scan{display:flex;align-items:center;justify-content:space-between;gap:22px;margin-top:16px;padding:18px 22px;background:linear-gradient(100deg,rgba(8,25,42,.8),rgba(8,14,24,.64))}.ai-manual-scan h3{margin:4px 0 0;font-size:17px}.ai-manual-scan p{margin:6px 0 0;color:#9cb3c9;font-size:13px}@media(max-width:700px){.ai-manual-scan{align-items:flex-start;flex-direction:column}}</style>
     <link rel="stylesheet" href="cinematic-ui.css?v=glass-room-v2" />
     <link rel="stylesheet" href="sidebar-replica.css?v=sidebar-hover-v3" />
@@ -125,6 +125,7 @@
             <div><p class="eyebrow blue-text">NIGHTLY DEBRIEF</p><h3>Close the operating day</h3><p>When you are finished for the night, mark <strong>Going to bed</strong> so the debrief includes activity completed after midnight and leaves the operation queue untouched.</p></div>
             <div class="ai-scan-actions"><button class="primary compact" data-ai-run="bedtime">Going to bed</button></div>
           </section>
+          <section class="panel ai-derived-insights" id="ai-derived-insights" hidden aria-live="polite"></section>
         </section>
 
         <section class="view" id="detective">
@@ -254,8 +255,8 @@
     <script type="module" src="mastery-clean.js?v=edit-box-v2"></script>
     <script type="module" src="tab-advisory.js?v=auth-safe-v2"></script>
     <link rel="stylesheet" href="ai-lane-layout.css?v=1" />
-    <script src="ai-context.js?v=market-rules-v1"></script>
-    <script type="module" src="ai-advisory.js?v=central-context-v1"></script>
+    <script src="ai-context.js?v=derived-insights-v1"></script>
+    <script type="module" src="ai-advisory.js?v=derived-insights-v1"></script>
     <script>document.getElementById("operation-suggestion").addEventListener("change",function(){if(!this.value)return;const [title,category]=this.value.split("|");document.getElementById("operation-input").value=title;const select=document.getElementById("operation-category");select.value=category;select.dispatchEvent(new Event("change"));});</script>
     <script type="module" src="operations-hub.js?v=queue-sync-v30"></script>
 </body>

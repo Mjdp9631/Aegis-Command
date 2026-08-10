@@ -63,6 +63,133 @@
     return { current: unique[0] ? run : 0, best, last: unique[0] };
   };
 
+  const numberValue = (value, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+  const complete = (row) => Boolean(row?.completed) || String(row?.status || "").toLowerCase() === "complete";
+  const rowDate = (row, ...keys) => {
+    for (const key of keys) {
+      const value = dateOnly(row?.[key]);
+      if (value) return value;
+    }
+    return "";
+  };
+  const within = (date, start, end) => Boolean(date && date >= start && date <= end);
+  const windowStart = (end, days) => shiftDay(end, -(days - 1));
+  const evidenceFor = (sourceType, rows, max = 12) => rows.map((row) => evidenceId(sourceType, idOf(row))).filter(Boolean).slice(0, max);
+  const average = (values) => values.length ? Number((values.reduce((sum, value) => sum + numberValue(value), 0) / values.length).toFixed(2)) : null;
+  const percent = (numerator, denominator) => denominator ? Number(((numerator / denominator) * 100).toFixed(1)) : null;
+  const tradeSummary = (rows) => {
+    const closedRows = rows.filter((row) => tradeOutcome(row) !== "open");
+    const winsCount = closedRows.filter((row) => tradeOutcome(row) === "win").length;
+    const lossesCount = closedRows.filter((row) => tradeOutcome(row) === "loss").length;
+    const beCount = closedRows.filter((row) => tradeOutcome(row) === "be").length;
+    return {
+      sample_size: closedRows.length,
+      wins: winsCount,
+      losses: lossesCount,
+      breakeven: beCount,
+      win_rate: percent(winsCount, winsCount + lossesCount),
+      pnl_percent: Number(closedRows.reduce((sum, row) => sum + numberValue(row.pnl_percent), 0).toFixed(2)),
+      avg_r: average(closedRows.map((row) => row.r_multiple)),
+      plan_violations: closedRows.filter((row) => Boolean(row.plan_violation)).length,
+      violation_rate: percent(closedRows.filter((row) => Boolean(row.plan_violation)).length, closedRows.length),
+      avg_mae: average(closedRows.map((row) => row.mae)),
+      avg_mfe: average(closedRows.map((row) => row.mfe)),
+      evidence_ids: evidenceFor("trade_debriefs", closedRows)
+    };
+  };
+  const groupTrades = (rows, keyFn) => {
+    const groups = new Map();
+    rows.forEach((row) => {
+      const key = String(keyFn(row) || "Unspecified");
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(row);
+    });
+    return [...groups.entries()].map(([key, grouped]) => ({ key, ...tradeSummary(grouped) })).sort((a, b) => b.sample_size - a.sample_size || a.key.localeCompare(b.key)).slice(0, 24);
+  };
+  const operationName = (row) => String(row?.title || row?.name || "").trim().toLowerCase();
+  const operationDay = (row) => rowDate(row, "scheduled_date", "operation_date", "completed_on", "created_at");
+  const operationStats = (rows, start, end) => {
+    const planned = rows.filter((row) => within(operationDay(row), start, end));
+    const completedRows = planned.filter(complete);
+    return { planned: planned.length, completed: completedRows.length, completion_rate: percent(completedRows.length, planned.length), evidence_ids: evidenceFor(String(rows[0]?.id || "").startsWith("occurrence:") ? "operation_occurrences" : "operations", planned) };
+  };
+  const dailyPillar = (rows, phrase) => rows.some((row) => operationName(row).includes(phrase) && complete(row));
+  const recoveryValue = (row, ...keys) => {
+    for (const key of keys) {
+      if (row?.[key] !== null && row?.[key] !== undefined && row?.[key] !== "") return numberValue(row[key], null);
+    }
+    return null;
+  };
+  const cohortComparison = (rows, predicate) => {
+    const withEvidence = rows.filter(predicate);
+    const withoutEvidence = rows.filter((row) => !predicate(row));
+    return { with_evidence: tradeSummary(withEvidence), without_evidence: tradeSummary(withoutEvidence), caution: withEvidence.length < 5 || withoutEvidence.length < 5 ? "Small cohort; directional association only." : "Association only; this does not establish causation." };
+  };
+
+  function buildDerivedInsights({ effectiveOperations, liveTrades, recovery, mastery, deepWork, contentItems, activityEvents, missions, directives, feedback, calibration, tradeReviews, scenarios, operatingDate }) {
+    const closedTrades = liveTrades.filter((row) => tradeOutcome(row) !== "open");
+    const xpEvents = activityEvents.filter((row) => numberValue(row.metadata?.xp_reward ?? row.xp_reward, 0) > 0);
+    const windows = [7, 30, 90].reduce((result, days) => {
+      const start = windowStart(operatingDate, days);
+      const scopedOperations = effectiveOperations.filter((row) => within(operationDay(row), start, operatingDate));
+      const scopedTrades = closedTrades.filter((row) => within(rowDate(row, "traded_at", "created_at"), start, operatingDate));
+      const scopedRecovery = recovery.filter((row) => within(rowDate(row, "logged_on", "created_at"), start, operatingDate));
+      const scopedLearning = [...mastery, ...deepWork, ...contentItems].filter((row) => within(rowDate(row, "created_at", "logged_on"), start, operatingDate));
+      const scopedXp = xpEvents.filter((row) => within(rowDate(row, "occurred_at", "created_at"), start, operatingDate));
+      return { ...result, [`last_${days}_days`]: { date_range: { start, end: operatingDate }, operations: operationStats(scopedOperations, start, operatingDate), trading: tradeSummary(scopedTrades), recovery_logs: scopedRecovery.length, learning_records: scopedLearning.length, xp: { events: scopedXp.length, awarded: Number(scopedXp.reduce((sum, row) => sum + numberValue(row.metadata?.xp_reward ?? row.xp_reward), 0).toFixed(2)) }, evidence_ids: [...evidenceFor("recovery_logs", scopedRecovery), ...evidenceFor("trade_debriefs", scopedTrades), ...evidenceFor("mastery_entries", scopedLearning)].slice(0, 12) } };
+    }, {});
+
+    const days = [...new Set([...effectiveOperations.map(operationDay), ...closedTrades.map((row) => rowDate(row, "traded_at", "created_at")), ...recovery.map((row) => rowDate(row, "logged_on", "created_at")), ...mastery.map((row) => rowDate(row, "created_at", "logged_on")), ...deepWork.map((row) => rowDate(row, "created_at", "logged_on")), ...contentItems.map((row) => rowDate(row, "created_at", "logged_on"))].filter((day) => within(day, windowStart(operatingDate, 90), operatingDate)))].sort();
+    const dayRecords = days.map((day) => {
+      const dayOperations = effectiveOperations.filter((row) => operationDay(row) === day);
+      const dayTrades = closedTrades.filter((row) => rowDate(row, "traded_at", "created_at") === day);
+      const dayRecovery = recovery.filter((row) => rowDate(row, "logged_on", "created_at") === day);
+      const dayLearning = [...mastery, ...deepWork, ...contentItems].filter((row) => rowDate(row, "created_at", "logged_on") === day);
+      return { day, operations: dayOperations, trades: dayTrades, recovery: dayRecovery, learning: dayLearning, morning_completed: dailyPillar(dayOperations, "conquer the morning"), workout_completed: dailyPillar(dayOperations, "workout"), reading_completed: dailyPillar(dayOperations, "read one chapter"), journal_completed: dailyPillar(dayOperations, "journal"), evening_debrief_completed: dailyPillar(dayOperations, "evening mission debrief") };
+    });
+    const tradingDays = dayRecords.filter((row) => row.trades.length);
+    const readyDays = tradingDays.filter((row) => row.morning_completed);
+    const notReadyDays = tradingDays.filter((row) => !row.morning_completed);
+    const flattenTrades = (rows) => rows.flatMap((row) => row.trades);
+    const recoveryDays = tradingDays.filter((row) => row.recovery.length);
+    const noRecoveryDays = tradingDays.filter((row) => !row.recovery.length);
+    const readinessWith = tradeSummary(flattenTrades(readyDays));
+    const readinessWithout = tradeSummary(flattenTrades(notReadyDays));
+    const recoveryWith = tradeSummary(flattenTrades(recoveryDays));
+    const recoveryWithout = tradeSummary(flattenTrades(noRecoveryDays));
+    const readiness = { days_observed: dayRecords.length, trading_days: tradingDays.length, morning_completed_days: readyDays.length, trading_days_after_morning: readinessWith, trading_days_without_morning: readinessWithout, caution: readyDays.length < 5 || notReadyDays.length < 5 ? "Small cohort; directional association only." : "Association only; morning completion is not proof of causation.", evidence_ids: [...evidenceFor("trade_debriefs", flattenTrades(readyDays)), ...evidenceFor("operations", readyDays.flatMap((row) => row.operations))].slice(0, 12) };
+    const recoveryAssociation = { trading_days_with_recovery: recoveryDays.length, trading_days_without_recovery: noRecoveryDays.length, with_recovery: recoveryWith, without_recovery: recoveryWithout, pain_on_trading_days: average(recoveryDays.flatMap((row) => row.recovery.map((item) => recoveryValue(item, "pain", "pain_level"))).filter((value) => value !== null)), rehab_completed_days: recoveryDays.filter((row) => row.recovery.some((item) => Boolean(item.rehab_completed))).length, caution: recoveryDays.length < 5 || noRecoveryDays.length < 5 ? "Small cohort; recovery and trading should be interpreted with clinical context." : "Association only; do not infer that recovery status caused trade results.", evidence_ids: [...evidenceFor("recovery_logs", recoveryDays.flatMap((row) => row.recovery)), ...evidenceFor("trade_debriefs", flattenTrades(recoveryDays))].slice(0, 12) };
+
+    const learningDays = tradingDays.filter((row) => dayRecords.some((candidate) => candidate.learning.length && candidate.day <= row.day && candidate.day >= shiftDay(row.day, -7)));
+    const noLearningDays = tradingDays.filter((row) => !learningDays.includes(row));
+    const learningTransfer = { learning_activity_days: dayRecords.filter((row) => row.learning.length).length, trading_days_with_learning_in_prior_7_days: learningDays.length, after_learning: tradeSummary(flattenTrades(learningDays)), without_recent_learning: tradeSummary(flattenTrades(noLearningDays)), learning_records: dayRecords.filter((row) => row.learning.length).slice(-12).flatMap((row) => row.learning.map((item) => ({ day: row.day, type: item.area ? "deep_work" : item.category ? "mastery" : "content", evidence_id: evidenceId(item.area ? "deep_work_logs" : item.category ? "mastery_entries" : "content_items", idOf(item)) }))), caution: learningDays.length < 5 || noLearningDays.length < 5 ? "Small cohort; learning transfer is a directional association." : "Association only; a nearby learning record does not prove it changed trade quality." };
+
+    const missionBySuggestion = new Map(missions.filter((row) => row.source_suggestion_id).map((row) => [String(row.source_suggestion_id), row]));
+    const feedbackBySuggestion = feedback.reduce((map, row) => { const key = String(row.suggestion_id || ""); if (!map.has(key)) map.set(key, []); map.get(key).push(row); return map; }, new Map());
+    const recommendationChain = directives.filter((row) => row.id).map((suggestion) => {
+      const mission = missionBySuggestion.get(String(suggestion.id));
+      const ratings = feedbackBySuggestion.get(String(suggestion.id)) || [];
+      return { suggestion_id: suggestion.id, advisory_id: suggestion.advisory_id || null, title: suggestion.title, kind: suggestion.mission_kind || null, suggestion_status: suggestion.status || null, feedback: ratings.map((row) => ({ type: row.feedback_type, note: row.note || null, created_at: row.created_at })), mission: mission ? { id: mission.id, status: mission.outcome_status || (complete(mission) ? "completed" : "accepted"), completed: complete(mission), outcome_rating: mission.outcome_rating || null, outcome_note: mission.outcome_note || null, accepted_at: mission.accepted_at || null, started_at: mission.started_at || null, completed_at: mission.completed_at || null } : null, evidence_ids: [...(suggestion.evidence_ids || []), evidenceId("missions", idOf(mission)), evidenceId("ai_mission_suggestions", idOf(suggestion))].filter(Boolean).slice(0, 8) };
+    });
+    const useful = feedback.filter((row) => row.feedback_type === "useful").length;
+    const negative = feedback.filter((row) => ["wrong", "irrelevant"].includes(row.feedback_type)).length;
+    const completedRecommendations = recommendationChain.filter((row) => row.mission?.completed).length;
+    const ratedMissions = recommendationChain.map((row) => numberValue(row.mission?.outcome_rating, 0)).filter((value) => value > 0);
+    const missionEffectiveness = { recommendations: recommendationChain.length, converted_to_missions: recommendationChain.filter((row) => row.mission).length, completed_missions: completedRecommendations, ineffective_missions: recommendationChain.filter((row) => row.mission?.status === "ineffective").length, average_outcome_rating: average(ratedMissions), feedback: { total: feedback.length, useful, negative, useful_rate: percent(useful, feedback.length), negative_rate: percent(negative, feedback.length) }, outcome_chain: recommendationChain.slice(0, 40), calibration_reviews: calibration.slice(0, 4).map((row) => ({ week_start: row.week_start, summary: row.summary, adjustments: row.adjustments })), caution: "Feedback and mission completion measure alignment and follow-through, not causal AI accuracy." };
+
+    const scenariosRows = scenarios || [];
+    const reviewedTradeIds = new Set(tradeReviews.map((row) => String(row.trade_id || row.trade_debrief_id || "")));
+    const enteredScenarios = scenariosRows.filter((row) => String(row.scenario_action || "").toLowerCase().includes("enter"));
+    const passedScenarios = scenariosRows.filter((row) => String(row.scenario_action || "").toLowerCase().includes("pass"));
+    const scenarioSummary = { scenarios: scenariosRows.length, ai_pnl_r: Number(scenariosRows.reduce((sum, row) => sum + numberValue(row.simulated_r_multiple), 0).toFixed(2)), ai_pnl_percent: Number(scenariosRows.reduce((sum, row) => sum + numberValue(row.simulated_pnl_percent), 0).toFixed(2)), correct_wins: scenariosRows.filter((row) => row.scenario_result === "correct_win").length, wrong_losses: scenariosRows.filter((row) => row.scenario_result === "wrong_loss").length, avoided_losses: scenariosRows.filter((row) => row.scenario_result === "avoided_loss").length, missed_winners: scenariosRows.filter((row) => row.scenario_result === "missed_winner").length, break_even: scenariosRows.filter((row) => row.scenario_result === "break_even").length, entry_call_accuracy: percent(scenariosRows.filter((row) => ["correct_win", "wrong_loss"].includes(row.scenario_result)).length - scenariosRows.filter((row) => row.scenario_result === "wrong_loss").length, enteredScenarios.length), pass_call_accuracy: percent(scenariosRows.filter((row) => row.scenario_result === "avoided_loss").length, passedScenarios.length), review_coverage: percent(scenariosRows.filter((row) => reviewedTradeIds.has(String(row.trade_id || ""))).length, scenariosRows.length), actual_r_gap: Number(scenariosRows.reduce((sum, row) => sum + numberValue(row.simulated_r_multiple) - numberValue(row.actual_r_multiple), 0).toFixed(2)), evidence_ids: evidenceFor("ai_trade_scenarios", scenariosRows) };
+    const processConsistency = { by_session: groupTrades(closedTrades, (row) => row.session_time || row.session || "Unspecified"), by_setup: groupTrades(closedTrades, (row) => typeof row.setup === "string" ? row.setup : row.setup?.name || "Unspecified"), by_market_condition: groupTrades(closedTrades, (row) => row.market_condition || "Unspecified"), by_weekday: groupTrades(closedTrades, (row) => { const date = rowDate(row, "traded_at", "created_at"); return date ? new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`)) : "Unspecified"; }) };
+    const xpByMetric = xpEvents.reduce((result, row) => { const key = row.metric_key || "unclassified"; result[key] = (result[key] || 0) + numberValue(row.metadata?.xp_reward ?? row.xp_reward); return result; }, {});
+    return { methodology: "Deterministic cohort comparisons from the shared activity ledger. Metrics describe association and follow-through; they do not establish causation. Small cohorts are explicitly flagged.", as_of: operatingDate, windows, morning_readiness: readiness, recovery_vs_trading: recoveryAssociation, learning_transfer: learningTransfer, process_consistency: processConsistency, mission_effectiveness: missionEffectiveness, ai_scenario_ledger: scenarioSummary, xp_integrity: { observed_reward_events: xpEvents.length, observed_rewards: Number(xpEvents.reduce((sum, row) => sum + numberValue(row.metadata?.xp_reward ?? row.xp_reward), 0).toFixed(2)), by_metric: xpByMetric, note: "XP is reconciled from activity-event reward metadata when present; missing reward metadata is not treated as zero XP." }, ai_recommendation_accuracy: { feedback_alignment: missionEffectiveness.feedback, outcome_tracking: { rated_missions: ratedMissions.length, average_outcome_rating: missionEffectiveness.average_outcome_rating }, calibration_reviews: missionEffectiveness.calibration_reviews, caution: "A recommendation is not treated as accurate solely because it was accepted or completed. Explicit feedback and outcome ratings are the available labels." } };
+  }
+
   function buildContext(input = {}, operatingDate, mode = "scan") {
     const records = input.records || input;
     const operations = records.operations || [];
@@ -84,6 +211,7 @@
     const directorReviews = records.directorReviews || [];
     const contentItems = records.contentItems || [];
     const tradeReviews = records.tradeReviews || [];
+    const scenarios = records.scenarios || records.tradeScenarios || [];
     const progressEvents = records.progressEvents || [];
     const feedback = records.feedback || records.recommendationFeedback || [];
     const calibration = records.calibration || records.calibrationReviews || [];
@@ -112,6 +240,7 @@
     occurrences.forEach((item) => addEvidence("operation_occurrences", item, item.completed_on || item.occurrence_date, `${item.title || "Recurring operation"} occurrence`, { completed: Boolean(item.completed) }));
     trades.forEach((trade) => addEvidence("trade_debriefs", trade, trade.traded_at || trade.created_at, `${trade.pair || "Trade"} journaled`, { outcome: tradeOutcome(trade), plan_violation: Boolean(trade.plan_violation) }));
     tradeReviews.forEach((item) => addEvidence("trade_reviews", item, item.created_at || item.reviewed_at, "Trade review recorded"));
+    scenarios.forEach((item) => addEvidence("ai_trade_scenarios", item, item.created_at || item.reviewed_at, "Blind AI scenario recorded", { result: item.scenario_result }));
     recovery.forEach((item) => addEvidence("recovery_logs", item, item.logged_on || item.created_at, "Recovery report logged"));
     mastery.forEach((item) => addEvidence("mastery_entries", item, item.created_at, item.title || "Mastery entry logged", { category: item.category }));
     trainingSessions.forEach((item) => addEvidence("training_sessions", item, item.logged_on || item.created_at, `${item.title || item.workout_split || "Training"} session logged`));
@@ -129,11 +258,13 @@
     const activityByMetric = activityEvents.reduce((result, event) => { const key = event.metric_key || "unclassified"; result[key] = (result[key] || 0) + Number(event.quantity || 1); return result; }, {});
     const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
     const todayOperations = effectiveOperations.filter((operation) => dateOnly(operation.scheduled_date || operation.operation_date) === operatingDate);
+    const derivedInsights = buildDerivedInsights({ effectiveOperations, liveTrades, recovery, mastery, deepWork, contentItems, activityEvents, missions, directives, feedback, calibration, tradeReviews, scenarios, operatingDate });
     return {
       generated_on: new Date().toISOString(), scan_mode: mode, operating_date: operatingDate, evidence_date: targetDate, evidence_window: mode === "morning" ? "previous_operating_day" : mode === "bedtime" ? "current_operating_day" : "current_context", market_context: marketContext,
       active_phase: `Phase ${phaseValue?.active_phase ?? 0}`,
       evidence_catalog: evidenceCatalog,
       evidence_summary: { target_date: targetDate, target_count: evidence.filter((item) => item.date === targetDate).length, total_count: evidence.length },
+      derived_insights: derivedInsights,
       streaks: { execution: streakFor(effectiveOperations.filter((operation) => operation.completed || operation.status === "Complete").map((operation) => operation.completed_on || operation.scheduled_date || operation.created_at)), trading_journal: streakFor(liveTrades.map((trade) => trade.traded_at || trade.created_at)), mastery: streakFor(mastery.map((entry) => entry.created_at)) },
       operations: { today_total: todayOperations.length, today_complete: todayOperations.filter((operation) => operation.completed || operation.status === "Complete").length, open_total: effectiveOperations.filter((operation) => !operation.completed && operation.status !== "Complete").length, next: effectiveOperations.filter((operation) => !operation.completed && operation.status !== "Complete").slice(0, 8).map((operation) => ({ id: operation.id, title: operation.title, category: operation.category, status: operation.status || "Queued", scheduled_date: operation.scheduled_date || operation.operation_date || null, scheduled_time: operation.scheduled_time || null })) },
        missions: activeMissions.slice(0, 12).map((mission) => ({ id: mission.id, title: mission.title, category: mission.category, priority: mission.priority, progress: missionProgress(mission), definition: mission.completion_definition || null, source_suggestion_id: mission.source_suggestion_id || null, source_advisory_id: mission.source_advisory_id || null, evidence_ids: mission.evidence_ids || [] })),
