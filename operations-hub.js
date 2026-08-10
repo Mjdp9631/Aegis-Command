@@ -385,6 +385,25 @@ function normalizedStatus(operation) {
   return statusOrder.includes(operation.status) ? operation.status : "Queued";
 }
 
+function isDayOfOperation(operation, day = operatingDayKey()) {
+  if (!day) return false;
+  const scheduled = dateOnly(operation?.scheduled_date);
+  if (scheduled) return isScheduledOn(operation, day);
+  return dateOnly(operation?.operation_date) === day;
+}
+
+function displayStatus(operation, day = operatingDayKey()) {
+  const status = normalizedStatus(operation);
+  // A schedule is already visible in its own column. Once its date arrives,
+  // present it as actionable queued work instead of adding a redundant state.
+  return status === "Scheduled" && isDayOfOperation(operation, day) ? "Queued" : status;
+}
+
+function calendarStatusMarkup(operation, day) {
+  const status = displayStatus(operation, day);
+  return `<span class="operation-status ${status.toLowerCase()}"><i></i>${esc(status)}</span>`;
+}
+
 function isReadingOperation(operation) {
   return /^read one chapter$/i.test(String(operation?.title || "").trim());
 }
@@ -762,8 +781,8 @@ function renderQueue() {
     if (operationCount) operationCount.innerHTML = `${completedToday}<span>/${active.today.length}</span>`;
     if (operationMeter) operationMeter.style.width = `${active.today.length ? (completedToday / active.today.length) * 100 : 0}%`;
     if (operationCaption) operationCaption.textContent = active.today.length ? `${active.today.length} operations today` : "No operations today";
-    const rows = (items) => items.map((operation) => {
-      const status = normalizedStatus(operation);
+    const rows = (items, dayOf = false) => items.map((operation) => {
+      const status = dayOf ? displayStatus(operation) : normalizedStatus(operation);
       const gate = morningGate(operation);
       const priority = operation.priority || priorityFor(operation.category);
       const scheduled = dateOnly(operation.scheduled_date);
@@ -799,7 +818,7 @@ function renderQueue() {
     }
     const markup = `
       <div class="operation-table-head operation-table-v2"><span>STATUS</span><span>OPERATION</span><span>SCHEDULE</span><span>CATEGORY</span><span>PRIORITY</span></div>
-      ${rows(active.today)}
+      ${rows(active.today, true)}
       ${active.upcoming.length ? `<p class="operations-upcoming-label">UPCOMING / NEXT 14 DAYS</p>${rows(active.upcoming)}` : ""}`;
     targets.forEach((target) => {
       target.innerHTML = markup;
@@ -973,9 +992,11 @@ async function cycleStatus(key) {
     renderQueue();
     return;
   }
-  const index = statusOrder.indexOf(normalizedStatus(operation));
-  const next = statusOrder[(index + 1) % statusOrder.length];
-  const wasComplete = normalizedStatus(operation) === "Complete";
+  const currentStatus = displayStatus(operation);
+  const cycle = isDayOfOperation(operation) ? ["Queued", "Ongoing", "Complete"] : statusOrder;
+  const index = cycle.indexOf(currentStatus);
+  const next = cycle[(index + 1) % cycle.length];
+  const wasComplete = currentStatus === "Complete";
   operation.status = next;
   operation.completed = next === "Complete";
   if (next === "Complete") {
@@ -1270,7 +1291,8 @@ function ensureScheduleDialog() {
     operation.scheduled_time = time || null;
     operation.scheduled_end_date = endDate || null;
     operation.schedule_mode = selectedMode === "weekly" ? "recurring" : selectedMode;
-    if (date && normalizedStatus(operation) === "Queued") operation.status = "Scheduled";
+    if (date > operatingDayKey() && normalizedStatus(operation) === "Queued") operation.status = "Scheduled";
+    if (date === operatingDayKey() && normalizedStatus(operation) === "Scheduled") operation.status = "Queued";
     operation.local_updated_at = new Date().toISOString();
     // Preserve the user's schedule before any network round trip. If a
     // migration is missing or the connection drops, reopening the calendar
@@ -1476,7 +1498,7 @@ function renderCalendar() {
     const date = new Date(Date.UTC(year, month, day, 17));
     const key = dayKey(date);
     const scheduled = displayOperations.filter((operation) => isScheduledOn(operation, key));
-    const complete = scheduled.filter((operation) => normalizedStatus(operation) === "Complete").length;
+    const complete = scheduled.filter((operation) => displayStatus(operation, key) === "Complete").length;
     const classes = ["calendar-day", key === todayKey() ? "today" : "", key === selectedDay ? "selected" : ""].filter(Boolean).join(" ");
     cells.push(`<button type="button" class="${classes}" data-calendar-day="${key}"><b>${day}</b>${scheduled.length ? `<small>${complete}/${scheduled.length} OPS</small>` : '<small>—</small>'}</button>`);
   }
@@ -1488,7 +1510,7 @@ function renderCalendar() {
   const selected = displayOperations.filter((operation) => isScheduledOn(operation, selectedDay));
   if (agendaLabel) agendaLabel.textContent = selectedDay ? formatKey(selectedDay, { weekday: "long", month: "long", day: "numeric" }) : "Select a day";
   if (agenda) {
-    agenda.innerHTML = selected.length ? `<div class="calendar-agenda-list">${selected.map((operation) => `<button type="button" class="calendar-agenda-item" data-calendar-status="${esc(operation.id || operation.title)}"><span class="operation-status ${normalizedStatus(operation).toLowerCase()}"><i></i>${esc(normalizedStatus(operation))}</span><strong>${esc(operation.title)}</strong><small>${esc(operation.category || "Mission")} · advance status</small></button>`).join("")}</div>` : '<p class="calendar-empty">No operations scheduled. Select another day or schedule an operation in Mission Control.</p>';
+    agenda.innerHTML = selected.length ? `<div class="calendar-agenda-list">${selected.map((operation) => `<button type="button" class="calendar-agenda-item" data-calendar-status="${esc(operation.id || operation.title)}">${calendarStatusMarkup(operation, selectedDay)}<strong>${esc(operation.title)}</strong><small>${esc(operation.category || "Mission")} · advance status</small></button>`).join("")}</div>` : '<p class="calendar-empty">No operations scheduled. Select another day or schedule an operation in Mission Control.</p>';
     agenda.querySelectorAll("[data-calendar-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.calendarStatus)));
   }
   if (needsScheduling) {
