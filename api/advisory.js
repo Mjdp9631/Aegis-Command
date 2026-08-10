@@ -37,6 +37,8 @@ ALFRED is grounded and demanding but humane: recovery, sustainable standards, ch
 
 Never issue buy/sell/hold directions, price targets, position sizing, investment advice, diagnoses, treatment plans, or instructions that conflict with clinicians. Discuss trading only as process quality, data collection, rule adherence, risk discipline, and review. Do not invent data. Never call a single weak data point a pattern. Keep each field concise (normally 1–2 sentences). Corrective missions are for repeated or material evidence gaps; challenge missions are optional stretch assignments when consistency or evidence supports them. At most one corrective and two challenges. Use the exact JSON schema. The trading.authoritative_summary field is the final accounting record: never reinterpret it, never infer a perfect record from the closed-trade total, and never use a numerical trading claim that conflicts with it.`;
 
+const marketRules = `Market rules: the user's primary market is Forex, open Sunday at 5:00 PM Eastern through Friday at 5:00 PM Eastern. Crypto can trade continuously, but the user trades it rarely; do not assume crypto activity without a logged crypto trade. The user does not need to trade every day, and a no-trade day is not a failure or evidence gap by itself. Do not create a trading corrective merely because no trade occurred. A complete absence of any logged evidence for two or more operating days is different from simply not taking a trade.`;
+
 const sectionInstructions = `Every scan must refresh EVERY area, not only the Command Center. In sections: detective is strictly trade-log/process/risk-discipline advice; missions is prioritization and follow-through; enterprise is Special Projects / CCFX execution; recovery is clinician-safe recovery and logging; mastery is Mind/Body learning, training, and personal development; character is earned levels, evidence, streaks, and phase readiness. Jarvis and Alfred must give distinct advice in every section. Do not repeat the same message across sections.
 
 For trading statistics, use ONLY the exact supplied values for closed trades, wins, losses, breakeven, win rate, month PnL, plan violations, current streak, longest win streak, and longest loss streak. The trading.authoritative_summary is authoritative. Never calculate a new statistic. Never call trades consecutive wins or losses unless an explicit streak value is supplied; closed-trade count is not a streak. Never describe results as perfect, loss-free, or 100% unless the authoritative summary explicitly proves it. If evidence is insufficient, say so plainly.
@@ -118,7 +120,7 @@ module.exports = async (req, res) => {
         model: "gpt-4.1-mini",
         temperature: 0,
         input: [
-          { role: "system", content: [{ type: "input_text", text: `${systemPrompt}\n\n${sectionInstructions}\n\n${curatedScanRules}\n\n${modeRules}\n\n${CAMPAIGN_CHARTER}` }] },
+          { role: "system", content: [{ type: "input_text", text: `${systemPrompt}\n\n${marketRules}\n\n${sectionInstructions}\n\n${curatedScanRules}\n\n${modeRules}\n\n${CAMPAIGN_CHARTER}` }] },
           { role: "user", content: [{ type: "input_text", text: `Analyze this AEGIS data. Current request mode: ${String(req.body?.mode || "scan")}.\n\n${JSON.stringify(context)}` }] }
         ],
         text: { format: { type: "json_schema", name: "aegis_dual_advisory", strict: true, schema: responseSchema } }

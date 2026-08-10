@@ -44,6 +44,14 @@
     });
     return { current_type, current_length, longest_win, longest_loss };
   };
+  const marketContext = {
+    primary_market: "Forex",
+    timezone: "America/New_York",
+    regular_forex_session: "Sunday 5:00 PM ET through Friday 5:00 PM ET",
+    forex_closed_window: "Friday 5:00 PM ET through Sunday 5:00 PM ET",
+    crypto: "Crypto trades continuously, but the user trades crypto rarely. Do not assume crypto activity unless a crypto trade is logged.",
+    trading_expectation: "Trading is optional. No trade is required every day, and a no-trade day is not a failure or an evidence gap by itself."
+  };
   const streakFor = (dates) => {
     const unique = [...new Set(dates.map(dateOnly).filter(Boolean))].sort().reverse();
     if (!unique.length) return { current: 0, best: 0, last: null };
@@ -122,7 +130,7 @@
     const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
     const todayOperations = effectiveOperations.filter((operation) => dateOnly(operation.scheduled_date || operation.operation_date) === operatingDate);
     return {
-      generated_on: new Date().toISOString(), scan_mode: mode, operating_date: operatingDate, evidence_date: targetDate, evidence_window: mode === "morning" ? "previous_operating_day" : mode === "bedtime" ? "current_operating_day" : "current_context",
+      generated_on: new Date().toISOString(), scan_mode: mode, operating_date: operatingDate, evidence_date: targetDate, evidence_window: mode === "morning" ? "previous_operating_day" : mode === "bedtime" ? "current_operating_day" : "current_context", market_context: marketContext,
       active_phase: `Phase ${phaseValue?.active_phase ?? 0}`,
       evidence_catalog: evidenceCatalog,
       evidence_summary: { target_date: targetDate, target_count: evidence.filter((item) => item.date === targetDate).length, total_count: evidence.length },

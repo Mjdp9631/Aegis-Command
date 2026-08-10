@@ -6,6 +6,7 @@ const $ = (selector) => document.querySelector(selector);
 const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 const priorities = '<option value="Do now">DO NOW - important + urgent</option><option value="Schedule">SCHEDULE - important + not urgent</option><option value="Delegate">DELEGATE - urgent + not important</option><option value="Eliminate">ELIMINATE - not urgent + not important</option>';
 let client = null, session = null, missions = [];
+let missionEditor = null;
 
 function isMeasured(mission) { return mission.completion_type === "units" && Number(mission.target_count) > 0; }
 function missionProgress(mission) { return isMeasured(mission) ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission.completed ? 100 : 0; }
@@ -183,11 +184,17 @@ async function loadData() {
 function bindDialogs() {
   configureCreateDialog();
   const editor = buildMissionEditor();
-  document.addEventListener("click", (event) => {
-    const card = event.target.closest(".mission-open");
-    if (!card || !session) return;
-    const mission = missions.find((item) => item.id === card.dataset.missionId);
+  missionEditor = editor;
+  const openMission = (id) => {
+    if (!session) return alert("Sign in before opening a mission.");
+    const mission = missions.find((item) => String(item.id) === String(id));
     if (mission) openEditor(editor, mission);
+  };
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-schedule-mission]")) return;
+    const card = event.target.closest(".mission-open");
+    if (!card) return;
+    openMission(card.dataset.missionId);
   });
   document.addEventListener("click", (event) => {
     const button = event.target.closest('[data-action="add-mission"]');
@@ -200,6 +207,14 @@ function bindDialogs() {
   document.querySelectorAll('[data-action="log-recovery"]').forEach((button) => button.addEventListener("click", () => { if (!session) return alert("Sign in before logging recovery."); $("#recovery-dialog").showModal(); }));
   $("#save-recovery").addEventListener("click", async (event) => { const pain = Number($("#recovery-pain").value), swelling = Number($("#recovery-swelling").value); if (!Number.isInteger(pain) || !Number.isInteger(swelling) || pain < 0 || pain > 10 || swelling < 0 || swelling > 10) return event.preventDefault(); const { data, error } = await client.from("recovery_logs").insert({ pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single(); if (error) { event.preventDefault(); return console.error(error); } renderRecovery(data); $("#recovery-notes").value = ""; publishDataChange("recovery"); });
 }
+
+window.addEventListener("aegis:open-mission", (event) => {
+  const id = event.detail?.id;
+  if (!id || !missionEditor) return;
+  if (!session) return alert("Sign in before opening a mission.");
+  const mission = missions.find((item) => String(item.id) === String(id));
+  if (mission) openEditor(missionEditor, mission);
+});
 
 window.addEventListener("aegis:phase-mission-template", (event) => {
   const detail = event.detail || {};
@@ -222,6 +237,8 @@ document.addEventListener("click", (event) => {
   if (typeof window.AEGIS_SCHEDULE_MISSION === "function") window.AEGIS_SCHEDULE_MISSION(button.dataset.scheduleMission);
 });
 
+bindDialogs(); renderMissions(); renderCommandMissions(); renderRecovery();
+
 if (cloudReady) {
   client = createClient(config.supabaseUrl, config.supabaseAnonKey);
   ({ data: { session } } = await client.auth.getSession());
@@ -234,8 +251,6 @@ if (cloudReady) {
     setTimeout(() => loadData(), 0);
   });
 }
-
-bindDialogs(); renderMissions(); renderCommandMissions(); renderRecovery();
 
 // Operations can supply measured evidence (for example one completed PT
 // session or one finished chapter). Reload the mission views immediately.

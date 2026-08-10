@@ -49,6 +49,5 @@ if (supabase) {
     const row = event.target.closest("[data-open-mission]");
     if (!row) return;
     window.location.hash = "#missions";
-    window.dispatchEvent(new CustomEvent("aegis:open-mission", { detail: { id: row.dataset.openMission } }));
   });
 }
