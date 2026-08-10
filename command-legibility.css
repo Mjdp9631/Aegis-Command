@@ -65,17 +65,19 @@
   background: rgba(2, 10, 19, .26);
   backdrop-filter: blur(3px) saturate(108%);
 }
+#detective.active .trade-panel tbody tr[data-trade-id] {
+  transition: background .08s ease, box-shadow .08s ease;
+}
 #detective.active .trade-panel tbody tr.trade-hover-focus {
   position: relative;
   z-index: 3;
-  transform: scale(1.018);
-  transform-origin: center;
   background: rgba(10, 40, 67, .58);
   box-shadow: 0 0 0 1px rgba(103, 191, 255, .55), 0 0 24px rgba(44, 145, 226, .28);
-  transition: transform .22s ease, background .22s ease, box-shadow .22s ease;
 }
 #detective.active .trade-panel tbody tr.trade-hover-focus td {
   background: rgba(13, 48, 78, .34);
+  font-size: 18px;
+  transition: font-size .08s ease, background .08s ease;
 }
 #detective.active .trade-panel tbody tr[data-trade-id] { cursor: pointer; }
 #detective.active .trade-panel tbody tr[data-trade-id]:focus-visible { outline: 2px solid rgba(103, 191, 255, .72); outline-offset: -2px; }

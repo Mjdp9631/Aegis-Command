@@ -735,7 +735,7 @@ function wireTradeHoverFocus() {
     tradeHoverTimer = setTimeout(() => {
       focusedTradeRow = row;
       row.classList.add("trade-hover-focus");
-    }, 550);
+    }, 120);
   });
   table.addEventListener("pointerout", (event) => {
     const row = event.target.closest?.("tbody tr:not(.empty-row)");
