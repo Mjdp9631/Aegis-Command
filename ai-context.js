@@ -52,15 +52,18 @@
     crypto: "Crypto trades continuously, but the user trades crypto rarely. Do not assume crypto activity unless a crypto trade is logged.",
     trading_expectation: "Trading is optional. No trade is required every day, and a no-trade day is not a failure or an evidence gap by itself."
   };
-  const streakFor = (dates) => {
+  const streakFor = (dates, throughDate = "") => {
     const unique = [...new Set(dates.map(dateOnly).filter(Boolean))].sort().reverse();
     if (!unique.length) return { current: 0, best: 0, last: null };
-    let best = 1, run = 1;
+    let best = 1, run = 1, currentRun = 1;
     for (let index = 1; index < unique.length; index += 1) {
       run = Number(new Date(`${unique[index - 1]}T12:00:00Z`) - new Date(`${unique[index]}T12:00:00Z`)) === 86400000 ? run + 1 : 1;
       best = Math.max(best, run);
+      if (index === currentRun && run === index + 1) currentRun = index + 1;
+      else if (index === currentRun) break;
     }
-    return { current: unique[0] ? run : 0, best, last: unique[0] };
+    const current = !throughDate || [throughDate, shiftDay(throughDate, -1)].includes(unique[0]) ? currentRun : 0;
+    return { current, best, last: unique[0] };
   };
 
   const numberValue = (value, fallback = 0) => {
@@ -78,8 +81,21 @@
   const within = (date, start, end) => Boolean(date && date >= start && date <= end);
   const windowStart = (end, days) => shiftDay(end, -(days - 1));
   const evidenceFor = (sourceType, rows, max = 12) => rows.map((row) => evidenceId(sourceType, idOf(row))).filter(Boolean).slice(0, max);
-  const average = (values) => values.length ? Number((values.reduce((sum, value) => sum + numberValue(value), 0) / values.length).toFixed(2)) : null;
+  const average = (values) => {
+    const numeric = values.filter((value) => value !== null && value !== undefined && value !== "").map((value) => Number(value)).filter((value) => Number.isFinite(value));
+    return numeric.length ? Number((numeric.reduce((sum, value) => sum + value, 0) / numeric.length).toFixed(2)) : null;
+  };
   const percent = (numerator, denominator) => denominator ? Number(((numerator / denominator) * 100).toFixed(1)) : null;
+  const normalizeCategory = (value, fallback = "Self Mastery") => {
+    const category = String(value || "").trim().toLowerCase();
+    if (category === "recovery") return "Recovery";
+    if (category === "trading" || category === "trade") return "Trading";
+    if (category === "business" || category === "enterprise") return "Business";
+    if (["mind", "body", "mastery", "self mastery", "self-mastery"].includes(category)) return "Self Mastery";
+    if (["life admin", "day to day", "day-to-day", "personal"].includes(category)) return "Life Admin";
+    if (/dentist|doctor|appointment|lunch|errand|household|personal|admin/.test(category)) return "Life Admin";
+    return fallback;
+  };
   const tradeSummary = (rows) => {
     const closedRows = rows.filter((row) => tradeOutcome(row) !== "open");
     const winsCount = closedRows.filter((row) => tradeOutcome(row) === "win").length;
@@ -111,6 +127,23 @@
   };
   const operationName = (row) => String(row?.title || row?.name || "").trim().toLowerCase();
   const operationDay = (row) => rowDate(row, "scheduled_date", "operation_date", "completed_on", "created_at");
+  const operationIdentity = (row) => {
+    if (row?._occurrence?.id || String(row?.id || "").startsWith("occurrence:")) return `occurrence:${row._occurrence?.id || String(row.id).slice("occurrence:".length)}`;
+    return [operationName(row).replace(/\s+/g, " "), operationDay(row) || "standing", String(row?.scheduled_time || "").slice(0, 5), String(row?.mission_id || "")].join("|");
+  };
+  const dedupeOperations = (rows) => {
+    const unique = new Map();
+    rows.forEach((row) => {
+      const key = operationIdentity(row);
+      const existing = unique.get(key);
+      const completion = complete(row) ? 1 : 0;
+      const existingCompletion = existing && complete(existing) ? 1 : 0;
+      const timestamp = Date.parse(row?.updated_at || row?.created_at || 0) || 0;
+      const existingTimestamp = Date.parse(existing?.updated_at || existing?.created_at || 0) || 0;
+      if (!existing || completion > existingCompletion || (completion === existingCompletion && timestamp >= existingTimestamp)) unique.set(key, row);
+    });
+    return [...unique.values()];
+  };
   const operationStats = (rows, start, end) => {
     const planned = rows.filter((row) => within(operationDay(row), start, end));
     const completedRows = planned.filter(complete);
@@ -222,13 +255,16 @@
       const parent = operations.find((operation) => idOf(operation) === String(occurrence.operation_id)) || {};
       return { ...parent, id: `occurrence:${occurrence.id}`, operation_id: occurrence.operation_id, operation_date: occurrence.occurrence_date, scheduled_date: occurrence.occurrence_date, completed_on: occurrence.completed_on, completed: Boolean(occurrence.completed), status: occurrence.completed ? "Complete" : occurrence.status || parent.status || "Queued", scheduled_time: occurrence.scheduled_time || parent.scheduled_time };
     });
-    const effectiveOperations = [...operations.filter((operation) => !recurringIds.has(idOf(operation)) || !occurrences.some((occurrence) => String(occurrence.operation_id) === idOf(operation))), ...occurrenceRows];
+    const effectiveOperations = dedupeOperations([...operations.filter((operation) => !recurringIds.has(idOf(operation)) || !occurrences.some((occurrence) => String(occurrence.operation_id) === idOf(operation))), ...occurrenceRows]);
     const liveTrades = trades.filter((trade) => String(trade.account || "").trim().toLowerCase() !== "theoretical");
     const closed = liveTrades.filter((trade) => tradeOutcome(trade) !== "open");
     const wins = closed.filter((trade) => tradeOutcome(trade) === "win").length;
     const losses = closed.filter((trade) => tradeOutcome(trade) === "loss").length;
-    const currentMonth = new Date(`${operatingDate}T12:00:00Z`).getUTCMonth();
-    const monthPnl = closed.filter((trade) => new Date(trade.traded_at || trade.created_at || 0).getUTCMonth() === currentMonth).reduce((sum, trade) => sum + Number(trade.pnl_percent || 0), 0);
+     const monthStart = `${operatingDate.slice(0, 8)}01`;
+     const monthPnl = closed.filter((trade) => {
+       const date = rowDate(trade, "traded_at", "created_at");
+       return within(date, monthStart, operatingDate);
+     }).reduce((sum, trade) => sum + Number(trade.pnl_percent || 0), 0);
     const evidence = [];
     const addEvidence = (sourceType, row, occurredAt, summary, metadata = {}) => {
       const id = evidenceId(sourceType, idOf(row));
@@ -265,9 +301,9 @@
       evidence_catalog: evidenceCatalog,
       evidence_summary: { target_date: targetDate, target_count: evidence.filter((item) => item.date === targetDate).length, total_count: evidence.length },
       derived_insights: derivedInsights,
-      streaks: { execution: streakFor(effectiveOperations.filter((operation) => operation.completed || operation.status === "Complete").map((operation) => operation.completed_on || operation.scheduled_date || operation.created_at)), trading_journal: streakFor(liveTrades.map((trade) => trade.traded_at || trade.created_at)), mastery: streakFor(mastery.map((entry) => entry.created_at)) },
-      operations: { today_total: todayOperations.length, today_complete: todayOperations.filter((operation) => operation.completed || operation.status === "Complete").length, open_total: effectiveOperations.filter((operation) => !operation.completed && operation.status !== "Complete").length, next: effectiveOperations.filter((operation) => !operation.completed && operation.status !== "Complete").slice(0, 8).map((operation) => ({ id: operation.id, title: operation.title, category: operation.category, status: operation.status || "Queued", scheduled_date: operation.scheduled_date || operation.operation_date || null, scheduled_time: operation.scheduled_time || null })) },
-       missions: activeMissions.slice(0, 12).map((mission) => ({ id: mission.id, title: mission.title, category: mission.category, priority: mission.priority, progress: missionProgress(mission), definition: mission.completion_definition || null, source_suggestion_id: mission.source_suggestion_id || null, source_advisory_id: mission.source_advisory_id || null, evidence_ids: mission.evidence_ids || [] })),
+      streaks: { execution: streakFor(effectiveOperations.filter((operation) => operation.completed || operation.status === "Complete").map((operation) => operation.completed_on || operation.scheduled_date || operation.created_at), operatingDate), trading_journal: streakFor(liveTrades.map((trade) => trade.traded_at || trade.created_at), operatingDate), mastery: streakFor(mastery.map((entry) => entry.created_at), operatingDate) },
+       operations: { today_total: todayOperations.length, today_complete: todayOperations.filter((operation) => operation.completed || operation.status === "Complete").length, open_total: effectiveOperations.filter((operation) => !operation.completed && operation.status !== "Complete").length, next: effectiveOperations.filter((operation) => !operation.completed && operation.status !== "Complete").slice(0, 8).map((operation) => ({ id: operation.id, title: operation.title, category: normalizeCategory(operation.category), status: operation.status || "Queued", scheduled_date: operation.scheduled_date || operation.operation_date || null, scheduled_time: operation.scheduled_time || null })) },
+       missions: activeMissions.slice(0, 12).map((mission) => ({ id: mission.id, title: mission.title, category: normalizeCategory(mission.category), priority: mission.priority, progress: missionProgress(mission), definition: mission.completion_definition || null, source_suggestion_id: mission.source_suggestion_id || null, source_advisory_id: mission.source_advisory_id || null, evidence_ids: mission.evidence_ids || [] })),
        mission_outcomes: missions.slice(0, 40).map((mission) => ({ id: mission.id, title: mission.title, completed: Boolean(mission.completed), progress: missionProgress(mission), outcome_status: mission.outcome_status || null, outcome_rating: mission.outcome_rating || null, outcome_note: mission.outcome_note || null, accepted_at: mission.accepted_at || null, started_at: mission.started_at || null, completed_at: mission.completed_at || null, source_suggestion_id: mission.source_suggestion_id || null, source_advisory_id: mission.source_advisory_id || null, evidence_ids: mission.evidence_ids || [] })),
       trading: { closed_trades: closed.length, wins, losses, breakeven: closed.length - wins - losses, win_rate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : null, plan_violations: liveTrades.filter((trade) => trade.plan_violation).length, month_pnl_percent: Number(monthPnl.toFixed(2)), streaks: tradeStreaks(closed), authoritative_summary: `${closed.length} closed trades: ${wins} wins, ${losses} losses, ${closed.length - wins - losses} break-even; win rate ${wins + losses ? Math.round((wins / (wins + losses)) * 100) : "N/A"}%.`, recent: closed.slice(-12).map((trade) => ({ evidence_id: evidenceId("trade_debriefs", idOf(trade)), date: dateOnly(trade.traded_at || trade.created_at), pair: trade.pair, outcome: tradeOutcome(trade), r: Number(trade.r_multiple || 0), pnl_percent: trade.pnl_percent == null ? null : Number(trade.pnl_percent), violation: Boolean(trade.plan_violation), setup: trade.setup || null, debrief_note: trade.debrief_note || null })) },
       recovery: recovery.slice(0, 8).map((item) => ({ evidence_id: evidenceId("recovery_logs", idOf(item)), date: item.logged_on, pain: item.pain, swelling: item.swelling, rehab_completed: item.rehab_completed })),
@@ -282,8 +318,8 @@
        content_library: contentItems.slice(0, 12).map((item) => ({ evidence_id: evidenceId("content_items", idOf(item)), title: item.title, type: item.content_type || item.type, status: item.status })),
        director_review: directorReviews[0] ? { evidence_id: evidenceId("director_reviews", idOf(directorReviews[0])), quarter: directorReviews[0].quarter_key, wins: directorReviews[0].wins, bottlenecks: directorReviews[0].bottlenecks, standards: directorReviews[0].standards, next_focus: directorReviews[0].next_focus } : null,
       special_projects: { projects: projects.slice(0, 8).map((project) => ({ id: project.id, title: project.title, status: project.status, priority: project.priority })) },
-      accounts: (records.accounts || []).slice(0, 8).map((account) => ({ name: account.account_name, current_balance: account.current_balance, type: account.account_type || "Live" })),
-      account_groups: (records.groups || []).slice(0, 12).map((group) => ({ name: group.name, type: group.account_type, prop_status: group.prop_status || "funded", payout_split_percent: group.account_type === "Prop Firm" ? group.profit_split_percent : 100 })),
+       accounts: (records.accounts || []).slice(0, 8).map((account) => ({ name: account.account_name, starting_balance: account.starting_balance == null ? null : numberValue(account.starting_balance), balance_basis: account.current_balance != null || account.balance != null ? "reported_current_balance" : "starting_balance_only", current_balance: account.current_balance ?? account.balance ?? null, type: account.account_type || "Live" })),
+       account_groups: (records.groups || []).slice(0, 12).map((group) => ({ name: group.name, type: group.account_type, prop_status: group.prop_status || "funded", payout_split_percent: group.account_type === "Prop Firm" ? group.profit_split_percent : 100 })),
       withdrawal_ledger: (records.withdrawals || []).slice(0, 12).map((item) => ({ group_id: item.group_id, date: item.withdrawn_at, gross_total: item.gross_total_usd, tracked_payout_total: item.payout_total_usd })),
       roadmap_state: { pending_or_active: roadmap.filter((item) => ["pending", "accepted"].includes(item.status)).map((item) => ({ id: item.id, title: item.title, phase: item.phase, category: item.category, status: item.status, evidence_ids: item.evidence_ids || [] })) },
       directive_history: directives.slice(0, 24).map((item) => ({ id: item.id, kind: item.mission_kind, title: item.title, status: item.status, evidence_ids: item.evidence_ids || [], escalation_level: item.escalation_level || 1, cadence_key: item.cadence_key || null, created_at: item.created_at, resolved_at: item.resolved_at })),
@@ -301,9 +337,9 @@
     };
     return {
       ...advisory,
-      roadmap: (advisory.roadmap || []).map((item) => ({ ...item, evidence_ids: (item.evidence_ids || []).filter((id) => allowed.has(id)).slice(0, 6) })),
-      directives: (advisory.directives || []).filter((item) => !unsupportedPerfectWinRate(item)).map((item) => ({ ...item, evidence_ids: (item.evidence_ids || []).filter((id) => allowed.has(id)).slice(0, 6) }))
+      roadmap: (advisory.roadmap || []).map((item) => ({ ...item, category: normalizeCategory(item.category), evidence_ids: (item.evidence_ids || []).filter((id) => allowed.has(id)).slice(0, 6) })),
+      directives: (advisory.directives || []).filter((item) => !unsupportedPerfectWinRate(item)).map((item) => ({ ...item, category: normalizeCategory(item.category), evidence_ids: (item.evidence_ids || []).filter((id) => allowed.has(id)).slice(0, 6) }))
     };
   }
-  return { buildContext, evidenceId, dateOnly, sanitizeAdvisory };
+  return { buildContext, evidenceId, dateOnly, normalizeCategory, sanitizeAdvisory };
 }));

@@ -25,8 +25,8 @@ const responseSchema = {
       mastery: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
       character: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } }
     } },
-    roadmap: { type: "array", maxItems: 1, items: { type: "object", additionalProperties: false, required: ["phase", "title", "category", "priority", "objective", "rationale", "evidence", "evidence_ids"], properties: { phase: { type: "integer", minimum: 0, maximum: 4 }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, objective: { type: "string" }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } }, evidence_ids: { type: "array", maxItems: 6, items: { type: "string" } } } } },
-    directives: { type: "array", maxItems: 2, items: { type: "object", additionalProperties: false, required: ["advisor", "mission_kind", "title", "category", "priority", "rationale", "evidence", "evidence_ids", "cadence_key", "escalation_level"], properties: { advisor: { type: "string", enum: ["Jarvis", "Alfred"] }, mission_kind: { type: "string", enum: ["corrective", "challenge"] }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Mind"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } }, evidence_ids: { type: "array", maxItems: 6, items: { type: "string" } }, cadence_key: { type: "string" }, escalation_level: { type: "integer", minimum: 1, maximum: 3 } } } }
+    roadmap: { type: "array", maxItems: 1, items: { type: "object", additionalProperties: false, required: ["phase", "title", "category", "priority", "objective", "rationale", "evidence", "evidence_ids"], properties: { phase: { type: "integer", minimum: 0, maximum: 4 }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Self Mastery", "Life Admin"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, objective: { type: "string" }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } }, evidence_ids: { type: "array", maxItems: 6, items: { type: "string" } } } } },
+    directives: { type: "array", maxItems: 2, items: { type: "object", additionalProperties: false, required: ["advisor", "mission_kind", "title", "category", "priority", "rationale", "evidence", "evidence_ids", "cadence_key", "escalation_level"], properties: { advisor: { type: "string", enum: ["Jarvis", "Alfred"] }, mission_kind: { type: "string", enum: ["corrective", "challenge"] }, title: { type: "string" }, category: { type: "string", enum: ["Recovery", "Trading", "Business", "Self Mastery", "Life Admin"] }, priority: { type: "string", enum: ["Do now", "Schedule"] }, rationale: { type: "string" }, evidence: { type: "array", maxItems: 3, items: { type: "string" } }, evidence_ids: { type: "array", maxItems: 6, items: { type: "string" } }, cadence_key: { type: "string" }, escalation_level: { type: "integer", minimum: 1, maximum: 3 } } } }
   }
 };
 
@@ -91,7 +91,7 @@ function addInactivityDirective(advisory, context, operatingDate) {
         advisor: "Alfred",
         mission_kind: "corrective",
         title,
-        category: "Mind",
+        category: "Self Mastery",
         priority: "Do now",
         rationale: `No meaningful AEGIS evidence has been logged for ${gap} operating days. Complete one real action today and record the evidence so the system can coach from facts again.`,
         evidence: [latest ? `Last recorded evidence: ${latest}` : "No recent evidence was found in the activity ledger."],
@@ -111,7 +111,7 @@ function addInactivityDirective(advisory, context, operatingDate) {
   if (recentChallenge) return advisory;
   const challengePool = [
     ["Capture one process lesson from today’s strongest signal", "Trading", "Review one current or recent decision, write the most important process lesson, and file the evidence."],
-    ["Complete one focused mastery block", "Mind", "Protect 30 minutes for deliberate learning, then record the idea and how it changes your next action."],
+    ["Complete one focused mastery block", "Self Mastery", "Protect 30 minutes for deliberate learning, then record the idea and how it changes your next action."],
     ["Make one recovery standard visible", "Recovery", "Complete one safe recovery or preparation action and log what you did instead of leaving the standard implicit."],
   ];
   const seed = operatingDate.replace(/-/g, "").split("").reduce((sum, value) => sum + Number(value), 0);
