@@ -126,12 +126,54 @@ const esc = (value = "") => String(value).replace(/[&<>\"']/g, (char) => ({ "&":
 // Claim the queue before legacy dashboard code has a chance to repaint it.
 window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
 const statusOrder = ["Queued", "Scheduled", "Ongoing", "Complete"];
+const LONG_RUNNING_OPERATION_DAYS = 3;
 const priorityFor = (category) => category === "Recovery" || category === "Trading" ? "High" : "Medium";
 const dateOnly = (value) => value ? String(value).slice(0, 10) : "";
 const newYorkWeekday = (date = new Date()) => new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York", weekday: "short",
 }).format(date);
 const isPreMarketDay = (date = new Date()) => !["Fri", "Sat"].includes(newYorkWeekday(date));
+
+function operationIsOngoing(operation) {
+  return !operation?.completed
+    && String(operation?.status || "").toLowerCase() === "ongoing"
+    && !operation?._occurrence?.completed;
+}
+
+function ongoingStartDay(operation, fallback = operatingDayKey()) {
+  return dateOnly(operation?.started_on || operation?._occurrence?.started_on || operation?._base?.started_on || operation?.scheduled_date || operation?._base?.scheduled_date || operation?.operation_date || operation?._base?.operation_date) || fallback;
+}
+
+function ongoingDays(operation, day = operatingDayKey()) {
+  const start = dateForKey(ongoingStartDay(operation, day));
+  const end = dateForKey(day);
+  if (!start || !end || end < start) return 1;
+  return Math.max(1, Math.floor((end - start) / 86400000) + 1);
+}
+
+function ongoingDisplayOperation(operation, day = operatingDayKey()) {
+  if (!operationIsOngoing(operation)) return operation;
+  const started = ongoingStartDay(operation, day);
+  const days = ongoingDays(operation, day);
+  return {
+    ...operation,
+    _base: operation,
+    scheduled_date: day,
+    operation_date: day,
+    ongoing_since: started,
+    ongoing_days: days,
+    needs_attention: days >= LONG_RUNNING_OPERATION_DAYS,
+  };
+}
+
+function completedDisplayOperation(operation) {
+  const completedOn = dateOnly(operation?.completed_on || operation?._occurrence?.completed_on);
+  const complete = Boolean(operation?.completed || operation?._occurrence?.completed)
+    || String(operation?.status || operation?._occurrence?.status || "").toLowerCase() === "complete";
+  return complete && completedOn
+    ? { ...operation, scheduled_date: completedOn, operation_date: completedOn }
+    : operation;
+}
 
 // Scheduling uses one durable start date plus an optional repeat rule. The
 // database keeps the historical value "recurring"; the UI calls it weekly.
@@ -146,6 +188,7 @@ function scheduleMode(operation) {
 }
 
 function isScheduledOn(operation, key) {
+  if (operationIsOngoing(operation)) return key === operatingDayKey();
   // A recurring series is materialized into independent occurrence rows. Each
   // occurrence is only valid for its own date; never let the parent status
   // bleed across the rest of the series.
@@ -305,7 +348,7 @@ function operationInstances() {
   const instances = [];
   operations.forEach((operation) => {
     if (scheduleMode(operation) === "one_time" || !operation.id || String(operation.id).startsWith("local-")) {
-      instances.push(operation);
+      instances.push(ongoingDisplayOperation(completedDisplayOperation(operation)));
       return;
     }
     const rows = operationOccurrences.filter((row) => String(row.operation_id) === String(operation.id));
@@ -313,10 +356,10 @@ function operationInstances() {
       // Before migration 044 is run, retain a safe single display instance;
       // after it runs, every scheduled date gets its own durable row.
       const first = recurringDateKeys(operation, 0)[0];
-      if (first) instances.push({ ...operation, id: `virtual:${operation.id}:${first}`, _series: operation, _occurrence: { occurrence_date: first }, scheduled_date: first, status: operation.status, completed: operation.completed });
+      if (first) instances.push(ongoingDisplayOperation(completedDisplayOperation({ ...operation, id: `virtual:${operation.id}:${first}`, _series: operation, _occurrence: { occurrence_date: first }, scheduled_date: first, status: operation.status, completed: operation.completed })));
       return;
     }
-    rows.forEach((row) => instances.push({
+    rows.forEach((row) => instances.push(ongoingDisplayOperation(completedDisplayOperation({
       ...operation,
       id: `occurrence:${row.id}`,
       _series: operation,
@@ -326,7 +369,7 @@ function operationInstances() {
       status: row.status || "Scheduled",
       completed: Boolean(row.completed),
       completed_on: row.completed_on || null,
-    }));
+    }))));
   });
   return instances;
 }
@@ -467,6 +510,7 @@ async function refreshDurableOperationState() {
     if (!remoteOccurrences.length && operationOccurrences.length) return;
     operations = remoteOperations;
     operationOccurrences = remoteOccurrences;
+    await rollOverOngoingOperations();
     await reconcileRecurringCompletion();
     saveCachedOperations();
     renderQueue();
@@ -1038,11 +1082,14 @@ function showOperationDetail(key) {
 async function persist(operation) {
   if (!client || !currentUser) return true;
   if (operation?._occurrence?.id) {
-    const { data, error } = await client.from("operation_occurrences")
+    let { data, error } = await client.from("operation_occurrences")
       .update({
         status: operation.status,
         completed: Boolean(operation.completed),
         completed_on: operation.completed_on || null,
+        started_on: operation.started_on || operation._occurrence.started_on || null,
+        last_rollover_on: operation.last_rollover_on || operation._occurrence.last_rollover_on || null,
+        rollover_count: Number(operation.rollover_count ?? operation._occurrence.rollover_count ?? 0),
         scheduled_time: operation.scheduled_time || null,
         updated_at: new Date().toISOString(),
       })
@@ -1050,6 +1097,14 @@ async function persist(operation) {
       .eq("user_id", currentUser.id)
       .select()
       .single();
+    if (error && /column|schema cache|rollover/i.test(String(error.message || ""))) {
+      ({ data, error } = await client.from("operation_occurrences")
+        .update({ status: operation.status, completed: Boolean(operation.completed), completed_on: operation.completed_on || null, scheduled_time: operation.scheduled_time || null, updated_at: new Date().toISOString() })
+        .eq("id", operation._occurrence.id)
+        .eq("user_id", currentUser.id)
+        .select()
+        .single());
+    }
     if (error) { console.warn("Could not save operation occurrence", error.message); return false; }
     if (data) Object.assign(operation._occurrence, data);
     return true;
@@ -1066,11 +1121,24 @@ async function persist(operation) {
       status: operation.status,
       completed: Boolean(operation.completed),
       completed_on: operation.completed_on || null,
+      started_on: operation.started_on || null,
+      last_rollover_on: operation.last_rollover_on || null,
+      rollover_count: Number(operation.rollover_count || 0),
     };
-    const { data, error } = await client.from("operation_occurrences")
+    let { data, error } = await client.from("operation_occurrences")
       .upsert(occurrencePayload, { onConflict: "operation_id,occurrence_date" })
       .select()
       .single();
+    if (error && /column|schema cache|rollover/i.test(String(error.message || ""))) {
+      const legacyPayload = { ...occurrencePayload };
+      delete legacyPayload.started_on;
+      delete legacyPayload.last_rollover_on;
+      delete legacyPayload.rollover_count;
+      ({ data, error } = await client.from("operation_occurrences")
+        .upsert(legacyPayload, { onConflict: "operation_id,occurrence_date" })
+        .select()
+        .single());
+    }
     if (!error && data) {
       operation._occurrence = data;
       operation.id = `occurrence:${data.id}`;
@@ -1096,6 +1164,9 @@ async function persist(operation) {
     status: operation.status,
     completed: operation.completed,
     completed_on: operation.completed_on || null,
+    started_on: operation.started_on || null,
+    last_rollover_on: operation.last_rollover_on || null,
+    rollover_count: Number(operation.rollover_count || 0),
     scheduled_date: operation.scheduled_date || null,
     scheduled_time: operation.scheduled_time || null,
     scheduled_end_date: operation.scheduled_end_date || null,
@@ -1116,10 +1187,53 @@ async function persist(operation) {
   const request = isNew
     ? client.from("operations").insert(payload).select().single()
     : client.from("operations").update(payload).eq("id", operation.id).eq("user_id", currentUser.id).select().single();
-  const { data, error } = await request;
+  let { data, error } = await request;
+  if (error && /column|schema cache|rollover/i.test(String(error.message || ""))) {
+    const legacyPayload = { ...payload };
+    delete legacyPayload.started_on;
+    delete legacyPayload.last_rollover_on;
+    delete legacyPayload.rollover_count;
+    const legacyRequest = isNew
+      ? client.from("operations").insert(legacyPayload).select().single()
+      : client.from("operations").update(legacyPayload).eq("id", operation.id).eq("user_id", currentUser.id).select().single();
+    ({ data, error } = await legacyRequest);
+  }
   if (error) { console.warn("Could not save operation status", error.message); return false; }
   if (data) Object.assign(operation, data);
   return true;
+}
+
+async function rollOverOngoingOperations() {
+  const today = operatingDayKey();
+  let changed = false;
+  const candidates = dedupeOperationInstances(operationInstances()).filter(operationIsOngoing);
+  for (const operation of candidates) {
+    const source = operation._base || operation;
+    const currentDate = dateOnly(operation.scheduled_date || operation._occurrence?.occurrence_date);
+    const lastRollover = dateOnly(operation.last_rollover_on || operation._occurrence?.last_rollover_on);
+    const shouldRollover = !lastRollover || lastRollover < today || currentDate !== today;
+    if (!shouldRollover) continue;
+
+    const started = ongoingStartDay(operation, today);
+    const rolloverCount = Math.max(0, Number(operation.rollover_count ?? operation._occurrence?.rollover_count ?? 0))
+      + (lastRollover && lastRollover < today ? 1 : 0);
+    Object.assign(operation, { scheduled_date: today, operation_date: today, started_on: started, last_rollover_on: today, rollover_count: rolloverCount });
+    Object.assign(source, { started_on: started, last_rollover_on: today, rollover_count: rolloverCount });
+    if (operation._occurrence) {
+      operation._occurrence.occurrence_date = today;
+      Object.assign(operation._occurrence, { started_on: started, last_rollover_on: today, rollover_count: rolloverCount });
+    } else if (scheduleMode(source) === "one_time") {
+      source.scheduled_date = today;
+      source.operation_date = today;
+    }
+    changed = true;
+    await persist(operation);
+  }
+  if (changed) {
+    saveCachedOperations();
+    saveCachedOccurrences();
+  }
+  return changed;
 }
 
 async function updateMissionEvidence(operation, direction) {
@@ -1210,6 +1324,7 @@ async function changeGatedStatus(key) {
 async function cycleStatus(key, forcedStatus = null) {
   const operation = findOperation(key);
   if (!operation) return;
+  const sourceOperation = operation._base || operation;
   if (!forcedStatus && morningGate(operation)?.state === "expired") {
     renderQueue();
     return;
@@ -1219,12 +1334,23 @@ async function cycleStatus(key, forcedStatus = null) {
   const index = cycle.indexOf(currentStatus);
   const next = forcedStatus || cycle[(index + 1) % cycle.length];
   const wasComplete = currentStatus === "Complete";
-  operation.status = next;
-  operation.completed = next === "Complete";
+  Object.assign(operation, { status: next, completed: next === "Complete" });
+  if (sourceOperation !== operation) Object.assign(sourceOperation, { status: next, completed: next === "Complete" });
+  if (next === "Ongoing") {
+    const today = operatingDayKey();
+    const started = ongoingStartDay(operation, today);
+    const rolloverCount = Number(operation.rollover_count ?? operation._occurrence?.rollover_count ?? 0);
+    Object.assign(operation, { started_on: started, last_rollover_on: today, rollover_count: rolloverCount });
+    if (sourceOperation !== operation) Object.assign(sourceOperation, { started_on: started, last_rollover_on: today, rollover_count: rolloverCount });
+    if (operation._occurrence) Object.assign(operation._occurrence, { started_on: started, last_rollover_on: today, rollover_count: rolloverCount });
+    else if (scheduleMode(sourceOperation) === "one_time") Object.assign(sourceOperation, { scheduled_date: today, operation_date: today });
+  }
   if (next === "Complete") {
-  operation.completed_on = operatingDayKey();
+    operation.completed_on = operatingDayKey();
+    if (sourceOperation !== operation) sourceOperation.completed_on = operation.completed_on;
   } else if (wasComplete) {
     operation.completed_on = null;
+    if (sourceOperation !== operation) sourceOperation.completed_on = null;
   }
   const series = operation._series || operation;
   attachMissionLink(series);
@@ -1264,6 +1390,7 @@ async function cycleStatus(key, forcedStatus = null) {
     operations = await seedIfEmpty();
     await loadOccurrences();
     await ensureRecurringOccurrences();
+    await rollOverOngoingOperations();
     await reconcileRecurringCompletion();
     await reconcileMeasuredMissionCounts();
     subscribeToOperationSync();

@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { effectiveOperations } from "./operation-state.js?v=shared-operation-state-v1";
+import { effectiveOperations } from "./operation-state.js?v=shared-operation-state-v2";
 
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;

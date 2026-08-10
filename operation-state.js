@@ -43,6 +43,36 @@ function isRecurring(operation) {
   return ["daily", "weekly", "recurring"].includes(scheduleMode(operation));
 }
 
+export const LONG_RUNNING_OPERATION_DAYS = 3;
+
+export function operationIsOngoing(operation) {
+  return !operationComplete(operation)
+    && String(operation?.status || "").toLowerCase() === "ongoing"
+    && !operation?._occurrence?.completed;
+}
+
+function ongoingStart(operation, fallback) {
+  return dateOnly(operation?.started_on || operation?._occurrence?.started_on || operation?.scheduled_date || operation?.operation_date) || fallback;
+}
+
+export function ongoingDays(operation, day = operatingDayKey()) {
+  const start = new Date(`${ongoingStart(operation, day)}T12:00:00Z`);
+  const end = new Date(`${day}T12:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 1;
+  return Math.max(1, Math.floor((end - start) / 86400000) + 1);
+}
+
+function ongoingDisplay(operation, day) {
+  if (!operationIsOngoing(operation)) return operation;
+  const days = ongoingDays(operation, day);
+  return { ...operation, scheduled_date: day, operation_date: day, ongoing_since: ongoingStart(operation, day), ongoing_days: days, needs_attention: days >= LONG_RUNNING_OPERATION_DAYS };
+}
+
+function completedDisplay(operation) {
+  const completedOn = dateOnly(operation?.completed_on || operation?._occurrence?.completed_on);
+  return operationComplete(operation) && completedOn ? { ...operation, scheduled_date: completedOn, operation_date: completedOn } : operation;
+}
+
 export function operationComplete(operation) {
   return Boolean(operation?.completed) || String(operation?.status || "").toLowerCase() === "complete";
 }
@@ -67,10 +97,12 @@ export function effectiveOperations(operations = [], occurrences = []) {
       _occurrence: occurrence,
     };
   });
-  return [...parents, ...rows];
+  return [...parents, ...rows].map((operation) => ongoingDisplay(completedDisplay(operation), operatingDayKey()));
 }
 
 export function operationIsOnDay(operation, day = operatingDayKey()) {
+  if (operationIsOngoing(operation)) return day === operatingDayKey();
+  if (operationComplete(operation) && dateOnly(operation?.completed_on || operation?._occurrence?.completed_on)) return dateOnly(operation.completed_on || operation._occurrence.completed_on) === day;
   const occurrenceDay = dateOnly(operation?.occurrence_date);
   if (occurrenceDay) return occurrenceDay === day;
 
@@ -101,4 +133,3 @@ export function operationIdentity(operation) {
     ? `occurrence:${operation._occurrence.id}`
     : [String(operation?.title || "").trim().toLowerCase(), dateOnly(operation?.scheduled_date || operation?.operation_date), String(operation?.scheduled_time || "").slice(0, 5)].join("|");
 }
-

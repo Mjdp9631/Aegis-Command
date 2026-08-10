@@ -27,7 +27,7 @@ const schema = {
   }
 };
 
-const prompt = `You are the automated Jarvis/Alfred advisory system for a private five-year personal operating system. JARVIS is analytical and exact. ALFRED is grounded, demanding, and humane. Only use the evidence supplied. Do not give buy/sell/hold advice, price targets, position sizing, medical diagnoses, treatment plans, or instructions that conflict with clinicians. Discuss trading only as process quality, rule adherence, review, and risk discipline. Keep every message concise. Corrective missions are only for repeated/material evidence gaps and are non-negotiable. A complete absence of logged evidence for two or more operating days is itself a material evidence gap and should produce one corrective mission to re-establish the evidence loop. When recent evidence exists and no challenge was issued in the previous three operating days, issue one useful non-corrective challenge tied to the evidence. Challenge missions are optional stretch assignments, not filler. At most one corrective and two challenges. Use the exact JSON schema. The trading.authoritative_summary field is the final accounting record: never reinterpret it, never infer a perfect record from the closed-trade total, and never use a numerical trading claim that conflicts with it.`;
+const prompt = `You are the automated Jarvis/Alfred advisory system for a private five-year personal operating system. JARVIS is analytical and exact. ALFRED is grounded, demanding, and humane. Only use the evidence supplied. Do not give buy/sell/hold advice, price targets, position sizing, medical diagnoses, treatment plans, or instructions that conflict with clinicians. Discuss trading only as process quality, rule adherence, review, and risk discipline. Keep every message concise. Corrective missions are only for repeated/material evidence gaps and are non-negotiable. A complete absence of logged evidence for two or more operating days is itself a material evidence gap and should produce one corrective mission to re-establish the evidence loop. When recent evidence exists and no challenge was issued in the previous three operating days, issue one useful non-corrective challenge tied to the evidence. Challenge missions are optional stretch assignments, not filler. At most one corrective and two challenges. Ongoing operations roll to the current operating day until completed; if derived_insights.ongoing_operations or operations.ongoing_attention flags an item at the attention threshold, raise awareness and identify the bottleneck, but do not automatically create a mission from duration alone. Use the exact JSON schema. The trading.authoritative_summary field is the final accounting record: never reinterpret it, never infer a perfect record from the closed-trade total, and never use a numerical trading claim that conflicts with it.`;
 
 const marketRules = `Market rules: the user's primary market is Forex, open Sunday at 5:00 PM Eastern through Friday at 5:00 PM Eastern. Crypto can trade continuously, but the user trades it rarely; do not assume crypto activity without a logged crypto trade. The user does not need to trade every day, and a no-trade day is not a failure or evidence gap by itself. Do not create a trading corrective merely because no trade occurred. A complete absence of any logged evidence for two or more operating days is different from simply not taking a trade.`;
 
@@ -39,7 +39,7 @@ For mode "morning", direct the morning section toward today's plan, signal towar
 
 Two lanes: ROADMAP is the intentional five-year campaign toward a real-world Bruce Wayne / Tony Stark: capable body and recovery, disciplined Detective-grade trading process, intellectual range, financial independence, and useful enterprise. Return one roadmap item only when the supplied roadmap state has fewer than two active accepted items or shows a completed/obsolete item. Otherwise return []. DIRECTIVES are adaptive, not routine. Default to []. A corrective is non-negotiable when the supplied history demonstrates a repeated meaningful pattern, a roadmap bottleneck, or a complete absence of logged evidence for two or more operating days. It must directly repair the gap. It may also impose a proportional consequence, but the consequence must reinforce the missed standard (extra evidence-based work or escalating XP loss), never be arbitrary. Escalation may rise only if that same pattern persists through past directives. A challenge is optional and only when a demonstrated strength has earned a stretch assignment; do not issue it if a recent challenge is in the supplied history. Never create a directive merely because a scan occurred. Jarvis and Alfred may each issue separate roadmap-supporting transmissions, but they must use the same active-phase priorities and must never contradict one another; if only one useful transmission exists, return only one. Deep-work logs, Director Reviews, and self-generated mastery transmissions inform advice and reflection, but must not independently trigger a corrective or challenge. At most one corrective and one challenge.`;
 
-const curatedScanRules = `For every scan, deliberately curate every Jarvis and Alfred field from the supplied current context. Anchor each message to a specific current operation, mission, logged result, streak, training or recovery record, phase, or an explicit absence of evidence. Never use stock motivational quotes, random filler, invented details, or generic advice that could be shown to any user. If the data did not change, keep the advice precise and state which current standard still matters. Jarvis must emphasize the most material system signal and next action. Alfred must address the human standard, recovery, character, and follow-through without merely paraphrasing Jarvis. Treat activity_ledger as the reconciliation layer across pages, compare advisory_history before repeating advice, and treat generated mastery transmissions as evidence to review rather than automatic reasons to create corrective missions.`;
+const curatedScanRules = `For every scan, deliberately curate every Jarvis and Alfred field from the supplied current context. Anchor each message to a specific current operation, mission, logged result, streak, training or recovery record, phase, or an explicit absence of evidence. Never use stock motivational quotes, random filler, invented details, or generic advice that could be shown to any user. If the data did not change, keep the advice precise and state which current standard still matters. Jarvis must emphasize the most material system signal and next action. Alfred must address the human standard, recovery, character, and follow-through without merely paraphrasing Jarvis. Treat activity_ledger as the reconciliation layer across pages, compare advisory_history before repeating advice, and treat generated mastery transmissions as evidence to review rather than automatic reasons to create corrective missions. Treat a long-running operation as an awareness signal first: name it when relevant, preserve its original start date, and do not convert elapsed time into a corrective mission without independent repeated evidence.`;
 const derivedInsightRules = `Use derived_insights as the central cross-domain context builder. It contains deterministic comparisons between operations, morning readiness, recovery, learning, trading process, mission outcomes, recommendation feedback, XP reward evidence, and blind AI scenario PnL. Treat those results as associations, never causal proof. Always respect the reported sample_size and caution text; do not call a small cohort a pattern. Use recommendation outcome_chain to evaluate whether a prior AI recommendation was accepted, completed, rated, or rejected. Use ai_scenario_ledger to report the AI's blind-call ledger separately from the user's actual PnL. Use xp_integrity only to reconcile explicitly observed reward metadata; never infer missing XP. Never replace authoritative trading totals with a derived cohort metric, and do not create a corrective mission from a single comparison.`;
 const debriefRules = `For bedtime and evening debriefs, use at least two distinct references: one concrete operating-day record and one comparison or historical reference from derived_insights, mission outcomes, feedback, scenario results, or advisory_history. Do not repeat the previous debrief's wording; if a pattern is unchanged, name the new or repeated evidence and its operational implication. Return tomorrow_focus.operation_title as a concise, actionable 3–8 word operation title that can be deduplicated against the next-day queue.`;
 
@@ -297,10 +297,44 @@ function dailySeedFor(date) {
   ];
 }
 
+async function rolloverOngoingOperations(serviceKey, userId, date, records) {
+  const ongoing = records.filter((operation) => !operation.completed && String(operation.status || "").toLowerCase() === "ongoing");
+  let rolled = 0;
+  for (const operation of ongoing) {
+    const last = dateOnly(operation.last_rollover_on);
+    const current = dateOnly(operation.scheduled_date || operation.operation_date);
+    if (last === date && current === date) continue;
+    const started = dateOnly(operation.started_on || operation.scheduled_date || operation.operation_date) || date;
+    const rolloverCount = Math.max(0, Number(operation.rollover_count || 0)) + (last && last < date ? 1 : 0);
+    const payload = { scheduled_date: date, operation_date: date, started_on: started, last_rollover_on: date, rollover_count: rolloverCount, updated_at: new Date().toISOString() };
+    let response = await rest(serviceKey, `operations?id=eq.${encodeURIComponent(operation.id)}&user_id=eq.${encodeURIComponent(userId)}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(payload) });
+    // Keep the scheduled scan usable while an older project is waiting for
+    // migration 059. The client will retry the durable fields after migration.
+    if (!response.ok) {
+      response = await rest(serviceKey, `operations?id=eq.${encodeURIComponent(operation.id)}&user_id=eq.${encodeURIComponent(userId)}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ scheduled_date: date, operation_date: date, updated_at: payload.updated_at }) });
+    }
+    if (response.ok) rolled += 1;
+  }
+  return rolled;
+}
+
 async function rolloverOperations(serviceKey, userId, date) {
   const response = await rest(serviceKey, `operations?user_id=eq.${encodeURIComponent(userId)}&select=*`);
   if (!response.ok) throw new Error("Could not load operations for the morning rollover.");
   const records = await response.json();
+  const ongoing = await rolloverOngoingOperations(serviceKey, userId, date, records);
+  // Use the same in-memory date for the remainder of this pass so the
+  // operation is not reintroduced as stale work by the daily repair logic.
+  records.forEach((operation) => {
+    if (!operation.completed && String(operation.status || "").toLowerCase() === "ongoing") {
+      const last = dateOnly(operation.last_rollover_on);
+      if (last !== date) {
+        operation.scheduled_date = date;
+        operation.operation_date = date;
+        operation.last_rollover_on = date;
+      }
+    }
+  });
   const current = records.filter((operation) => dateOnly(operation.operation_date) === date || dateOnly(operation.scheduled_date) === date);
   const currentKeys = new Set(current.map(operationIdentity));
   const inserts = [];
@@ -391,7 +425,7 @@ async function rolloverOperations(serviceKey, userId, date) {
       if (inserted.ok) occurrences = (await inserted.json()).length;
     }
   }
-  return { operations: created.length, occurrences };
+  return { operations: created.length, occurrences, ongoing };
 }
 
 module.exports = async (req, res) => {
@@ -413,9 +447,9 @@ module.exports = async (req, res) => {
     // schedule. This is append-only and makes the prior day visible on the
     // calendar even if GitHub started yesterday's workflow after its window.
     const repairDate = shiftDay(clock.date, -1);
-    const repaired = clock.hour >= 5 ? await rolloverOperations(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, repairDate) : { operations: 0, occurrences: 0 };
-    const current = clock.hour >= 5 ? await rolloverOperations(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date) : { operations: 0, occurrences: 0 };
-    const rollover = { operations: repaired.operations + current.operations, occurrences: repaired.occurrences + current.occurrences, repaired_date: repairDate };
+    const repaired = clock.hour >= 5 ? await rolloverOperations(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, repairDate) : { operations: 0, occurrences: 0, ongoing: 0 };
+    const current = clock.hour >= 5 ? await rolloverOperations(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date) : { operations: 0, occurrences: 0, ongoing: 0 };
+    const rollover = { operations: repaired.operations + current.operations, occurrences: repaired.occurrences + current.occurrences, ongoing: repaired.ongoing + current.ongoing, repaired_date: repairDate };
     const recent = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, `ai_advisories?user_id=eq.${director.id}&select=advisory_type,payload&order=created_at.desc&limit=12`).then((response) => response.ok ? response.json() : []);
     if (recent.some((item) => item.advisory_type === mode && item.payload?.schedule_date === clock.date)) return res.status(200).json({ status: "already-complete", mode, date: clock.date });
     const context = await buildContext(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date, mode);
