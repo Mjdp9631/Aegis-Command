@@ -816,12 +816,17 @@ function queueOperations() {
     const bDate = nextScheduledDate(b, start, true) || dateOnly(b.operation_date) || "9999-12-31";
     return aDate.localeCompare(bDate) || String(a.title).localeCompare(String(b.title));
   });
+  const queueIdentity = (operation) => operation._occurrence?.id
+    ? `occurrence:${operation._occurrence.id}`
+    : [
+      String(operation.title || "").trim().toLowerCase(),
+      dateOnly(operation.scheduled_date) || dateOnly(operation.operation_date) || "standing",
+      String(operation.scheduled_time || "").slice(0, 5),
+    ].join("|");
   const uniqueItems = (items) => {
     const unique = new Map();
     items.forEach((operation) => {
-      const key = operation._occurrence?.id
-        ? `occurrence:${operation._occurrence.id}`
-        : `${String(operation.title || "").trim().toLowerCase()}|${scheduleMode(operation)}|${dateOnly(operation.scheduled_date) || dateOnly(operation.operation_date) || "standing"}`;
+      const key = queueIdentity(operation);
       const existing = unique.get(key);
       const timestamp = Date.parse(operation.updated_at || operation.created_at || 0) || 0;
       const existingTimestamp = Date.parse(existing?.updated_at || existing?.created_at || 0) || 0;
@@ -831,7 +836,11 @@ function queueOperations() {
     return [...unique.values()];
   };
   const todayItems = uniqueItems(sort(today));
-  const upcomingItems = uniqueItems(sort(upcoming));
+  const todayKeys = new Set(todayItems.map(queueIdentity));
+  // The upcoming query includes its start boundary so a dated item can be
+  // found by both filters. Once it is in TODAY, never render it a second time
+  // under UPCOMING / NEXT 14 DAYS.
+  const upcomingItems = uniqueItems(sort(upcoming).filter((operation) => !todayKeys.has(queueIdentity(operation))));
   return { today: todayItems, upcoming: upcomingItems };
 }
 
