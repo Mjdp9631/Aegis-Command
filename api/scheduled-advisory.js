@@ -45,6 +45,12 @@ function easternClock() {
   return { date: `${value.year}-${value.month}-${value.day}`, hour: Number(value.hour) };
 }
 
+function shiftDay(date, amount) {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + amount);
+  return value.toISOString().slice(0, 10);
+}
+
 async function adminUser(serviceKey) {
   const response = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?page=1&per_page=100`, { headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` } });
   if (!response.ok) throw new Error("Could not resolve the AEGIS director account.");
@@ -389,13 +395,21 @@ module.exports = async (req, res) => {
   try {
     const clock = easternClock();
     const requestedMode = new URL(req.url, "https://aegis-command.local").searchParams.get("mode");
-    // The only automated scan is the 5am morning pass. Bedtime debriefs are
-    // initiated by the signed-in user through /api/advisory, never by cron.
-    const mode = requestedMode === "morning" || (!requestedMode && clock.hour === 5) ? "morning" : null;
+    // The only automated scan is the 5am morning pass. GitHub Actions can
+    // start a scheduled job late, so accept any post-5am invocation from the
+    // morning workflow while still rejecting every pre-5am rollover. Bedtime
+    // debriefs are initiated by the signed-in user through /api/advisory.
+    const mode = clock.hour >= 5 && (requestedMode === "morning" || !requestedMode) ? "morning" : null;
     if (!mode) return res.status(204).end();
     const director = await adminUser(process.env.SUPABASE_SERVICE_ROLE_KEY);
     if (!director) throw new Error("Director account not found.");
-    const rollover = clock.hour === 5 ? await rolloverOperations(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date) : { operations: 0, occurrences: 0 };
+    // Repair one missed/delayed run without touching any existing status or
+    // schedule. This is append-only and makes the prior day visible on the
+    // calendar even if GitHub started yesterday's workflow after its window.
+    const repairDate = shiftDay(clock.date, -1);
+    const repaired = clock.hour >= 5 ? await rolloverOperations(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, repairDate) : { operations: 0, occurrences: 0 };
+    const current = clock.hour >= 5 ? await rolloverOperations(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date) : { operations: 0, occurrences: 0 };
+    const rollover = { operations: repaired.operations + current.operations, occurrences: repaired.occurrences + current.occurrences, repaired_date: repairDate };
     const recent = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, `ai_advisories?user_id=eq.${director.id}&select=advisory_type,payload&order=created_at.desc&limit=12`).then((response) => response.ok ? response.json() : []);
     if (recent.some((item) => item.advisory_type === mode && item.payload?.schedule_date === clock.date)) return res.status(200).json({ status: "already-complete", mode, date: clock.date });
     const context = await buildContext(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date, mode);
