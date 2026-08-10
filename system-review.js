@@ -99,6 +99,36 @@ function weekWindow() {
   return { start, end };
 }
 
+function crossSystemSignals(data) {
+  const cutoff = Date.now() - 30 * dayMs;
+  const evidenceDays = new Set();
+  const completedOperationDays = new Set();
+  const rows = operationRows(data.operations, data.occurrences).rows;
+  rows.forEach((operation) => {
+    if (operation.completed) completedOperationDays.add(dayKey(operation.completed_on || operation.operation_date || operation.scheduled_date));
+  });
+  data.masteryEntries.forEach((entry) => { if (dateValue(entry.created_at) >= cutoff) evidenceDays.add(dayKey(entry.created_at)); });
+  data.trainingSessions.forEach((session) => { if (dateValue(session.created_at || session.logged_on) >= cutoff) evidenceDays.add(dayKey(session.created_at || session.logged_on)); });
+  data.recoveryLogs.forEach((log) => { if (dateValue(log.created_at || log.logged_on) >= cutoff) evidenceDays.add(dayKey(log.created_at || log.logged_on)); });
+  completedOperationDays.forEach((day) => evidenceDays.add(day));
+  const trades = data.trades.filter((trade) => closedTrade(trade) && dateValue(trade.traded_at || trade.created_at) >= cutoff);
+  const compare = (label, richDays, sparseDays) => {
+    const rich = trades.filter((trade) => richDays.has(dayKey(trade.traded_at || trade.created_at)) && ["Win", "Loss"].includes(tradeOutcome(trade)));
+    const sparse = trades.filter((trade) => !sparseDays.has(dayKey(trade.traded_at || trade.created_at)) && ["Win", "Loss"].includes(tradeOutcome(trade)));
+    if (rich.length < 3 || sparse.length < 3) return { label, text: "Not enough comparable trades yet; need at least 3 in each group." };
+    const richWins = rich.filter((trade) => tradeOutcome(trade) === "Win").length;
+    const sparseWins = sparse.filter((trade) => tradeOutcome(trade) === "Win").length;
+    const richRate = Math.round((richWins / rich.length) * 100);
+    const sparseRate = Math.round((sparseWins / sparse.length) * 100);
+    const difference = richRate - sparseRate;
+    return { label, text: `${richRate}% win rate on evidence-rich days vs ${sparseRate}% on comparison days (${difference >= 0 ? "+" : ""}${difference} points). Treat this as a lead, not proof.` };
+  };
+  return [
+    compare("Foundation evidence vs sparse days", evidenceDays, evidenceDays),
+    compare("Completed-operation days vs incomplete days", completedOperationDays, completedOperationDays),
+  ];
+}
+
 function weeklyReview(data, issues) {
   const { start, end } = weekWindow();
   const rows = operationRows(data.operations, data.occurrences).rows.filter((operation) => inWindow(operation.operation_date || operation.scheduled_date || operation.completed_on, start, end));
@@ -131,10 +161,11 @@ function render({ data, issues }) {
   const target = $("#system-review");
   if (!target) return;
   const review = weeklyReview(data, issues);
+  const signals = crossSystemSignals(data);
   const severity = issues.some((issue) => issue.severity === "error") ? "NEEDS ATTENTION" : issues.length ? "REVIEW RECOMMENDED" : "CLEAN SIGNAL";
   const issueRows = issues.length ? issues.slice(0, 6).map((issue) => `<li class="system-audit-${issue.severity}"><span>${escape(issue.title)}</span><small>${escape(issue.detail)}</small></li>`).join("") : '<li class="system-audit-clean"><span>No integrity issues detected.</span><small>Required fields, operation links, and active-record freshness look consistent.</small></li>';
   const stats = review.stats.map((stat) => `<div><span>${stat.label}</span><strong>${escape(stat.value)}</strong><small>${escape(stat.note)}</small></div>`).join("");
-  target.innerHTML = `<div class="panel-head"><div><p class="eyebrow blue-text">SYSTEM INTEGRITY / WEEKLY REVIEW</p><h3>Clean inputs. Better decisions.</h3><p class="body-copy">${review.start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${review.end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}. This review observes the record; it does not rewrite it.</p></div><span class="system-audit-status ${issues.length ? "has-issues" : "clean"}">${severity}</span></div><div class="system-review-columns"><section><p class="eyebrow">DATA QUALITY MONITOR · ${issues.length} ISSUE${issues.length === 1 ? "" : "S"}</p><ul class="system-audit-list">${issueRows}</ul></section><section><p class="eyebrow">SEVEN-DAY OPERATING REVIEW</p><div class="system-review-stats">${stats}</div><div class="system-review-focus"><span>TOMORROW'S FOCUS</span><strong>${escape(review.focus)}</strong></div></section></div>`;
+  target.innerHTML = `<div class="panel-head"><div><p class="eyebrow blue-text">SYSTEM INTEGRITY / WEEKLY REVIEW</p><h3>Clean inputs. Better decisions.</h3><p class="body-copy">${review.start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${review.end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}. This review observes the record; it does not rewrite it.</p></div><span class="system-audit-status ${issues.length ? "has-issues" : "clean"}">${severity}</span></div><div class="system-review-columns"><section><p class="eyebrow">DATA QUALITY MONITOR · ${issues.length} ISSUE${issues.length === 1 ? "" : "S"}</p><ul class="system-audit-list">${issueRows}</ul></section><section><p class="eyebrow">SEVEN-DAY OPERATING REVIEW</p><div class="system-review-stats">${stats}</div><div class="system-review-focus"><span>TOMORROW'S FOCUS</span><strong>${escape(review.focus)}</strong></div></section></div><div class="system-review-signals"><p class="eyebrow">THIRTY-DAY CROSS-SYSTEM SIGNALS</p><ul>${signals.map((signal) => `<li><span>${escape(signal.label)}</span><small>${escape(signal.text)}</small></li>`).join("")}</ul></div>`;
 }
 
 async function load() {
