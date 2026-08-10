@@ -426,12 +426,30 @@ async function queueTomorrowFocus(advisory, operatingDate, userId) {
     .limit(300);
   if (existingError) { console.warn("Could not check tomorrow's focus operation", existingError.message); return null; }
   const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const focusKey = normalize(title);
+  const stopWords = new Set(["a", "an", "and", "apply", "complete", "day", "do", "focus", "for", "get", "in", "next", "one", "the", "this", "tomorrow", "to", "with"]);
+  const canonicalToken = (token) => {
+    const aliases = { analysis: "review", analyze: "review", analytical: "review", book: "read", chapter: "read", chapters: "read", gym: "workout", training: "workout", trade: "trade", trades: "trade", trading: "trade", journaled: "journal", journaling: "journal", rehab: "recovery", rehabilitation: "recovery", publishing: "content", publish: "content" };
+    const mapped = aliases[token] || token;
+    return mapped.length > 4 && mapped.endsWith("s") ? mapped.slice(0, -1) : mapped;
+  };
+  const meaningfulTokens = (value) => new Set(normalize(value).split(" ").map(canonicalToken).filter((token) => token && !stopWords.has(token)));
+  const focusTokens = meaningfulTokens(title);
+  const strongTokens = new Set(["recovery", "workout", "read", "journal", "trade", "chart", "market", "risk", "setup", "content", "sleep", "morning", "debrief"]);
+  const similarFocus = (candidateTitle) => {
+    const candidateTokens = meaningfulTokens(candidateTitle);
+    if (!focusTokens.size || !candidateTokens.size) return false;
+    const shared = [...focusTokens].filter((token) => candidateTokens.has(token));
+    if (!shared.length) return false;
+    if (shared.length >= 2) return true;
+    const smallerSize = Math.min(focusTokens.size, candidateTokens.size);
+    return smallerSize === 1 && strongTokens.has(shared[0]);
+  };
   const duplicate = (existing || []).some((row) => {
     const status = String(row.status || "").toLowerCase();
     if (Boolean(row.completed) || ["complete", "completed", "done"].includes(status)) return false;
-    const rowTitle = normalize(row.title);
-    return rowTitle === focusKey && (dateOnly(row.scheduled_date) === nextDate || dateOnly(row.operation_date) === nextDate || !row.scheduled_date);
+    const isNextDay = dateOnly(row.scheduled_date) === nextDate || dateOnly(row.operation_date) === nextDate;
+    const isUnscheduledQueue = !row.scheduled_date && ["", "queued", "scheduled", "ongoing"].includes(status);
+    return (isNextDay || isUnscheduledQueue) && similarFocus(row.title);
   });
   if (duplicate) return null;
   const { data, error } = await supabase.from("operations").insert({
