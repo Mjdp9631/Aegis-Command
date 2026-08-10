@@ -181,6 +181,10 @@
        */
       (() => {
         const titleFor = view => view === "command" ? "COMMAND CENTER" : view.replace(/-/g, " ").toUpperCase();
+        const releaseSidebarFocus = () => {
+          const sidebar = document.querySelector(".sidebar");
+          if (sidebar?.contains(document.activeElement)) document.activeElement.blur();
+        };
         const showView = (view, writeAddress = false) => {
           const pane = document.getElementById(view);
           if (!pane) return false;
@@ -189,6 +193,7 @@
           const title = document.getElementById("view-title");
           if (title) title.textContent = titleFor(view);
           if (writeAddress && location.hash !== `#${view}`) history.pushState(null, "", `#${view}`);
+          releaseSidebarFocus();
           return true;
         };
         const currentView = () => location.hash.replace(/^#/, "") || "command";
