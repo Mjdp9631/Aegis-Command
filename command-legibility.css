@@ -60,8 +60,10 @@
 #detective.active .trade-panel td.result-positive { color: #75e7ad; }
 #detective.active .trade-panel td.result-negative { color: #ff9b9b; }
 #detective.active .trade-panel tbody tr:not(.empty-row) {
-  background: rgba(2, 10, 19, .18);
+  background: rgba(2, 10, 19, .26);
+  backdrop-filter: blur(3px) saturate(108%);
 }
+#detective.active .trade-panel { backdrop-filter: blur(4px) saturate(110%); }
 @media (min-width: 761px) {
   /* Right rail: directive, markets, and the linked department summaries. */
   .market-tickers > span,
