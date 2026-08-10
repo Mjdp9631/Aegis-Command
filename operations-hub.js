@@ -355,11 +355,20 @@ async function loadOccurrences() {
       merged.set(key, row);
       return;
     }
-    // A status click can finish locally just before an auth refresh returns
-    // an older occurrence snapshot. Keep the newer local row in that case.
+    // Authenticated browsers use Supabase as the shared source of truth. If a
+    // cached row has a newer explicit click than the remote snapshot, first
+    // reconcile that pending click to Supabase; otherwise the remote row wins.
     const localStamp = Date.parse(row.local_updated_at || 0) || Number(row.local_updated_at) || 0;
     const remoteStamp = Date.parse(remote.updated_at || remote.created_at || 0) || 0;
-    if (localStamp > remoteStamp) merged.set(key, row);
+    if (localStamp > remoteStamp && row.id) {
+      const { data: synced, error: syncError } = await client.from("operation_occurrences")
+        .update({ status: row.status, completed: Boolean(row.completed), completed_on: row.completed_on || null, updated_at: new Date().toISOString() })
+        .eq("id", row.id)
+        .eq("user_id", currentUser.id)
+        .select()
+        .single();
+      if (!syncError && synced) merged.set(key, synced);
+    }
   });
   operationOccurrences = [...merged.values()];
   saveCachedOccurrences();
@@ -380,8 +389,60 @@ async function ensureRecurringOccurrences() {
   saveCachedOccurrences();
 }
 
+async function reconcileRecurringCompletion() {
+  const completedSeries = operations.filter((operation) => scheduleMode(operation) !== "one_time" && operation.id && !String(operation.id).startsWith("local-") && Boolean(operation.completed) && dateOnly(operation.completed_on || operation.local_completed_on));
+  for (const series of completedSeries) {
+    const completedDay = dateOnly(series.completed_on || series.local_completed_on);
+    const occurrence = operationOccurrences.find((row) => String(row.operation_id) === String(series.id) && dateOnly(row.occurrence_date) === completedDay);
+    if (!occurrence || Boolean(occurrence.completed)) continue;
+    Object.assign(occurrence, { status: "Complete", completed: true, completed_on: completedDay });
+    if (client && currentUser) {
+      const { error } = await client.from("operation_occurrences")
+        .update({ status: "Complete", completed: true, completed_on: completedDay, updated_at: new Date().toISOString() })
+        .eq("id", occurrence.id)
+        .eq("user_id", currentUser.id);
+      if (error) console.warn("Could not reconcile recurring operation completion", error.message);
+    }
+  }
+  saveCachedOccurrences();
+}
+
+let operationSyncChannel = null;
+let operationSyncInFlight = false;
+async function refreshDurableOperationState() {
+  if (!client || !currentUser || operationSyncInFlight) return;
+  operationSyncInFlight = true;
+  try {
+    const [operationResult, occurrenceResult] = await Promise.all([
+      client.from("operations").select("*").eq("user_id", currentUser.id).order("scheduled_date", { ascending: true }).order("created_at", { ascending: true }),
+      client.from("operation_occurrences").select("*").eq("user_id", currentUser.id),
+    ]);
+    if (operationResult.error || occurrenceResult.error) return;
+    operations = operationResult.data || [];
+    operationOccurrences = occurrenceResult.data || [];
+    await reconcileRecurringCompletion();
+    saveCachedOperations();
+    renderQueue();
+    renderCalendar();
+  } finally {
+    operationSyncInFlight = false;
+  }
+}
+
+function subscribeToOperationSync() {
+  if (!client || !currentUser || typeof client.channel !== "function") return;
+  if (operationSyncChannel) client.removeChannel(operationSyncChannel);
+  operationSyncChannel = client.channel(`aegis-operation-sync-${currentUser.id}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "operations", filter: `user_id=eq.${currentUser.id}` }, () => { void refreshDurableOperationState(); })
+    .on("postgres_changes", { event: "*", schema: "public", table: "operation_occurrences", filter: `user_id=eq.${currentUser.id}` }, () => { void refreshDurableOperationState(); })
+    .subscribe();
+}
+
 function normalizedStatus(operation) {
   if (operation.completed) return "Complete";
+  const series = operation?._series;
+  const instanceDay = dateOnly(operation?.scheduled_date || operation?.operation_date);
+  if (series && series !== operation && Boolean(series.completed) && dateOnly(series.completed_on || series.local_completed_on) === instanceDay) return "Complete";
   return statusOrder.includes(operation.status) ? operation.status : "Queued";
 }
 
@@ -604,6 +665,40 @@ function mergeSavedStatus(remote = []) {
   return merged;
 }
 
+async function reconcileCachedOperationEdits(remote = []) {
+  if (!client || !currentUser) return remote;
+  const cached = cachedOperations().filter((candidate) => candidate?.id && !String(candidate.id).startsWith("local-"));
+  const cachedById = new Map(cached.map((candidate) => [String(candidate.id), candidate]));
+  const pending = remote.filter((operation) => {
+    const local = cachedById.get(String(operation.id));
+    if (!local?.local_updated_at) return false;
+    const localStamp = Date.parse(local.local_updated_at) || Number(local.local_updated_at) || 0;
+    const remoteStamp = Date.parse(operation.updated_at || operation.created_at) || 0;
+    return localStamp > remoteStamp;
+  });
+  if (!pending.length) return remote;
+  const results = await Promise.all(pending.map(async (operation) => {
+    const local = cachedById.get(String(operation.id));
+    const { data, error } = await client.from("operations")
+      .update({
+        scheduled_date: local.scheduled_date || null,
+        scheduled_time: local.scheduled_time || null,
+        scheduled_end_date: local.scheduled_end_date || null,
+        schedule_mode: local.schedule_mode || "one_time",
+        status: local.status || operation.status,
+        completed: Boolean(local.completed),
+        completed_on: local.completed_on || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", operation.id)
+      .eq("user_id", currentUser.id)
+      .select()
+      .single();
+    return error || !data ? operation : data;
+  }));
+  return remote.map((operation) => results.find((candidate) => String(candidate.id) === String(operation.id)) || operation);
+}
+
 function ensureLiveQueueHost() {
     // Keep one stable queue host. A second sibling can land in an implicit
     // grid row and appear blank even when it contains the correct operations.
@@ -754,7 +849,7 @@ function emergencyQueueMarkup() {
     const gateExpired = gate?.state === "expired";
     const priority = operation.priority || priorityFor(operation.category);
     return `<article class="operation operation-table-row operation-table-v2">
-      <button type="button" class="operation-status ${gateExpired ? "morning-gated" : "queued"}" ${gateExpired ? "disabled" : `data-hub-status="${esc(operation.title)}"`}><i></i>${gateExpired ? "Missed morning" : "Queued"}</button>
+      <button type="button" class="operation-status ${gateExpired ? "morning-gated" : "queued"}" ${gateExpired ? "disabled" : `data-hub-status="${esc(operation.title)}"`}><i></i>${gateExpired ? "Missed" : "Queued"}</button>
       <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.title)}">${esc(operation.title)}</button>
       <button type="button" class="operation-schedule-control" data-hub-schedule="${esc(operation.title)}">+ Schedule</button>
       <span>${esc(operation.category || "Mission")}</span>
@@ -790,7 +885,7 @@ function renderQueue() {
       const timing = scheduleLabel(operation, operatingDayKey());
       const doneClass = status === "Complete" ? " done operation-complete" : "";
       const gateExpired = gate?.state === "expired";
-      const statusLabel = gateExpired ? "Missed morning" : status;
+      const statusLabel = gateExpired ? "Missed" : status;
       const gateNote = gateExpired
         ? '<small class="morning-window-note is-expired">9-hour window expired</small>'
         : gate?.deadline
@@ -881,6 +976,40 @@ async function persist(operation) {
     if (error) { console.warn("Could not save operation occurrence", error.message); return false; }
     if (data) Object.assign(operation._occurrence, data);
     return true;
+  }
+  // A recurring series can render a virtual instance before migration 044 has
+  // returned its occurrence row. Persist that instance as its own durable
+  // occurrence instead of trying to update the synthetic virtual id.
+  if (operation?._occurrence?.occurrence_date && operation?._series?.id) {
+    const occurrencePayload = {
+      user_id: currentUser.id,
+      operation_id: operation._series.id,
+      occurrence_date: dateOnly(operation._occurrence.occurrence_date),
+      scheduled_time: operation.scheduled_time || operation._series.scheduled_time || null,
+      status: operation.status,
+      completed: Boolean(operation.completed),
+      completed_on: operation.completed_on || null,
+    };
+    const { data, error } = await client.from("operation_occurrences")
+      .upsert(occurrencePayload, { onConflict: "operation_id,occurrence_date" })
+      .select()
+      .single();
+    if (!error && data) {
+      operation._occurrence = data;
+      operation.id = `occurrence:${data.id}`;
+      const existingIndex = operationOccurrences.findIndex((row) => occurrenceIdentity(row) === occurrenceIdentity(data));
+      if (existingIndex >= 0) operationOccurrences[existingIndex] = data;
+      else operationOccurrences.push(data);
+      saveCachedOccurrences();
+      return true;
+    }
+    // Keep legacy projects usable when the occurrence migration is not yet
+    // installed; the durable parent remains the fallback record.
+    if (error) {
+      console.warn("Could not save virtual operation occurrence", error.message);
+      Object.assign(operation._series, { status: operation.status, completed: Boolean(operation.completed), completed_on: operation.completed_on || null });
+    }
+    operation = operation._series;
   }
   const payload = {
     user_id: currentUser.id,
@@ -1009,6 +1138,7 @@ async function cycleStatus(key) {
   if (series !== operation) {
     operation.mission_id = series.mission_id;
     operation.metric_key = series.metric_key;
+    if (!operation._occurrence?.id) Object.assign(series, { status: operation.status, completed: Boolean(operation.completed), completed_on: operation.completed_on || null });
   }
   const localUpdatedAt = new Date().toISOString();
   operation.local_updated_at = localUpdatedAt;
@@ -1041,7 +1171,9 @@ async function cycleStatus(key) {
     operations = await seedIfEmpty();
     await loadOccurrences();
     await ensureRecurringOccurrences();
+    await reconcileRecurringCompletion();
     await reconcileMeasuredMissionCounts();
+    subscribeToOperationSync();
     saveCachedOperations();
   }
   renderQueue();
@@ -1061,7 +1193,7 @@ async function seedIfEmpty() {
     const local = cachedOperations();
     return ensureTodayOperations(local.length ? local : starterOperations());
   }
-  if (data?.length) return ensureTodayOperations(mergeSavedStatus(data));
+  if (data?.length) return ensureTodayOperations(mergeSavedStatus(await reconcileCachedOperationEdits(data)));
   // operatingDayKey() remains on the prior day from midnight through 4:59 AM,
   // so this repair can restore missing prior-day pillars without creating the
   // new day's plan before the 5 AM rollover.
@@ -1609,7 +1741,9 @@ async function boot() {
     await syncDailyReadingOperation();
     await loadOccurrences();
     await ensureRecurringOccurrences();
+    await reconcileRecurringCompletion();
     await reconcileMeasuredMissionCounts();
+    subscribeToOperationSync();
   } else {
     operations = await ensureTodayOperations(local.length ? local : starterOperations());
     operationOccurrences = cachedOccurrences();
