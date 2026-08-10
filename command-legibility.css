@@ -77,7 +77,25 @@
 #detective.active .trade-panel tbody tr.trade-hover-focus td {
   background: rgba(13, 48, 78, .34);
 }
+#detective.active .trade-panel tbody tr[data-trade-id] { cursor: pointer; }
+#detective.active .trade-panel tbody tr[data-trade-id]:focus-visible { outline: 2px solid rgba(103, 191, 255, .72); outline-offset: -2px; }
 #detective.active .trade-panel { backdrop-filter: blur(4px) saturate(110%); }
+.trade-detail-dialog .dialog-card {
+  width: min(900px, calc(100vw - 36px));
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+}
+.trade-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 22px 0; }
+.trade-detail-field,
+.trade-detail-notes > div { padding: 11px 12px; border: 1px solid rgba(103, 191, 255, .18); border-radius: 4px; background: rgba(4, 17, 31, .38); }
+.trade-detail-field span,
+.trade-detail-notes span { display: block; margin-bottom: 6px; color: rgba(165, 202, 233, .68); font: 700 9px/1 "Space Mono", ui-monospace, monospace; letter-spacing: .07em; text-transform: uppercase; }
+.trade-detail-field strong { color: #edf6ff; font-size: 15px; text-shadow: 0 1px 3px rgba(0, 0, 0, .8); }
+.trade-detail-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.trade-detail-notes p { margin: 0; color: #dcecff; line-height: 1.45; white-space: pre-wrap; }
+.trade-detail-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(103, 191, 255, .18); }
+.trade-detail-actions [data-trade-detail-delete] { border-color: rgba(255, 145, 145, .32); color: #ff9b9b; }
+@media (max-width: 620px) { .trade-detail-notes { grid-template-columns: 1fr; } }
 @media (min-width: 761px) {
   /* Right rail: directive, markets, and the linked department summaries. */
   .market-tickers > span,

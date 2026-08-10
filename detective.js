@@ -745,11 +745,79 @@ function wireTradeHoverFocus() {
   });
 }
 
+function ensureTradeDetailDialog() {
+  let dialog = $("#trade-detail-dialog");
+  if (dialog) return dialog;
+  dialog = document.createElement("dialog");
+  dialog.id = "trade-detail-dialog";
+  dialog.className = "trade-detail-dialog";
+  document.body.append(dialog);
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog || event.target.closest("[data-trade-detail-close]")) {
+      dialog.close();
+      return;
+    }
+    const trade = loadedTrades.find((item) => String(item.id) === String(dialog.dataset.tradeId));
+    if (!trade) return;
+    if (event.target.closest("[data-trade-detail-edit]")) {
+      dialog.close();
+      editTrade(trade);
+    }
+    if (event.target.closest("[data-trade-detail-delete]")) {
+      dialog.close();
+      deleteTrade(trade.id);
+    }
+  });
+  return dialog;
+}
+
+function showTradeDetail(trade) {
+  if (!trade) return;
+  clearTradeHoverFocus();
+  const dialog = ensureTradeDetailDialog();
+  const date = trade.traded_at ? new Date(trade.traded_at) : null;
+  const value = (item) => item == null || item === "" ? "—" : escapeHtml(String(item));
+  const fields = [
+    ["Time", date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : "—"], ["Pair", trade.pair],
+    ["Type", trade.trade_type], ["Setup", displaySetup(trade.setup)], ["Market condition", trade.market_condition],
+    ["CB hour", trade.cb_hour], ["MAE", displayNumber(trade.mae_30m)], ["MFE", displayNumber(trade.mfe_30m)],
+    ["Risk / reward", displayNumber(trade.r_multiple, "R")], ["PnL", displayNumber(trade.pnl_percent, "%")],
+    ["Outcome", trade.trade_status === "Open" ? "Open" : resolvedOutcome(trade)], ["Position", trade.position],
+    ["Account", trade.account], ["Day", trade.trade_day], ["Month", trade.trade_month],
+    ["Session time", trade.session_time], ["Entry timeframe", trade.entry_timeframe], ["Wick", trade.wick],
+    ["Followed plan", trade.plan_violation ? "No" : "Yes"], ["Rule violation", trade.violation_type],
+  ];
+  const number = loadedTrades.slice().sort((a, b) => new Date(a.traded_at || a.created_at) - new Date(b.traded_at || b.created_at)).findIndex((item) => String(item.id) === String(trade.id)) + 1;
+  dialog.dataset.tradeId = trade.id;
+  dialog.innerHTML = `<div class="dialog-card"><button class="dialog-close" type="button" data-trade-detail-close aria-label="Close">×</button><p class="eyebrow blue-text">TRADE DEBRIEF / READ ONLY</p><h2>#${String(number).padStart(3, "0")} · ${value(trade.pair)}</h2><div class="trade-detail-grid">${fields.map(([label, item]) => `<div class="trade-detail-field"><span>${escapeHtml(label)}</span><strong>${value(item)}</strong></div>`).join("")}</div><div class="trade-detail-notes"><div><span>Debrief note</span><p>${value(trade.debrief_note)}</p></div><div><span>Additional note</span><p>${value(trade.note)}</p></div></div><div class="trade-detail-actions"><button type="button" class="secondary compact" data-trade-detail-delete>Delete trade</button><button type="button" class="primary compact" data-trade-detail-edit>Edit trade</button></div></div>`;
+  dialog.showModal();
+}
+
+function wireTradeRowClick() {
+  const table = $("#trade-log")?.closest("table");
+  if (!table || table.dataset.rowClickWired === "true") return;
+  table.dataset.rowClickWired = "true";
+  const openFromEvent = (event) => {
+    if (event.target.closest?.("button, a, input, select, textarea")) return;
+    const row = event.target.closest?.("tbody tr[data-trade-id]");
+    if (!row) return;
+    showTradeDetail(loadedTrades.find((trade) => String(trade.id) === String(row.dataset.tradeId)));
+  };
+  table.addEventListener("click", openFromEvent);
+  table.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const row = event.target.closest?.("tbody tr[data-trade-id]");
+    if (!row) return;
+    event.preventDefault();
+    showTradeDetail(loadedTrades.find((trade) => String(trade.id) === String(row.dataset.tradeId)));
+  });
+}
+
 function renderTrades(trades) {
   clearTradeHoverFocus();
   const table = $("#trade-log");
   if (!trades.length) {
-    table.innerHTML = '<tr class="empty-row"><td colspan="20">No trade debriefs yet. Preserve data; log the next execution.</td></tr>';
+    table.innerHTML = '<tr class="empty-row"><td colspan="19">No trade debriefs yet. Preserve data; log the next execution.</td></tr>';
     return;
   }
 
@@ -758,7 +826,7 @@ function renderTrades(trades) {
     const outcome = resolvedOutcome(trade);
     const resultClass = outcome === "Win" || outcome === "Small win" ? "result-positive" : outcome === "Loss" || outcome === "Small loss" ? "result-negative" : "";
     const date = new Date(trade.traded_at || trade.created_at);
-    return `<tr>
+    return `<tr data-trade-id="${escapeHtml(String(trade.id))}" tabindex="0" aria-label="Open trade ${escapeHtml(trade.pair || "debrief")}">
       <td class="trade-number">#${String(tradeNumbers.get(trade.id) || 0).padStart(3, "0")}</td>
       <td>${date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
       <td><strong>${escapeHtml(trade.pair)}</strong></td>
@@ -778,7 +846,6 @@ function renderTrades(trades) {
       <td>${escapeHtml(trade.session_time || "—")}</td>
       <td>${escapeHtml(trade.entry_timeframe || "—")}</td>
       <td>${escapeHtml(trade.wick || "—")}</td>
-      <td><div class="trade-actions"><button class="edit-trade" data-trade-id="${trade.id}">Edit</button><button class="delete-trade" data-trade-id="${trade.id}">Delete</button></div></td>
     </tr>`;
   }).join("");
 }
@@ -1055,8 +1122,8 @@ function init() {
   syncPlanAdherenceUi();
   const header = $("#trade-log").closest("table").querySelector("thead tr");
   header.insertAdjacentHTML("afterbegin", "<th>#</th>");
-  header.insertAdjacentHTML("beforeend", "<th>ACTION</th>");
   wireTradeHoverFocus();
+  wireTradeRowClick();
   buildFilters();
   const pnlMetric = $("#detective-violations").closest(".metric");
   pnlMetric.querySelector("p").textContent = "TOTAL PNL";
