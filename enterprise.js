@@ -39,3 +39,7 @@ if (supabase) {
   document.addEventListener("click", (event) => { const action = event.target.closest("[data-enterprise-action]")?.dataset.enterpriseAction; if (action) $(action === "project" ? "#project-dialog" : "#content-dialog").showModal(); });
   supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 50); });
 }
+
+window.addEventListener("aegis:data-changed", (event) => {
+  if (["remote-enterprise"].includes(event.detail?.source)) setTimeout(load, 120);
+});

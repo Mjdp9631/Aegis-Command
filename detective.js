@@ -1198,3 +1198,8 @@ function init() {
 }
 
 init();
+
+window.addEventListener("aegis:data-changed", (event) => {
+  if (event.detail?.source === "remote-trades") setTimeout(loadTrades, 120);
+  if (event.detail?.source === "remote-accounts") setTimeout(loadAccountLedger, 120);
+});

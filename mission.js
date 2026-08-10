@@ -217,6 +217,10 @@ window.addEventListener("aegis:open-mission", (event) => {
   if (mission) openEditor(missionEditor, mission);
 });
 
+window.addEventListener("aegis:missions-changed", (event) => {
+  if (event.detail?.remote) setTimeout(loadData, 120);
+});
+
 window.addEventListener("aegis:phase-mission-template", (event) => {
   const detail = event.detail || {};
   const dialog = $("#mission-dialog");

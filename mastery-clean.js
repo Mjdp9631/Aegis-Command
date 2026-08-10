@@ -685,3 +685,6 @@ document.addEventListener("click", event => {
 
 function startMastery() { if (window.__aegisMasteryCleanStarted) return; window.__aegisMasteryCleanStarted = true; buildDialogs(); load(); }
 if (document.readyState === "complete") startMastery(); else window.addEventListener("load", startMastery, { once: true });
+window.addEventListener("aegis:mastery-changed", (event) => {
+  if (event.detail?.remote) setTimeout(load, 120);
+});
