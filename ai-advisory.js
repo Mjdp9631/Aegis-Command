@@ -366,7 +366,7 @@ function showTransmissionQueue() {
 
 async function gather(operatingDate = operatingDayKey(), mode = "scan") {
   const optionalQuery = (query) => query.then((result) => result.error ? { data: [], error: null } : result);
-  const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews, occurrences, trainingSessions, trainingSets, weightLogs, foodLogs, activityEvents, accounts, groups, withdrawals, advisoryHistory, feedback, calibrationReviews, contentItems, tradeReviews, progressEvents, campaign, scenarios] = await Promise.all([
+  const [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews, occurrences, trainingSessions, trainingSets, weightLogs, foodLogs, activityEvents, accounts, groups, withdrawals, advisoryHistory, feedback, calibrationReviews, contentItems, tradeReviews, progressEvents, campaign, scenarios, capabilitySkills, capabilityLogs, financialFoundation] = await Promise.all([
     supabase.from("operations").select("*").order("scheduled_date", { ascending: false }).limit(180),
     supabase.from("missions").select("*").order("created_at", { ascending: false }).limit(180),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }).limit(1000),
@@ -395,11 +395,14 @@ async function gather(operatingDate = operatingDayKey(), mode = "scan") {
     optionalQuery(supabase.from("trade_reviews").select("*").order("created_at", { ascending: false }).limit(8)),
     optionalQuery(supabase.from("mission_progress_events").select("*").order("occurred_at", { ascending: false }).limit(24)),
     optionalQuery(supabase.from("xp_campaigns").select("started_at").maybeSingle()),
-    optionalQuery(supabase.from("ai_trade_scenarios").select("*").order("created_at", { ascending: false }).limit(100))
+    optionalQuery(supabase.from("ai_trade_scenarios").select("*").order("created_at", { ascending: false }).limit(100)),
+    optionalQuery(supabase.from("capability_skills").select("*").order("updated_at", { ascending: false }).limit(40)),
+    optionalQuery(supabase.from("capability_skill_logs").select("*").order("practiced_on", { ascending: false }).limit(120)),
+    optionalQuery(supabase.from("financial_foundations").select("*").maybeSingle())
   ]);
   const values = [operations, missions, trades, recovery, mastery, projects, phase, directives, roadmap, deepWork, challenges, directorReviews];
   if (values.some((result) => result.error)) throw new Error(values.find((result) => result.error)?.error.message || "Could not load command data.");
-  return sharedBuildContext({ operations: operations.data || [], occurrences: occurrences.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], contentItems: contentItems.data || [], tradeReviews: tradeReviews.data || [], scenarios: scenarios.data || [], progressEvents: progressEvents.data || [], campaign: campaign.data && !Array.isArray(campaign.data) ? campaign.data : null, phase: phase.data, directives: directives.data || [], roadmap: roadmap.data || [], deepWork: deepWork.data || [], challenges: challenges.data || [], directorReviews: directorReviews.data || [], trainingSessions: trainingSessions.data || [], trainingSets: trainingSets.data || [], weightLogs: weightLogs.data || [], foodLogs: foodLogs.data || [], activityEvents: activityEvents.data || [], accounts: accounts.data || [], groups: groups.data || [], withdrawals: withdrawals.data || [], advisoryHistory: advisoryHistory.data || [], feedback: feedback.data || [], calibration: calibrationReviews.data || [] }, operatingDate, mode);
+  return sharedBuildContext({ operations: operations.data || [], occurrences: occurrences.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], capabilities: capabilitySkills.data || [], capabilityLogs: capabilityLogs.data || [], financialFoundation: financialFoundation.data && !Array.isArray(financialFoundation.data) ? financialFoundation.data : null, contentItems: contentItems.data || [], tradeReviews: tradeReviews.data || [], scenarios: scenarios.data || [], progressEvents: progressEvents.data || [], campaign: campaign.data && !Array.isArray(campaign.data) ? campaign.data : null, phase: phase.data, directives: directives.data || [], roadmap: roadmap.data || [], deepWork: deepWork.data || [], challenges: challenges.data || [], directorReviews: directorReviews.data || [], trainingSessions: trainingSessions.data || [], trainingSets: trainingSets.data || [], weightLogs: weightLogs.data || [], foodLogs: foodLogs.data || [], activityEvents: activityEvents.data || [], accounts: accounts.data || [], groups: groups.data || [], withdrawals: withdrawals.data || [], advisoryHistory: advisoryHistory.data || [], feedback: feedback.data || [], calibration: calibrationReviews.data || [] }, operatingDate, mode);
 }
 
 function nextOperatingDay(date) {

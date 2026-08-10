@@ -83,8 +83,23 @@ const recoverySafeChallenges = [
 
 let lane = localStorage.getItem("aegis-mastery-lane") === "body" ? "body" : "mind";
 let activeType = localStorage.getItem("aegis-mastery-type") || (lane === "body" ? "Health" : "Book");
-let entries = [], deepWork = [], challenges = [], trainingSessions = [], trainingSets = [], weightLogs = [], foodLogs = [];
+let entries = [], deepWork = [], challenges = [], trainingSessions = [], trainingSets = [], weightLogs = [], foodLogs = [], capabilities = [], capabilityLogs = [];
 let recoveryReady = false, cleanRendering = false;
+
+const capabilityDefaults = [
+  ["Practical", "First aid & CPR", "Learn and refresh basic first aid, CPR, and emergency response knowledge."],
+  ["Practical", "Emergency preparedness", "Build calm, practical readiness for common household and travel emergencies."],
+  ["Practical", "Navigation & route planning", "Read maps, plan routes, and make safe decisions when conditions change."],
+  ["Practical", "Cybersecurity hygiene", "Protect accounts, devices, identity, and information with repeatable habits."],
+  ["Practical", "Communication & negotiation", "Communicate clearly, listen accurately, and negotiate without avoidable escalation."],
+  ["Practical", "Learning a language", "Build useful language ability through consistent listening, speaking, reading, and recall."],
+  ["Adversarial", "Red-team planning", "Find failure points in a plan before reality finds them for you."],
+  ["Adversarial", "Time-boxed problem solving", "Solve unfamiliar problems with limited time, information, and tools."],
+  ["Adversarial", "Information verification under pressure", "Separate signal from manipulation, assumptions, and incomplete evidence."],
+  ["Adversarial", "Stress decision drill", "Make and document a safe decision while tired, rushed, or uncertain."],
+  ["Adversarial", "Deception resistance", "Recognize pressure tactics, false certainty, and incentives that distort judgment."],
+  ["Adversarial", "Crisis communication", "Deliver concise, accurate communication when stakes and emotions are elevated."]
+];
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]));
 const isLocked = type => ["Sports", "Performance"].includes(type) && !recoveryReady;
@@ -170,6 +185,14 @@ function laneInputDock() {
   return `<section class="mastery-input-dock"><div><p class="eyebrow ${lane === "mind" ? "blue-text" : "green-text"}">${lane.toUpperCase()} INPUT ACCESS</p><small>Log any ${lane === "mind" ? "Mind" : "Body"} evidence from here. AEGIS files it under the correct category automatically.</small></div><div class="mastery-input-actions">${types.map(type => `<button type="button" class="mastery-input-action ${isLocked(type) ? "locked" : ""}" data-mastery-clean-input="${escapeHtml(type)}" ${isLocked(type) ? "disabled title=\"Complete Recovery to unlock\"" : ""}>+ ${escapeHtml(typeLabel(type))}${isLocked(type) ? " · LOCKED" : ""}</button>`).join("")}</div></section>`;
 }
 
+function capabilityPanel() {
+  const groups = ["Practical", "Adversarial"].map((type) => {
+    const items = capabilities.filter((skill) => skill.skill_type === type);
+    return `<div class="capability-group"><div class="capability-group-head"><span class="eyebrow ${type === "Practical" ? "blue-text" : "amber"}">${type.toUpperCase()} SKILLS</span><button class="ghost compact" type="button" data-capability-add="${type}">+ Add skill</button></div>${items.length ? items.map((skill) => `<article class="capability-row"><div><strong>${escapeHtml(skill.title)}</strong><small>${escapeHtml(skill.description || "Define the next useful practice.")}</small><small>${Number(skill.practice_count || 0)} practice logs${skill.last_practiced_on ? ` · last ${escapeHtml(dateOnly(skill.last_practiced_on))}` : ""}</small>${skill.latest_note ? `<p>${escapeHtml(skill.latest_note)}</p>` : ""}</div><div class="capability-actions"><span class="enterprise-status ${String(skill.status || "Planned").toLowerCase()}">${escapeHtml(skill.status || "Planned")}</span><button class="primary compact" type="button" data-capability-log="${escapeHtml(skill.id)}">Log practice</button></div></article>`).join("") : '<p class="mastery-empty">No tracks yet.</p>'}</div>`;
+  }).join("");
+  return `<section class="mastery-capabilities panel"><div class="panel-head"><div><p class="eyebrow blue-text">CAPABILITY DEVELOPMENT</p><h3>Practical and adversarial skills</h3><p class="body-copy">Build useful skills, then record the conditions and result of practice. These are not Body performance metrics.</p></div></div>${groups}</section>`;
+}
+
 function healthCard() {
   const today = new Date().toISOString().slice(0, 10);
   const todayWeights = weightLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today);
@@ -215,7 +238,7 @@ function render() {
   const categoryCards = `<div class="mastery-category-grid">${types.map(type => `<button class="mastery-category ${type === activeType ? "active" : ""} ${isLocked(type) ? "locked" : ""}" data-mastery-clean-type="${type}"><small>${type.toUpperCase()}${isLocked(type) ? " · LOCKED" : ""}</small><strong>${entries.filter(entry => entry.category === type).length}</strong><small>${type === "Book" ? "books and reading notes" : isLocked(type) ? "complete Recovery to unlock" : "entries captured"}</small></button>`).join("")}</div>`;
   const specialContent = activeType === "Gym" ? `${trainingProgressOverview()}${trainingSessions.slice(0, 12).map(trainingCard).join("")}` : activeType === "Health" ? healthCard() : "";
   const content = isCurrentLocked ? `<div class="mastery-lock"><h3>${activeType} locked</h3><p>Unlocks after Recovery is completed and you confirm archiving the Recovery section.</p></div>` : (specialContent || visible.map(entryCard).join("") || `<div class="mastery-empty">Nothing logged here yet. Capture the first useful item.</div>`);
-  root.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Capture knowledge worth using, produce focused work, and train only what your foundation supports.</p></div><div class="mastery-tabs"><button class="mastery-tab ${lane === "mind" ? "active" : ""}" data-mastery-clean-lane="mind">Mind</button><button class="mastery-tab ${lane === "body" ? "active" : ""}" data-mastery-clean-lane="body">Body</button></div>${laneInputDock()}${categoryCards}${systemsPanel()}<div class="mastery-toolbar"><h3>${typeLabel(activeType)}</h3></div><div class="mastery-list">${content}</div>`;
+  root.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Capture knowledge worth using, produce focused work, and train only what your foundation supports.</p></div><div class="mastery-tabs"><button class="mastery-tab ${lane === "mind" ? "active" : ""}" data-mastery-clean-lane="mind">Mind</button><button class="mastery-tab ${lane === "body" ? "active" : ""}" data-mastery-clean-lane="body">Body</button></div>${laneInputDock()}${lane === "mind" ? capabilityPanel() : ""}${categoryCards}${systemsPanel()}<div class="mastery-toolbar"><h3>${typeLabel(activeType)}</h3></div><div class="mastery-list">${content}</div>`;
   setTimeout(() => { cleanRendering = false; }, 0);
 }
 
@@ -239,9 +262,62 @@ function buildDialogs() {
   entryDialog.querySelector("select").addEventListener("change", event => { entryDialog.querySelector("#mastery-clean-fields").innerHTML = fieldsFor(event.target.value); });
   entryDialog.querySelector("form").addEventListener("submit", saveEntry);
   const systemDialog = document.createElement("dialog"); systemDialog.id = "mastery-system-dialog"; document.body.append(systemDialog);
+  const capabilityDialog = document.createElement("dialog"); capabilityDialog.id = "capability-dialog"; document.body.append(capabilityDialog);
   const fitnessDialog = document.createElement("dialog");
   fitnessDialog.id = "mastery-fitness-dialog";
   document.body.append(fitnessDialog);
+}
+
+function openCapabilityDialog(mode, skillType = "Practical", skill = null) {
+  const dialog = document.querySelector("#capability-dialog");
+  if (!dialog) return;
+  const close = `<button class="dialog-close" type="button" data-capability-close>×</button>`;
+  if (mode === "add") {
+    dialog.innerHTML = `<form class="dialog-card mastery-form" data-capability-mode="add"><div>${close}</div><p class="eyebrow blue-text">CAPABILITY TRACK</p><h2>Add a useful skill.</h2><label>Track <select name="skill_type"><option ${skillType === "Practical" ? "selected" : ""}>Practical</option><option ${skillType === "Adversarial" ? "selected" : ""}>Adversarial</option></select></label><label>Skill <input name="title" required placeholder="e.g. Learning a language" /></label><label>Definition <textarea name="description" required placeholder="What does useful competence look like?"></textarea></label><button class="primary" type="submit">Add skill</button></form>`;
+  } else {
+    dialog.innerHTML = `<form class="dialog-card mastery-form" data-capability-mode="log" data-capability-id="${escapeHtml(skill.id)}"><div>${close}</div><p class="eyebrow ${skill.skill_type === "Practical" ? "blue-text" : "amber"}">${escapeHtml(skill.skill_type)} SKILL</p><h2>${escapeHtml(skill.title)}</h2><p class="body-copy">${escapeHtml(skill.description || "Record the conditions and result, not just the intention.")}</p><div class="two-col"><label>Practice date <input name="practiced_on" type="date" value="${new Date().toISOString().slice(0, 10)}" required /></label><label>Minutes <input name="duration_minutes" type="number" min="1" max="1440" /></label></div><label>Pressure <select name="pressure_level"><option>Low</option><option>Moderate</option><option>High</option></select></label><label>Result / evidence <textarea name="result" required placeholder="What did you practice, what happened, and what needs work next?"></textarea></label><label>Status <select name="status"><option>Active</option><option>Complete</option><option>Paused</option></select></label><button class="primary" type="submit">Save practice</button></form>`;
+  }
+  dialog.querySelector("[data-capability-close]").addEventListener("click", () => dialog.close());
+  dialog.querySelector("form").addEventListener("submit", saveCapability);
+  dialog.showModal();
+}
+
+async function saveCapability(event) {
+  event.preventDefault();
+  if (!db) return alert("Connect your private system database before saving capability evidence.");
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  const userId = await currentUserId();
+  if (!userId) return alert("Your session has expired. Please sign in again.");
+  if (form.dataset.capabilityMode === "add") {
+    const { error } = await db.from("capability_skills").insert({ user_id: userId, skill_type: data.get("skill_type"), title: String(data.get("title") || "").trim(), description: String(data.get("description") || "").trim() });
+    if (error) return alert(error.message);
+  } else {
+    const skill = capabilities.find((item) => String(item.id) === String(form.dataset.capabilityId));
+    if (!skill) return;
+    const result = String(data.get("result") || "").trim();
+    const { error: logError } = await db.from("capability_skill_logs").insert({ user_id: userId, skill_id: skill.id, practiced_on: data.get("practiced_on"), duration_minutes: Number(data.get("duration_minutes")) || null, pressure_level: data.get("pressure_level") || null, result });
+    if (logError) return alert(logError.message);
+    const { error } = await db.from("capability_skills").update({ status: data.get("status"), practice_count: Number(skill.practice_count || 0) + 1, last_practiced_on: data.get("practiced_on"), latest_note: result, updated_at: new Date().toISOString() }).eq("id", skill.id).eq("user_id", userId);
+    if (error) return alert(error.message);
+  }
+  dialog.close(); await load(); window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "capability" } }));
+}
+
+async function loadCapabilities() {
+  if (!db) return;
+  const skillResult = await db.from("capability_skills").select("*").order("skill_type").order("created_at");
+  if (skillResult.error) { capabilities = []; capabilityLogs = []; return; }
+  capabilities = skillResult.data || [];
+  if (!capabilities.length) {
+    const { error } = await db.from("capability_skills").upsert(capabilityDefaults.map(([skill_type, title, description]) => ({ user_id: undefined, skill_type, title, description })), { onConflict: "user_id,skill_type,title", ignoreDuplicates: true });
+    if (!error) {
+      const refreshed = await db.from("capability_skills").select("*").order("skill_type").order("created_at");
+      capabilities = refreshed.data || [];
+    }
+  }
+  const logs = await db.from("capability_skill_logs").select("*").order("practiced_on", { ascending: false }).limit(120);
+  capabilityLogs = logs.error ? [] : logs.data || [];
 }
 
 function openDialog(existing = null) {
@@ -654,6 +730,7 @@ async function load() {
     ]);
     entries = entryResult.data || []; deepWork = workResult.data || []; challenges = challengeResult.data || [];
     trainingSessions = sessionResult.data || []; trainingSets = setResult.data || []; weightLogs = weightResult.data || []; foodLogs = foodResult.data || [];
+    await loadCapabilities();
     const recovery = (missionResult.data || []).find(mission => mission.category === "Recovery"); const recoveryComplete = recovery && (recovery.completed || (recovery.completion_type === "units" && Number(recovery.completed_count) >= Number(recovery.target_count)));
     recoveryReady = Boolean(recoveryComplete && localStorage.getItem("aegis-recovery-archived") === "yes");
   } render();
@@ -674,6 +751,8 @@ document.addEventListener("click", event => {
   if (editFood) { const food = foodLogs.find(item => String(item.id) === String(editFood.dataset.masteryEditFood)); if (food) { lane = "body"; activeType = "Health"; saveView(); openFitnessDialog("Health", food, "food"); } return; }
   if (inputButton) { const next = inputButton.dataset.masteryCleanInput; if (!isLocked(next)) { activeType = next; saveView(); openDialog(); } return; }
   if (typeButton) { const next = typeButton.dataset.masteryCleanType; if (!isLocked(next)) { activeType = next; saveView(); render(); } return; }
+  const capabilityAdd = event.target.closest("[data-capability-add]"); if (capabilityAdd) return openCapabilityDialog("add", capabilityAdd.dataset.capabilityAdd);
+  const capabilityLog = event.target.closest("[data-capability-log]"); if (capabilityLog) { const skill = capabilities.find((item) => String(item.id) === String(capabilityLog.dataset.capabilityLog)); if (skill) return openCapabilityDialog("log", skill.skill_type, skill); }
   if (event.target.closest("[data-mastery-clean-add]")) return openDialog();
   if (event.target.closest("[data-mastery-deep-work]")) return openSystemDialog("deep-work");
   const generate = event.target.closest("[data-mastery-generate]"); if (generate) return generateChallenge(generate.dataset.masteryGenerate);

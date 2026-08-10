@@ -18,13 +18,13 @@
     <link rel="stylesheet" href="mission.css?v=phase-protocol-v4" />
     <link rel="stylesheet" href="filters.css" />
     <link rel="stylesheet" href="importer.css" />
-    <link rel="stylesheet" href="enterprise.css" />
+    <link rel="stylesheet" href="enterprise.css?v=financial-foundation-v1" />
     <link rel="stylesheet" href="character.css" />
     <link rel="stylesheet" href="character-rpg.css" />
     <link rel="stylesheet" href="character-focus.css?v=hexagon-focus-v1" />
     <link rel="stylesheet" href="tab-advisory.css" />
     <link rel="stylesheet" href="command-summary.css" />
-    <link rel="stylesheet" href="mastery.css?v=three-column-tabs-v1" />
+    <link rel="stylesheet" href="mastery.css?v=capability-tracks-v1" />
     <link rel="stylesheet" href="ai-advisory.css?v=derived-insights-v1" />
     <style>.ai-manual-scan{display:flex;align-items:center;justify-content:space-between;gap:22px;margin-top:16px;padding:18px 22px;background:linear-gradient(100deg,rgba(8,25,42,.8),rgba(8,14,24,.64))}.ai-manual-scan h3{margin:4px 0 0;font-size:17px}.ai-manual-scan p{margin:6px 0 0;color:#9cb3c9;font-size:13px}@media(max-width:700px){.ai-manual-scan{align-items:flex-start;flex-direction:column}}</style>
     <link rel="stylesheet" href="cinematic-ui.css?v=glass-room-v2" />
@@ -248,16 +248,16 @@
     <script type="module" src="brain-review.js?v=blind-scenario-v1"></script>
     <script type="module" src="advisor.js?v=curated-advisory-v1"></script>
     <script type="module" src="notion-importer.js"></script>
-    <script type="module" src="enterprise.js?v=realtime-v2"></script>
+    <script type="module" src="enterprise.js?v=financial-foundation-v1"></script>
     <script type="module" src="character.js?v=activity-counters-v2"></script>
     <script type="module" src="command-center.js?v=category-sync-v2"></script>
     <script type="module" src="command-summary.js?v=shared-operation-state-v2"></script>
     <script type="module" src="command-dashboard.js?v=shared-operation-state-v2"></script>
-    <script type="module" src="mastery-clean.js?v=realtime-v3"></script>
+    <script type="module" src="mastery-clean.js?v=capability-tracks-v1"></script>
     <script type="module" src="tab-advisory.js?v=auth-safe-v2"></script>
     <link rel="stylesheet" href="ai-lane-layout.css?v=1" />
-    <script src="ai-context.js?v=derived-insights-v3"></script>
-    <script type="module" src="ai-advisory.js?v=derived-insights-v3"></script>
+    <script src="ai-context.js?v=derived-insights-v4"></script>
+    <script type="module" src="ai-advisory.js?v=derived-insights-v4"></script>
     <script>document.getElementById("operation-suggestion").addEventListener("change",function(){if(!this.value)return;const [title,category]=this.value.split("|");document.getElementById("operation-input").value=title;const select=document.getElementById("operation-category");select.value=category;select.dispatchEvent(new Event("change"));});</script>
     <script type="module" src="operations-hub.js?v=queue-sync-v39"></script>
 </body>
