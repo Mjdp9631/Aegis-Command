@@ -1,29 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { BODY_CATEGORIES, MIND_CATEGORIES } from "./activity-metrics.js?v=activity-counters-v1";
+import { operatingDayKey, operationsForDay, operationComplete } from "./operation-state.js?v=shared-operation-state-v1";
 
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const $ = (selector) => document.querySelector(selector);
-const today = (() => {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" })
-    .formatToParts(new Date()).reduce((out, part) => ({ ...out, [part.type]: part.value }), {});
-  return `${parts.year}-${parts.month}-${parts.day}`;
-})();
-
-function dateOnly(value) { return value ? String(value).slice(0, 10) : ""; }
-
-function operationIsToday(operation) {
-  if (dateOnly(operation.operation_date) === today) return true;
-  const start = dateOnly(operation.scheduled_date);
-  if (!start || today < start) return false;
-  const end = dateOnly(operation.scheduled_end_date);
-  if (end && today > end) return false;
-  const mode = String(operation.schedule_mode || "one_time").toLowerCase();
-  if (mode === "daily") return true;
-  if (mode !== "weekly" && mode !== "recurring") return today === start;
-  return new Date(`${start}T17:00:00Z`).getUTCDay() === new Date(`${today}T17:00:00Z`).getUTCDay();
-}
-
 function normalizedOutcome(value) {
   const supplied = String(value || "").trim().toLowerCase();
   if (supplied === "win" || supplied === "small win") return "Win";
@@ -34,7 +15,7 @@ function normalizedOutcome(value) {
 
 function outcome(trade) {
   if (String(trade.trade_status || "").trim().toLowerCase() === "open") return "Open";
-  const explicit = [trade.outcome, trade.win_loss, trade.result, trade.market_condition]
+  const explicit = [trade.outcome, trade.win_loss, trade.result]
     .map(normalizedOutcome)
     .find(Boolean);
   if (explicit) return explicit;
@@ -70,7 +51,7 @@ function render({ missions, trades, projects, content, recoveryLogs, operations,
   const recoveryNote = recovery && isMeasured(recovery)
     ? (recovery.unit_label || "units")
     : loggedRecovery ? `Latest report: ${loggedRecovery.rehab_completed ? "rehab complete" : "rehab pending"}` : "Awaiting first recovery report";
-  const completedOperations = operations.filter((operation) => operation.completed).length;
+  const completedOperations = operations.filter(operationComplete).length;
   const mindEntries = masteryEntries.filter((entry) => MIND_CATEGORIES.includes(entry.category)).length;
   const bodyEntries = masteryEntries.filter((entry) => BODY_CATEGORIES.includes(entry.category)).length + trainingSessions.length;
   target.innerHTML = `${card("missions", "MISSIONS", `${activeMissions.length} active`, priority ? `Next: ${priority.title}` : "No current objective", "missions")}${card("detective", "DETECTIVE", winRate, closed.length ? `${closed.length} closed trade debriefs` : "Log the next trade debrief", "detective")}${card("enterprise", "SPECIAL PROJECTS", `${activeProjects} active`, `${published} published item${published === 1 ? "" : "s"}`, "special-projects")}${card("recovery", "RECOVERY", recoveryValue, recoveryNote, "recovery")}${card("mastery", "MASTERY", `${mindEntries} mind`, `${bodyEntries} body entries`, "mastery")}${card("character", "CHARACTER", `${completedOperations}/${operations.length || 0}`, "Today's operations completed", "character")}`;
@@ -80,17 +61,18 @@ async function load() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [missionsResult, tradesResult, projectsResult, contentResult, recoveryResult, operationsResult, masteryResult, trainingResult] = await Promise.all([
+  const [missionsResult, tradesResult, projectsResult, contentResult, recoveryResult, operationsResult, occurrenceResult, masteryResult, trainingResult] = await Promise.all([
     supabase.from("missions").select("*"),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }),
     supabase.from("business_projects").select("*"),
     supabase.from("content_items").select("*"),
     supabase.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1),
     supabase.from("operations").select("*"),
+    supabase.from("operation_occurrences").select("*"),
     supabase.from("mastery_entries").select("*"),
     supabase.from("training_sessions").select("id")
   ]);
-  const todayOperations = (operationsResult.data || []).filter(operationIsToday);
+  const todayOperations = operationsForDay(operationsResult.data || [], occurrenceResult.data || [], operatingDayKey());
   render({ missions: missionsResult.data || [], trades: tradesResult.data || [], projects: projectsResult.data || [], content: contentResult.data || [], recoveryLogs: recoveryResult.data || [], operations: todayOperations, masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [] });
 }
 

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { effectiveOperations } from "./operation-state.js?v=shared-operation-state-v1";
 
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
@@ -35,8 +36,12 @@ async function load() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [missionsResult, operationsResult] = await Promise.all([supabase.from("missions").select("*").order("created_at", { ascending: false }), supabase.from("operations").select("mission_id, completed")]);
-  if (!missionsResult.error) render(missionsResult.data || [], operationsResult.data || []);
+  const [missionsResult, operationsResult, occurrenceResult] = await Promise.all([
+    supabase.from("missions").select("*").order("created_at", { ascending: false }),
+    supabase.from("operations").select("id, mission_id, title, category, schedule_mode, scheduled_date, operation_date, scheduled_time, completed_on, status, completed"),
+    supabase.from("operation_occurrences").select("*")
+  ]);
+  if (!missionsResult.error) render(missionsResult.data || [], effectiveOperations(operationsResult.data || [], occurrenceResult.data || []));
 }
 
 if (supabase) {

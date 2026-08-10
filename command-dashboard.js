@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=activity-counters-v1";
+import { effectiveOperations } from "./operation-state.js?v=shared-operation-state-v1";
 
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
@@ -42,7 +43,7 @@ function ratio(value, ceiling) {
 
 function radarPoints({ trades, operations, missions, projects, mastery }) {
   const closedTrades = trades.filter(isClosed).length;
-  const operationRate = operations.length ? operations.filter((item) => item.completed).length / operations.length : 0;
+  const operationRate = operations.length ? operations.filter((item) => Boolean(item.completed) || String(item.status || "").toLowerCase() === "complete").length / operations.length : 0;
   const recoveryMissions = missions.filter((item) => String(item.category || "").toLowerCase() === "recovery");
   const recovery = recoveryMissions.length ? recoveryMissions.reduce((sum, item) => sum + missionProgress(item), 0) / recoveryMissions.length / 100 : 0;
   const projectProgress = projects.length ? projects.filter((item) => String(item.status || "").toLowerCase() === "complete").length / projects.length : 0;
@@ -150,7 +151,8 @@ function attachCrosshair(chart) {
 
 function render() {
   if (!dashboardData) return;
-  const { trades, operations, missions, projects, mastery, accounts } = dashboardData;
+  const { trades, operations, occurrences, missions, projects, mastery, accounts } = dashboardData;
+  const displayOperations = effectiveOperations(operations, occurrences);
   const chart = valueSeries(trades, accounts);
   $("#hero-trade-chart").innerHTML = chartSvg(chart.entries, chart.unit, chart.total);
   activeChart = chart;
@@ -166,7 +168,7 @@ function render() {
   const level = levelFromXp(xp);
   $("#hero-character-level").textContent = `LV ${level.level}`;
   $("#hero-character-xp").textContent = `${Math.round(level.current)} / ${level.required} XP`;
-  $("#hero-character-radar")?.setAttribute("points", radarPoints({ trades, operations, missions, projects, mastery }));
+  $("#hero-character-radar")?.setAttribute("points", radarPoints({ trades, operations: displayOperations, missions, projects, mastery }));
 
   const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
   $("#hero-mission-count").textContent = `${activeMissions.length} ACTIVE`;
