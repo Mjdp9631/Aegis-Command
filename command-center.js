@@ -5,10 +5,11 @@ const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const $ = (selector) => document.querySelector(selector);
 const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
-const icons = { Recovery: "+", Trading: "O", Business: "#", Mind: "*" };
+const icons = { Recovery: "+", Trading: "O", Business: "#", "Self Mastery": "*", "Life Admin": "·" };
 
 function isMeasured(mission) { return mission.completion_type === "units" && Number(mission.target_count) > 0; }
 function progress(mission) { return isMeasured(mission) ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission.completed ? 100 : 0; }
+function normalizeCategory(value) { const category = String(value || "").trim().toLowerCase(); return category === "mind" || category === "body" || category === "mastery" ? "Self Mastery" : category === "life admin" || category === "day to day" ? "Life Admin" : value || "Self Mastery"; }
 function label(mission) { return isMeasured(mission) ? `${Math.min(Number(mission.completed_count) || 0, Number(mission.target_count))} / ${mission.target_count} ${mission.unit_label || "units"}` : mission.completed ? "Complete" : "Not complete"; }
 function iconClass(category) { return category === "Recovery" ? "recovery-icon" : category === "Trading" ? "trade-icon" : "business-icon"; }
 
@@ -23,13 +24,14 @@ function updateMetric(title, mission) {
 }
 
 function render(missions, operations = []) {
-  if (typeof window.AEGIS_RENDER_COMMAND_MISSIONS === "function") window.AEGIS_RENDER_COMMAND_MISSIONS(missions.map((mission) => ({ ...mission, progress: progress(mission) })), operations);
+  const normalizedMissions = missions.map((mission) => ({ ...mission, category: normalizeCategory(mission.category), progress: progress(mission) }));
+  if (typeof window.AEGIS_RENDER_COMMAND_MISSIONS === "function") window.AEGIS_RENDER_COMMAND_MISSIONS(normalizedMissions, operations);
   const target = $("#command-missions") || document.querySelector("#command .mission-panel .mission-list");
   if (target) {
     target.id = "command-missions";
   }
-  updateMetric("RECOVERY", missions.find((mission) => mission.category === "Recovery"));
-  updateMetric("TRADING PROCESS", missions.find((mission) => mission.category === "Trading"));
+  updateMetric("RECOVERY", normalizedMissions.find((mission) => mission.category === "Recovery"));
+  updateMetric("TRADING PROCESS", normalizedMissions.find((mission) => mission.category === "Trading"));
 }
 
 async function load() {

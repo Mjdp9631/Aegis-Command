@@ -126,7 +126,7 @@ const esc = (value = "") => String(value).replace(/[&<>\"']/g, (char) => ({ "&":
 // Claim the queue before legacy dashboard code has a chance to repaint it.
 window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
 const statusOrder = ["Queued", "Scheduled", "Ongoing", "Complete"];
-const priorityFor = (category) => category === "Recovery" || category === "Trading" ? "High" : category === "Body" ? "High" : "Medium";
+const priorityFor = (category) => category === "Recovery" || category === "Trading" ? "High" : "Medium";
 const dateOnly = (value) => value ? String(value).slice(0, 10) : "";
 const newYorkWeekday = (date = new Date()) => new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York", weekday: "short",
@@ -229,7 +229,7 @@ const gymOperationForToday = () => {
   const isRest = split === "Rest";
   return {
     title: isRest ? "Recovery — rest and reset" : `Gym — ${split}`,
-    category: isRest ? "Recovery" : "Body",
+    category: isRest ? "Recovery" : "Self Mastery",
     priority: isRest ? "Medium" : "High",
     status: "Queued",
     completed: false,
@@ -647,8 +647,8 @@ function resolveMission(operation, includeCompleted = false) {
   if (/^journal$|journal/.test(title)) return byPhrase(["journal", "operating debrief rhythm", "self mastery"]);
   if (/pre-market/.test(title)) return byPhrase(["trading preparation rhythm", "execution playbook", "pre-market"]);
   const category = String(operation.category || "").toLowerCase();
-  const missionCategory = category === "self mastery" ? "mind" : category;
-  const candidates = missions.filter((mission) => (includeCompleted || !mission.completed) && String(mission.category || "").toLowerCase() === missionCategory);
+  const missionCategory = category === "mind" || category === "body" || category === "self mastery" ? "self mastery" : category;
+  const candidates = missions.filter((mission) => (includeCompleted || !mission.completed) && (String(mission.category || "").toLowerCase() === missionCategory || (missionCategory === "self mastery" && ["mind", "body"].includes(String(mission.category || "").toLowerCase()))));
   if (!candidates.length) return null;
   const measured = candidates.filter((mission) => String(mission.completion_type || "").toLowerCase() === "units" && Number(mission.target_count) > 0);
   const unitMatch = measured.find((mission) => {
@@ -680,7 +680,7 @@ function missionNeedsScheduling(mission) {
   // the finish line for the current book, not a second calendar workload.
   if (String(mission?.metric_key || "").toLowerCase() === "chapters_read") return false;
   const missionText = `${mission?.title || ""} ${mission?.completion_definition || ""}`.toLowerCase();
-  if (String(mission?.category || "").toLowerCase() === "mind" && (/\bbook\b|\bchapter/.test(missionText) || /^read\b/.test(missionText.trim()))) return false;
+  if (["mind", "body", "self mastery"].includes(String(mission?.category || "").toLowerCase()) && (/\bbook\b|\bchapter/.test(missionText) || /^read\b/.test(missionText.trim()))) return false;
   return true;
 }
 

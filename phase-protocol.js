@@ -28,11 +28,11 @@ const phases = [
     evidence: ["Recovery completion has been confirmed with the appropriate clinician guidance.", "A consistent training and recovery rhythm is sustainable.", "Trading and operations are being logged honestly and reviewed weekly."],
     gate: { discipline: 7, trading: 4, mind: 9, body: 5 },
     missions: [
-      ["Build a 12-week consistency standard", "Mind", "Do now", "Daily operations and weekly reviews are completed with evidence."],
+      ["Build a 12-week consistency standard", "Self Mastery", "Do now", "Daily operations and weekly reviews are completed with evidence."],
       ["Establish trading playbook", "Trading", "Do now", "Your setups, risk limits, and review rules are documented."],
       ["Build strength foundation", "Recovery", "Schedule", "Training progresses only within cleared capacity."],
     ],
-    operations: [["Complete weekly trading review", "Trading"], ["Backtest one setup and record the result", "Trading"], ["Read one chapter", "Mind"], ["Log a recovery-safe gym session", "Recovery"], ["Plan the week and reset the system", "Mind"]],
+    operations: [["Complete weekly trading review", "Trading"], ["Backtest one setup and record the result", "Trading"], ["Read one chapter", "Self Mastery"], ["Log a recovery-safe gym session", "Recovery"], ["Plan the week and reset the system", "Self Mastery"]],
     systems: ["Weekly planning", "Strength foundations", "Consistency ledger"]
   },
   {
@@ -62,7 +62,7 @@ const phases = [
       ["Build high-performance capacity", "Recovery", "Schedule", "Training and recovery remain sustainable under real pressure."],
       ["Systemize Special Projects", "Business", "Schedule", "Recurring work has clear process, ownership, and review."],
     ],
-    operations: [["Review monthly trading performance", "Trading"], ["Run a performance training block", "Recovery"], ["Practice a pressure-tested skill", "Mind"], ["Document one Special Projects system", "Business"], ["Complete leadership or communication practice", "Mind"]],
+    operations: [["Review monthly trading performance", "Trading"], ["Run a performance training block", "Recovery"], ["Practice a pressure-tested skill", "Self Mastery"], ["Document one Special Projects system", "Business"], ["Complete leadership or communication practice", "Self Mastery"]],
     systems: ["Performance dashboard", "Advanced risk review", "Leadership missions"]
   },
   {
@@ -73,11 +73,11 @@ const phases = [
     evidence: ["This phase is ongoing: review annually, refine deliberately, and avoid needless escalation."],
     gate: { discipline: 34, trading: 26, mind: 40, body: 34 },
     missions: [
-      ["Complete annual strategy review", "Mind", "Schedule", "Health, capital, relationships, and long-term projects are reviewed together."],
+      ["Complete annual strategy review", "Self Mastery", "Schedule", "Health, capital, relationships, and long-term projects are reviewed together."],
       ["Protect long-term capital", "Trading", "Do now", "Capital allocation follows a written risk and wealth plan."],
       ["Build a contribution project", "Business", "Schedule", "Teach, mentor, or build something that outlasts the current goal."],
     ],
-    operations: [["Run annual strategic review", "Mind"], ["Review capital allocation and risk", "Trading"], ["Mentor or teach one useful lesson", "Business"], ["Perform maintenance health review", "Recovery"], ["Define the next Mastery Cycle", "Mind"]],
+    operations: [["Run annual strategic review", "Self Mastery"], ["Review capital allocation and risk", "Trading"], ["Mentor or teach one useful lesson", "Business"], ["Perform maintenance health review", "Recovery"], ["Define the next Mastery Cycle", "Self Mastery"]],
     systems: ["Annual strategy", "Capital protection", "Mastery Cycles"]
   }
 ];
