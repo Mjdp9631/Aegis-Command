@@ -399,6 +399,62 @@ async function gather(operatingDate = operatingDayKey(), mode = "scan") {
   return sharedBuildContext({ operations: operations.data || [], occurrences: occurrences.data || [], missions: missions.data || [], trades: trades.data || [], recovery: recovery.data || [], mastery: mastery.data || [], projects: projects.data || [], contentItems: contentItems.data || [], tradeReviews: tradeReviews.data || [], scenarios: scenarios.data || [], progressEvents: progressEvents.data || [], campaign: campaign.data && !Array.isArray(campaign.data) ? campaign.data : null, phase: phase.data, directives: directives.data || [], roadmap: roadmap.data || [], deepWork: deepWork.data || [], challenges: challenges.data || [], directorReviews: directorReviews.data || [], trainingSessions: trainingSessions.data || [], trainingSets: trainingSets.data || [], weightLogs: weightLogs.data || [], foodLogs: foodLogs.data || [], activityEvents: activityEvents.data || [], accounts: accounts.data || [], groups: groups.data || [], withdrawals: withdrawals.data || [], advisoryHistory: advisoryHistory.data || [], feedback: feedback.data || [], calibration: calibrationReviews.data || [] }, operatingDate, mode);
 }
 
+function nextOperatingDay(date) {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + 1);
+  return value.toISOString().slice(0, 10);
+}
+
+function focusCategory(title, brief) {
+  const text = `${title} ${brief}`.toLowerCase();
+  if (/rehab|recovery|mobility|pain|sleep|rest/.test(text)) return "Recovery";
+  if (/trade|chart|market|risk|setup|journal execution|pre market/.test(text)) return "Trading";
+  if (/business|ccfx|content|enterprise|project/.test(text)) return "Business";
+  return "Self Mastery";
+}
+
+async function queueTomorrowFocus(advisory, operatingDate, userId) {
+  const focus = advisory?.evening?.tomorrow_focus;
+  if (!supabase || !focus || !userId) return null;
+  const title = String(focus.operation_title || "Tomorrow's focus").trim().replace(/\s+/g, " ").slice(0, 100);
+  const brief = `JARVIS REFERENCE: ${String(focus.jarvis || "").trim()}\n\nALFRED REFERENCE: ${String(focus.alfred || "").trim()}`.trim();
+  if (!brief || !title) return null;
+  const nextDate = nextOperatingDay(operatingDate);
+  const { data: existing, error: existingError } = await supabase.from("operations")
+    .select("id,title,brief,status,scheduled_date,operation_date,completed")
+    .eq("user_id", userId)
+    .limit(300);
+  if (existingError) { console.warn("Could not check tomorrow's focus operation", existingError.message); return null; }
+  const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const focusKey = normalize(title);
+  const duplicate = (existing || []).some((row) => {
+    const status = String(row.status || "").toLowerCase();
+    if (Boolean(row.completed) || ["complete", "completed", "done"].includes(status)) return false;
+    const rowTitle = normalize(row.title);
+    return rowTitle === focusKey && (dateOnly(row.scheduled_date) === nextDate || dateOnly(row.operation_date) === nextDate || !row.scheduled_date);
+  });
+  if (duplicate) return null;
+  const { data, error } = await supabase.from("operations").insert({
+    user_id: userId,
+    title,
+    category: focusCategory(title, brief),
+    brief,
+    status: "Queued",
+    completed: false,
+    scheduled_date: nextDate,
+    operation_date: nextDate,
+    scheduled_time: null,
+    scheduled_end_date: null,
+    schedule_mode: "one_time",
+    is_daily: false,
+    mission_id: null,
+    metric_key: null,
+  }).select().single();
+  if (error) { console.warn("Could not queue tomorrow's focus operation", error.message); return null; }
+  window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "ai-tomorrow-focus", operation: data } }));
+  return data;
+}
+
 function ensureScanOverlay() {
   if ($("#ai-scan-overlay")) return $("#ai-scan-overlay");
   const overlay = document.createElement("div");
@@ -461,6 +517,7 @@ async function run(mode = "scan") {
     paintLatestAdvisory();
     const savedSuggestions = await retireUnsupportedSuggestions(await persist(latestAdvisory, bedtime ? "bedtime" : (mode === "morning" || mode === "signal" || mode === "evening" ? mode : "scan"), { readOnly: bedtime, operatingDate, bedtimeAt }));
     if (bedtime) {
+      await queueTomorrowFocus(latestAdvisory, operatingDate, session.user.id);
       rememberBedtime(operatingDate, bedtimeAt, session.user.id);
       await loadSuggestions();
       return;

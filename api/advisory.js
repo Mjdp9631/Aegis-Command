@@ -15,7 +15,7 @@ const responseSchema = {
       key_takeaways: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
       what_worked: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
       what_to_improve: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
-      tomorrow_focus: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } }
+      tomorrow_focus: { type: "object", additionalProperties: false, required: ["jarvis", "alfred", "operation_title"], properties: { jarvis: { type: "string" }, alfred: { type: "string" }, operation_title: { type: "string", minLength: 3, maxLength: 100 } } }
     } },
     sections: { type: "object", additionalProperties: false, required: ["detective", "missions", "enterprise", "recovery", "mastery", "character"], properties: {
       detective: { type: "object", additionalProperties: false, required: ["jarvis", "alfred"], properties: { jarvis: { type: "string" }, alfred: { type: "string" } } },
@@ -49,6 +49,7 @@ Two lanes: ROADMAP is the intentional five-year campaign toward a real-world Bru
 
 const curatedScanRules = `For every scan, deliberately curate every Jarvis and Alfred field from the supplied current context. Anchor each message to a specific current operation, mission, logged result, streak, training or recovery record, phase, or an explicit absence of evidence. Never use stock motivational quotes, random filler, invented details, or generic advice that could be shown to any user. If the data did not change, keep the advice precise and state which current standard still matters. Jarvis must emphasize the most material system signal and next action. Alfred must address the human standard, recovery, character, and follow-through without merely paraphrasing Jarvis. Treat activity_ledger as the reconciliation layer across pages, compare advisory_history before repeating advice, and treat generated mastery transmissions as evidence to review rather than automatic reasons to create corrective missions.`;
 const derivedInsightRules = `Use derived_insights as the central cross-domain context builder. It contains deterministic comparisons between operations, morning readiness, recovery, learning, trading process, mission outcomes, recommendation feedback, XP reward evidence, and blind AI scenario PnL. Treat those results as associations, never causal proof. Always respect the reported sample_size and caution text; do not call a small cohort a pattern. Use recommendation outcome_chain to evaluate whether a prior AI recommendation was accepted, completed, rated, or rejected. Use ai_scenario_ledger to report the AI's blind-call ledger separately from the user's actual PnL. Use xp_integrity only to reconcile explicitly observed reward metadata; never infer missing XP. Never replace authoritative trading totals with a derived cohort metric, and do not create a corrective mission from a single comparison.`;
+const debriefRules = `For bedtime and evening debriefs, use at least two distinct references: one concrete operating-day record and one comparison or historical reference from derived_insights, mission outcomes, feedback, scenario results, or advisory_history. Do not repeat the previous debrief's wording; if a pattern is unchanged, name the new or repeated evidence and its operational implication. Return tomorrow_focus.operation_title as a concise, actionable 3–8 word operation title that can be deduplicated against the next-day queue.`;
 
 async function verifyDirector(req) {
   const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -112,7 +113,7 @@ module.exports = async (req, res) => {
     const context = req.body?.context;
     if (!context || typeof context !== "object") return send(res, 400, { error: "No command data was provided." });
     const modeRules = req.body?.mode === "bedtime"
-      ? "This is the user's Going to bed evening debrief. Review the operating day represented by evidence_date, including late activity before sleep. This is read-only: do not issue directives, missions, roadmap changes, or operation changes."
+      ? "This is the user's Going to bed evening debrief. Review the operating day represented by evidence_date, including late activity before sleep. The debrief itself is read-only: do not issue directives, missions, roadmap changes, or direct queue edits. Return one deduplicatable tomorrow_focus.operation_title for the client to consider as a next-day operation."
       : "This is an analytical scan. Do not turn missing context into a mission unless the evidence supports it.";
     const openai = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -121,7 +122,7 @@ module.exports = async (req, res) => {
         model: "gpt-4.1-mini",
         temperature: 0,
         input: [
-          { role: "system", content: [{ type: "input_text", text: `${systemPrompt}\n\n${marketRules}\n\n${sectionInstructions}\n\n${curatedScanRules}\n\n${derivedInsightRules}\n\n${modeRules}\n\n${CAMPAIGN_CHARTER}` }] },
+          { role: "system", content: [{ type: "input_text", text: `${systemPrompt}\n\n${marketRules}\n\n${sectionInstructions}\n\n${curatedScanRules}\n\n${derivedInsightRules}\n\n${debriefRules}\n\n${modeRules}\n\n${CAMPAIGN_CHARTER}` }] },
           { role: "user", content: [{ type: "input_text", text: `Analyze this AEGIS data. Current request mode: ${String(req.body?.mode || "scan")}.\n\n${JSON.stringify(context)}` }] }
         ],
         text: { format: { type: "json_schema", name: "aegis_dual_advisory", strict: true, schema: responseSchema } }
