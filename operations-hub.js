@@ -925,9 +925,9 @@ async function seedIfEmpty() {
     return ensureTodayOperations(local.length ? local : starterOperations());
   }
   if (data?.length) return ensureTodayOperations(mergeSavedStatus(data));
-  // The server-side 5 AM morning pass owns the durable rollover. Do not seed
-  // a new calendar day from a page load at 1–4 AM.
-  if (!morningRolloverReached()) return [];
+  // operatingDayKey() remains on the prior day from midnight through 4:59 AM,
+  // so this repair can restore missing prior-day pillars without creating the
+  // new day's plan before the 5 AM rollover.
   const seed = starterOperations().map(({ priority, ...operation }) => ({ ...operation, user_id: currentUser.id }));
   const { data: inserted, error: insertError } = await client.from("operations").insert(seed).select();
   if (insertError) {
@@ -938,10 +938,8 @@ async function seedIfEmpty() {
 }
 
 async function ensureTodayOperations(records = []) {
-  // Bedtime belongs to the prior operating day. New daily rows may only be
-  // created by/after the 5 AM rollover, never while the user is closing out
-  // the night before.
-  if (!morningRolloverReached()) return records;
+  // operatingDayKey() keeps this on the prior day before 5 AM. Repairing that
+  // day is safe; the next day's pillars still cannot appear until rollover.
   const activeDay = operatingDayKey();
   const daily = [
     ["Review charts and document one lesson", "Trading", "Review one relevant chart or completed trade, capture one process lesson, and file it in Detective or Self Mastery."],

@@ -2,8 +2,8 @@
 /* Keep the two live work panels readable without turning them into opaque slabs. */
 #command > .command-stage > .content-grid .operations-panel,
 #command > .command-stage > .content-grid .mission-panel {
-  background: linear-gradient(135deg, rgba(8, 25, 42, .34), rgba(4, 13, 24, .16)) !important;
-  backdrop-filter: blur(2px) saturate(108%);
+  background: linear-gradient(135deg, rgba(10, 25, 43, .18), rgba(5, 14, 25, .08)) !important;
+  backdrop-filter: blur(1px) saturate(108%);
   border-color: rgba(112, 190, 245, .24) !important;
 }
 #command > .command-stage > .content-grid .operations-panel::before,
