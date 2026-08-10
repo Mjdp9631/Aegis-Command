@@ -1303,6 +1303,32 @@ function scheduledCountForMission(missionId) {
   return seen.size;
 }
 
+function ensurePermanentMissionCalendar() {
+  const missionsView = $("#missions");
+  const dialog = $("#operations-calendar-dialog");
+  if (!missionsView || missionsView.querySelector("#mission-calendar") || !dialog) return;
+  const source = dialog.querySelector(".operation-calendar-card");
+  if (!source) return;
+  source.classList.remove("dialog-card", "operation-calendar-card");
+  source.querySelector(".dialog-close")?.remove();
+  source.querySelector(".eyebrow")?.remove();
+  source.querySelector("h2")?.remove();
+  const shell = document.createElement("div");
+  shell.className = "mission-calendar-shell";
+  while (source.firstChild) shell.append(source.firstChild);
+  const panel = document.createElement("section");
+  panel.id = "mission-calendar";
+  panel.className = "mission-calendar panel";
+  panel.innerHTML = '<div class="panel-head mission-calendar-head"><div><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h3>Mission calendar</h3><p class="body-copy">Select a date to review its tasks. Use Add operation to schedule an unscheduled item or create something new.</p></div><button class="primary compact" id="mission-add-operation" type="button">+ Add operation</button></div>';
+  panel.append(shell);
+  missionsView.querySelector("#mission-cards")?.before(panel);
+  dialog.remove();
+  const legacyButton = $("#open-operations-calendar");
+  if (legacyButton) legacyButton.textContent = "Jump to mission calendar ↓";
+  wireCalendarPanels();
+  $("#mission-add-operation")?.addEventListener("click", () => openDaySchedulePicker(selectedDay || operatingDayKey()));
+}
+
 function renderCalendar() {
   syncSystemDate();
   const label = $("#operations-calendar-label");
@@ -1336,7 +1362,6 @@ function renderCalendar() {
   grid.querySelectorAll("[data-calendar-day]").forEach((button) => button.addEventListener("click", () => {
     selectedDay = button.dataset.calendarDay;
     renderCalendar();
-    openDaySchedulePicker(selectedDay);
   }));
   const selected = displayOperations.filter((operation) => isScheduledOn(operation, selectedDay));
   if (agendaLabel) agendaLabel.textContent = selectedDay ? formatKey(selectedDay, { weekday: "long", month: "long", day: "numeric" }) : "Select a day";
@@ -1394,26 +1419,32 @@ function renderCalendar() {
 }
 
 function openCalendar() {
-  // Opening the schedule always starts from the real current month in New York.
+  // The calendar is permanently mounted in Mission Control. Legacy callers
+  // now just scroll to that surface instead of opening a second dialog.
   // A previous legacy cursor must never reopen July after the calendar has moved
   // into a later month.
   cursor = newYorkTodayDate();
   selectedDay = operatingDayKey();
+  ensurePermanentMissionCalendar();
   renderCalendar();
-  const dialog = $("#operations-calendar-dialog");
-  if (dialog && !dialog.open) dialog.showModal();
+  $("#mission-calendar")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function wireCalendarPanels() {
-  document.querySelectorAll("[data-calendar-panel]").forEach((button) => button.addEventListener("click", () => {
+  document.querySelectorAll("[data-calendar-panel]").forEach((button) => {
+    if (button.dataset.calendarPanelWired === "true") return;
+    button.dataset.calendarPanelWired = "true";
+    button.addEventListener("click", () => {
     const name = button.dataset.calendarPanel;
     document.querySelectorAll("[data-calendar-panel]").forEach((item) => item.classList.toggle("active", item === button));
     document.querySelectorAll("[data-calendar-panel-body]").forEach((item) => item.classList.toggle("hidden", item.dataset.calendarPanelBody !== name));
-  }));
+    });
+  });
 }
 
 async function boot() {
   try {
+    ensurePermanentMissionCalendar();
     if (client) {
       const { data } = await client.auth.getSession();
       currentUser = data?.session?.user || null;
@@ -1467,6 +1498,7 @@ document.addEventListener("click", (event) => {
 }, true);
 const startHub = () => {
   window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
+  ensurePermanentMissionCalendar();
   syncSystemDate();
   // Paint a usable queue before any cloud request. A slow auth/database round
   // trip must never leave Command Center looking empty; boot() will replace
