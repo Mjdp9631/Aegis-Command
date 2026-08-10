@@ -50,6 +50,7 @@ const syncSystemDate = () => {
   }).format(new Date()).toUpperCase().replace(",", " ·");
 };
 let currentUser = null;
+let operationsReady = false;
 const operationsCacheKey = () => `aegis-operations:${currentUser?.id || "anonymous"}`;
 const cachedOperations = () => {
   try {
@@ -656,6 +657,7 @@ function emergencyQueueMarkup() {
 function renderQueue() {
   const targets = queueTargets();
   if (!targets.length) return;
+  if (!operationsReady) return;
   try {
     syncSystemDate();
     if (!operations.length) operations = cachedOperations();
@@ -1446,6 +1448,7 @@ function wireCalendarPanels() {
 }
 
 async function boot() {
+  operationsReady = false;
   try {
     ensurePermanentMissionCalendar();
     if (client) {
@@ -1473,12 +1476,14 @@ async function boot() {
   }
   if (!operations.length) operations = local.length ? local : starterOperations();
     saveCachedOperations();
+    operationsReady = true;
     renderQueue();
     renderCalendar();
   } catch (error) {
     console.warn("Operations hub recovered from a load error", error);
     operations = cachedOperations();
     if (!operations.length) operations = starterOperations();
+    operationsReady = true;
     renderQueue();
     renderCalendar();
   }
@@ -1503,16 +1508,13 @@ const startHub = () => {
   window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
   ensurePermanentMissionCalendar();
   syncSystemDate();
-  // Paint a usable queue before any cloud request. A slow auth/database round
-  // trip must never leave Command Center looking empty; boot() will replace
-  // this safety feed with the authenticated records as soon as they arrive.
-  if (!operations.length) {
-    const local = cachedOperations();
-    operations = local.length ? local : starterOperations();
-    renderQueue();
+  // Keep one stable surface while auth and Supabase synchronize. Painting the
+  // local starter feed first made it flash over the durable queue milliseconds
+  // later, which looked like the operation box was changing by itself.
+  const host = ensureLiveQueueHost();
+  if (host && host.dataset.aegisQueueMounted !== "true") {
+    host.innerHTML = '<p class="empty-operations">Syncing today\'s operations…</p>';
   }
-  // The staged paints protect against another module replacing the
-  // command-center panel after this one has loaded.
   boot().finally(() => [0, 250, 1000, 2500, 5000, 9000, 14000].forEach((delay) => setTimeout(renderQueue, delay)));
 };
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startHub, { once: true });

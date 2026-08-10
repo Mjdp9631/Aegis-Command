@@ -114,6 +114,7 @@ function configureCreateDialog() {
   updateTrackingFields(form, "new-mission");
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (!session || !client) return alert("Sign in before saving a mission.");
     const payload = readMission(form, "new-mission", true);
     if (!payload.title) return;
     const { data, error } = await client.from("missions").insert(payload).select().single();
@@ -200,7 +201,6 @@ function bindDialogs() {
     const button = event.target.closest('[data-action="add-mission"]');
     if (!button) return;
     event.preventDefault();
-    if (!session) return alert("Sign in before opening a mission.");
     const dialog = $("#mission-dialog");
     if (dialog && !dialog.open) dialog.showModal();
   });
