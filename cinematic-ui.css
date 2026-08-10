@@ -1518,3 +1518,86 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   .sidebar:hover .system-label,
   .sidebar:hover .sidebar-foot span { opacity: 1; transform: translateX(0); }
 }
+
+/* Phone layout repair: keep every module in normal document flow. */
+@media (max-width: 760px) {
+  html, body { overflow-x: hidden; }
+  .app-shell {
+    display: block !important;
+    min-height: 100vh;
+  }
+  .sidebar,
+  .sidebar:hover,
+  .sidebar:focus-within {
+    position: fixed !important;
+    z-index: 50;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    padding: 8px 10px !important;
+    overflow: visible !important;
+    transition: none !important;
+  }
+  .sidebar::before { display: none !important; }
+  .sidebar nav {
+    display: flex !important;
+    min-width: 0 !important;
+    width: 100%;
+    justify-content: space-around;
+    gap: 4px;
+    overflow: hidden;
+  }
+  .brand, .system-label, .sidebar-foot { display: none !important; }
+  .nav-link,
+  .sidebar:hover .nav-link,
+  .sidebar:focus-within .nav-link {
+    flex: 1 1 0;
+    min-width: 0 !important;
+    height: 42px !important;
+    padding: 0 5px !important;
+    justify-content: center;
+    gap: 0;
+    border: 0 !important;
+    border-radius: 6px;
+    font-size: 0 !important;
+  }
+  .nav-link > span { width: auto !important; flex: 0 0 auto; font-size: 17px !important; }
+  main {
+    display: block !important;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    margin: 0;
+    padding: 23px 18px 90px !important;
+    overflow: visible;
+  }
+  .view.active,
+  .view.active:not(#command) {
+    display: block !important;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 20px 16px !important;
+    overflow: visible;
+  }
+  .view.active:not(#command) > .section-intro {
+    position: relative !important;
+    top: auto !important;
+    z-index: auto !important;
+    margin: 0 0 20px !important;
+  }
+  .section-intro h2 { overflow-wrap: anywhere; }
+  .panel, .metric, .mission-card, .content-grid, .mission-card-list,
+  .phase-protocol, .ai-mission-control, .ai-roadmap-navigator { min-width: 0; max-width: 100%; }
+  .panel-head { flex-wrap: wrap; gap: 10px; }
+  .content-grid, .mission-card-list, .stat-grid, .metric-grid, .two-col { grid-template-columns: 1fr !important; }
+  .command-stage, #command > .content-grid { display: block !important; width: 100%; }
+  .command-stage > *, #command > .content-grid > * { width: 100%; min-width: 0; margin: 0 0 14px !important; }
+  #command > .hero { min-height: 0; height: auto; }
+  table { display: block; max-width: 100%; overflow-x: auto; }
+  img, video, canvas, iframe { max-width: 100%; }
+}
