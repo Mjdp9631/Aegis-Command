@@ -355,6 +355,10 @@ async function loadOccurrences() {
       merged.set(key, row);
       continue;
     }
+    // A completed cloud occurrence is authoritative. An older browser can
+    // still have a stale queued/missed cache entry with a later local stamp;
+    // never let that stale cache undo a completion made elsewhere.
+    if (Boolean(remote.completed) || String(remote.status || "").toLowerCase() === "complete") continue;
     // Authenticated browsers use Supabase as the shared source of truth. If a
     // cached row has a newer explicit click than the remote snapshot, first
     // reconcile that pending click to Supabase; otherwise the remote row wins.
@@ -425,6 +429,7 @@ async function refreshDurableOperationState() {
     // settling. Never turn a populated queue into an empty one because of
     // that transient response; the next realtime event or boot will retry.
     if (!remoteOperations.length && operations.length) return;
+    if (!remoteOccurrences.length && operationOccurrences.length) return;
     operations = remoteOperations;
     operationOccurrences = remoteOccurrences;
     await reconcileRecurringCompletion();
@@ -453,10 +458,18 @@ function subscribeToOperationSync() {
 }
 
 function normalizedStatus(operation) {
-  if (operation.completed) return "Complete";
+  if (operation.completed || String(operation.status || "").toLowerCase() === "complete") return "Complete";
+  if (operation._occurrence?.completed || String(operation._occurrence?.status || "").toLowerCase() === "complete") return "Complete";
+  const operationDay = dateOnly(operation?.scheduled_date || operation?.operation_date);
+  const operationCompletion = dateOnly(operation.completed_on || operation.local_completed_on || operation._occurrence?.completed_on);
+  if (operationCompletion && (!operationDay || operationCompletion === operationDay)) return "Complete";
   const series = operation?._series;
-  const instanceDay = dateOnly(operation?.scheduled_date || operation?.operation_date);
-  if (series && series !== operation && Boolean(series.completed) && dateOnly(series.completed_on || series.local_completed_on) === instanceDay) return "Complete";
+  const instanceDay = operationDay;
+  if (series && series !== operation && (Boolean(series.completed) || String(series.status || "").toLowerCase() === "complete") && dateOnly(series.completed_on || series.local_completed_on) === instanceDay) return "Complete";
+  if (series?.id) {
+    const matchingOccurrence = operationOccurrences.find((row) => String(row.operation_id) === String(series.id) && dateOnly(row.occurrence_date) === instanceDay);
+    if (matchingOccurrence && (Boolean(matchingOccurrence.completed) || String(matchingOccurrence.status || "").toLowerCase() === "complete")) return "Complete";
+  }
   return statusOrder.includes(operation.status) ? operation.status : "Queued";
 }
 
@@ -636,6 +649,9 @@ function mergeSavedStatus(remote = []) {
     const localStamp = Date.parse(local.local_updated_at) || Number(local.local_updated_at) || 0;
     const remoteStamp = Date.parse(operation.updated_at || operation.created_at) || 0;
     if (localStamp <= remoteStamp) return operation;
+    // A completion received from Supabase must not be overwritten by a stale
+    // browser cache that still thinks the operation is queued or missed.
+    if (Boolean(operation.completed) || String(operation.status || "").toLowerCase() === "complete") return operation;
     // A local schedule or status edit is newer than the cloud snapshot.
     // Overlay only mutable execution fields; identity and ownership remain
     // cloud-owned.
@@ -686,6 +702,7 @@ async function reconcileCachedOperationEdits(remote = []) {
   const pending = remote.filter((operation) => {
     const local = cachedById.get(String(operation.id));
     if (!local?.local_updated_at) return false;
+    if (Boolean(operation.completed) || String(operation.status || "").toLowerCase() === "complete") return false;
     const localStamp = Date.parse(local.local_updated_at) || Number(local.local_updated_at) || 0;
     const remoteStamp = Date.parse(operation.updated_at || operation.created_at) || 0;
     return localStamp > remoteStamp;
