@@ -886,6 +886,12 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   backdrop-filter: blur(1px) saturate(108%);
 }
 
+#missions.active > .section-intro,
+#missions.active .panel {
+  background: linear-gradient(135deg, rgba(10, 25, 43, .14), rgba(5, 14, 25, .05)) !important;
+  backdrop-filter: blur(1px) saturate(105%);
+}
+
 @media (max-width: 1120px) and (min-width: 761px) {
   #command > .hero { min-height: 690px; }
   #command > .hero .hero-console { top: 238px; width: 62%; }
