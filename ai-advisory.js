@@ -262,8 +262,16 @@ function paintLatestAdvisory() {
   window.dispatchEvent(new CustomEvent("aegis:advisory-updated", { detail: latestAdvisory }));
 }
 
-async function persist(advisory, type, { readOnly = false, operatingDate = operatingDayKey() } = {}) {
-  const payload = { ...advisory, scan_mode: type, operating_date: operatingDate, completed_at: new Date().toISOString() };
+function rememberBedtime(operatingDate, bedtimeAt, userId) {
+  if (!operatingDate || !bedtimeAt) return;
+  const key = `aegis-bedtime:${userId || "anonymous"}:${operatingDate}`;
+  try { localStorage.setItem(key, bedtimeAt); } catch { /* local storage is optional */ }
+  window.dispatchEvent(new CustomEvent("aegis:bedtime-recorded", { detail: { operatingDate, bedtimeAt } }));
+}
+
+async function persist(advisory, type, { readOnly = false, operatingDate = operatingDayKey(), bedtimeAt = null } = {}) {
+  const completedAt = new Date().toISOString();
+  const payload = { ...advisory, scan_mode: type, operating_date: operatingDate, completed_at: completedAt, ...(type === "bedtime" ? { bedtime_at: bedtimeAt || completedAt } : {}) };
   let result = await supabase.from("ai_advisories").insert({ advisory_type: type, payload, scan_mode: type, operating_date: operatingDate }).select().single();
   if (result.error) result = await supabase.from("ai_advisories").insert({ advisory_type: type, payload }).select().single();
   // Older Supabase projects still have the original four-value advisory check.
@@ -413,6 +421,7 @@ async function run(mode = "scan") {
   if (!session) return alert("Sign in before opening the intelligence layer.");
   const bedtime = mode === "bedtime";
   const operatingDate = operatingDayKey();
+  const bedtimeAt = bedtime ? new Date().toISOString() : null;
   scanInFlight = true;
   try {
     setBusy(true, bedtime ? "COMPILING DEBRIEF…" : "ANALYZING…");
@@ -430,8 +439,9 @@ async function run(mode = "scan") {
     if (!response.ok) throw new Error(payload.error || "The advisory engine is unavailable.");
     latestAdvisory = payload.advisory;
     paintLatestAdvisory();
-    const savedSuggestions = await retireUnsupportedSuggestions(await persist(latestAdvisory, bedtime ? "bedtime" : (mode === "morning" || mode === "signal" || mode === "evening" ? mode : "scan"), { readOnly: bedtime, operatingDate }));
+    const savedSuggestions = await retireUnsupportedSuggestions(await persist(latestAdvisory, bedtime ? "bedtime" : (mode === "morning" || mode === "signal" || mode === "evening" ? mode : "scan"), { readOnly: bedtime, operatingDate, bedtimeAt }));
     if (bedtime) {
+      rememberBedtime(operatingDate, bedtimeAt, session.user.id);
       await loadSuggestions();
       return;
     }

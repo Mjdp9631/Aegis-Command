@@ -37,6 +37,67 @@ const operatingDayKey = (date = new Date()) => {
   return previous ? dayKey(previous) : key;
 };
 const morningRolloverReached = () => newYorkHour() >= 5;
+const BEDTIME_WINDOW_MS = 9 * 60 * 60 * 1000;
+const bedtimeStorageKey = (key) => `aegis-bedtime:${currentUser?.id || "anonymous"}:${key}`;
+const shiftDayKey = (key, amount) => {
+  const date = dateForKey(key);
+  if (!date) return "";
+  date.setUTCDate(date.getUTCDate() + amount);
+  return dayKey(date);
+};
+let bedtimeRecords = new Map();
+function rememberCachedBedtime(day, value) {
+  if (!day || !value || Number.isNaN(Date.parse(value))) return;
+  bedtimeRecords.set(day, value);
+  try { localStorage.setItem(bedtimeStorageKey(day), value); } catch { /* optional cache */ }
+}
+function bedtimeForDay(day) {
+  if (!day) return null;
+  const remembered = bedtimeRecords.get(day);
+  if (remembered) return remembered;
+  try {
+    const stored = localStorage.getItem(bedtimeStorageKey(day));
+    if (stored && !Number.isNaN(Date.parse(stored))) {
+      bedtimeRecords.set(day, stored);
+      return stored;
+    }
+  } catch { /* optional cache */ }
+  return null;
+}
+async function loadBedtimeRecords() {
+  bedtimeRecords = new Map();
+  const today = operatingDayKey();
+  for (let offset = -14; offset <= 2; offset += 1) bedtimeForDay(shiftDayKey(today, offset));
+  if (!client || !currentUser) return;
+  let { data, error } = await client.from("ai_advisories")
+    .select("advisory_type, operating_date, payload, created_at")
+    .eq("user_id", currentUser.id)
+    .order("created_at", { ascending: false })
+    .limit(40);
+  // Projects that have not applied the bedtime migration can still recover
+  // the timestamp from the JSON payload written by ai-advisory.js.
+  if (error) {
+    ({ data, error } = await client.from("ai_advisories")
+      .select("advisory_type, payload, created_at")
+      .eq("user_id", currentUser.id)
+      .order("created_at", { ascending: false })
+      .limit(40));
+  }
+  if (error) {
+    console.warn("Could not load bedtime records", error.message);
+    return;
+  }
+  (data || []).forEach((row) => {
+    const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+    if (row.advisory_type !== "bedtime" && payload.scan_mode !== "bedtime") return;
+    rememberCachedBedtime(row.operating_date || payload.operating_date, payload.bedtime_at || payload.completed_at || row.created_at);
+  });
+}
+window.addEventListener("aegis:bedtime-recorded", (event) => {
+  const { operatingDate, bedtimeAt } = event.detail || {};
+  rememberCachedBedtime(operatingDate, bedtimeAt);
+  renderQueue();
+});
 const formatKey = (key, options = { month: "short", day: "numeric" }) => {
   const date = dateForKey(key);
   return date ? new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", ...options }).format(date) : "";
@@ -151,6 +212,7 @@ const starterOperations = () => {
     ["Conquer the morning", "Self Mastery"],
     ["Read one chapter", "Self Mastery"],
     ["Journal", "Self Mastery"],
+    ["Complete evening mission debrief", "Self Mastery"],
   ].map(([title, category]) => title === "Pre-market analysis"
     ? preMarketOperationForToday()
     : ({ title, category, completed: false, scheduled_date: operatingDayKey(), scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, status: "Queued" }))
@@ -638,15 +700,42 @@ function queueFallback() {
   return { today: planned, upcoming: [] };
 }
 
+function morningGate(operation) {
+  if (String(operation?.title || "").trim().toLowerCase() !== "conquer the morning") return null;
+  if (normalizedStatus(operation) === "Complete") return { state: "complete" };
+  const operationDay = dateOnly(operation?.scheduled_date || operation?.operation_date);
+  const priorDay = shiftDayKey(operationDay, -1);
+  const bedtimeAt = bedtimeForDay(priorDay);
+  // No bedtime means no lockout. This preserves the regular operation when
+  // the director forgot to close the previous day.
+  if (!bedtimeAt) return { state: "open", unrestricted: true };
+  const bedtimeMs = Date.parse(bedtimeAt);
+  if (Number.isNaN(bedtimeMs)) return { state: "open", unrestricted: true };
+  const deadline = bedtimeMs + BEDTIME_WINDOW_MS;
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return { state: "expired", deadline };
+  return { state: "open", deadline, remaining };
+}
+
+function formatRemaining(milliseconds) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
+}
+
 // This intentionally does not depend on Supabase, missions, or calendar
 // state.  It is the last-resort queue paint used if a non-critical renderer
 // throws during a refresh.  Command Center must always show the day's work.
 function emergencyQueueMarkup() {
   const fallback = queueFallback().today;
   const rows = fallback.map((operation) => {
+    const gate = morningGate(operation);
+    const gateExpired = gate?.state === "expired";
     const priority = operation.priority || priorityFor(operation.category);
     return `<article class="operation operation-table-row operation-table-v2">
-      <button type="button" class="operation-status queued" data-hub-status="${esc(operation.title)}"><i></i>Queued</button>
+      <button type="button" class="operation-status ${gateExpired ? "morning-gated" : "queued"}" ${gateExpired ? "disabled" : `data-hub-status="${esc(operation.title)}"`}><i></i>${gateExpired ? "Missed morning" : "Queued"}</button>
       <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.title)}">${esc(operation.title)}</button>
       <button type="button" class="operation-schedule-control" data-hub-schedule="${esc(operation.title)}">+ Schedule</button>
       <span>${esc(operation.category || "Mission")}</span>
@@ -675,14 +764,27 @@ function renderQueue() {
     if (operationCaption) operationCaption.textContent = active.today.length ? `${active.today.length} operations today` : "No operations today";
     const rows = (items) => items.map((operation) => {
       const status = normalizedStatus(operation);
+      const gate = morningGate(operation);
       const priority = operation.priority || priorityFor(operation.category);
       const scheduled = dateOnly(operation.scheduled_date);
       const time = operation.scheduled_time ? ` · ${String(operation.scheduled_time).slice(0, 5)}` : "";
       const timing = scheduleLabel(operation, operatingDayKey());
       const doneClass = status === "Complete" ? " done operation-complete" : "";
+      const gateExpired = gate?.state === "expired";
+      const statusLabel = gateExpired ? "Missed morning" : status;
+      const gateNote = gateExpired
+        ? '<small class="morning-window-note is-expired">9-hour window expired</small>'
+        : gate?.deadline
+          ? `<small class="morning-window-note" data-morning-deadline="${gate.deadline}">${formatRemaining(gate.remaining)} left</small>`
+          : "";
+      const gateTitle = gateExpired
+        ? "Conquer the morning was not completed within nine hours of the prior bedtime."
+        : gate?.deadline
+          ? `Conquer the morning window: ${formatRemaining(gate.remaining)} remaining.`
+          : "";
       return `<article class="operation operation-table-row operation-table-v2${doneClass}">
-        <button type="button" class="operation-status ${status.toLowerCase()}" data-hub-status="${esc(operation.id || operation.title)}"><i></i>${esc(status)}</button>
-        <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.id || operation.title)}">${esc(operation.title)}</button>
+        <button type="button" class="operation-status ${gateExpired ? "morning-gated" : status.toLowerCase()}" ${gateExpired ? "disabled" : `data-hub-status="${esc(operation.id || operation.title)}"`} title="${esc(gateTitle)}"><i></i>${esc(statusLabel)}</button>
+        <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.id || operation.title)}">${esc(operation.title)}${gateNote}</button>
         <button type="button" class="operation-schedule-control ${scheduled ? "is-scheduled" : ""}" data-hub-schedule="${esc(operation.id || operation.title)}">${esc(timing)}</button>
         <span>${esc(operation.category || "Mission")}</span>
         <b class="${priorityClass(priority)}">${esc(priority)}</b>
@@ -716,6 +818,16 @@ function renderQueue() {
       target.querySelectorAll("[data-hub-detail]").forEach((button) => button.addEventListener("click", () => showOperationDetail(button.dataset.hubDetail)));
     });
   }
+}
+
+function refreshMorningCountdown() {
+  let expired = false;
+  document.querySelectorAll("[data-morning-deadline]").forEach((element) => {
+    const remaining = Number(element.dataset.morningDeadline) - Date.now();
+    if (remaining <= 0) expired = true;
+    else element.textContent = `${formatRemaining(remaining)} left`;
+  });
+  if (expired) renderQueue();
 }
 
 function findOperation(key) {
@@ -857,6 +969,10 @@ async function reconcileMeasuredMissionCounts() {
 async function cycleStatus(key) {
   const operation = findOperation(key);
   if (!operation) return;
+  if (morningGate(operation)?.state === "expired") {
+    renderQueue();
+    return;
+  }
   const index = statusOrder.indexOf(normalizedStatus(operation));
   const next = statusOrder[(index + 1) % statusOrder.length];
   const wasComplete = normalizedStatus(operation) === "Complete";
@@ -946,6 +1062,7 @@ async function ensureTodayOperations(records = []) {
     ["Conquer the morning", "Self Mastery", "Begin the day with one deliberate first action, protect the first block from avoidable distraction, and execute the morning standard before reactive work."],
     ["Read one chapter", "Self Mastery", readingBrief()],
     ["Journal", "Self Mastery", "Write the facts, name what is within your control, and record one lesson or next right action."],
+    ["Complete evening mission debrief", "Self Mastery", "Read the Going to bed debrief, apply its priorities, and close the operating day honestly."],
   ].map(([title, category, brief]) => ({ title, category, brief, priority: priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: activeDay, scheduled_date: activeDay, metric_key: title === "Read one chapter" ? "chapters_read" : title === "Journal" ? "mastery.entry" : null }));
   const preMarket = preMarketOperationForToday();
   if (preMarket) daily.unshift(preMarket);
@@ -1451,10 +1568,11 @@ async function boot() {
   operationsReady = false;
   try {
     ensurePermanentMissionCalendar();
-    if (client) {
+  if (client) {
       const { data } = await client.auth.getSession();
       currentUser = data?.session?.user || null;
     }
+    await loadBedtimeRecords();
   // A queue must never disappear merely because an auth refresh is still in
   // flight. Cloud records replace this small local safety feed as soon as the
   // session is available.
@@ -1506,6 +1624,7 @@ document.addEventListener("click", (event) => {
 }, true);
 const startHub = () => {
   window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
+  setInterval(refreshMorningCountdown, 1000);
   ensurePermanentMissionCalendar();
   syncSystemDate();
   // Keep one stable surface while auth and Supabase synchronize. Painting the
