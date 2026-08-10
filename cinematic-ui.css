@@ -1601,3 +1601,88 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   table { display: block; max-width: 100%; overflow-x: auto; }
   img, video, canvas, iframe { max-width: 100%; }
 }
+
+/* Phone Command Center order: work first, chart and secondary telemetry after. */
+@media (max-width: 760px) {
+  .sidebar nav { justify-content: flex-start; overflow-x: auto; }
+  .nav-link,
+  .sidebar:hover .nav-link,
+  .sidebar:focus-within .nav-link {
+    flex: 0 0 74px;
+    height: 54px !important;
+    font-size: 9px !important;
+    line-height: 1.1;
+    white-space: nowrap;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .command-stage {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .command-stage > .content-grid { order: 1; }
+  .command-stage > .hero { order: 2; }
+  .command-stage > .command-side-rail { order: 3; }
+  .command-stage > .metric-grid { order: 4; }
+  .command-stage > .hero {
+    position: relative !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 20px 16px !important;
+    overflow: visible !important;
+  }
+  #command > .command-stage > .hero .hero-copy {
+    max-width: 100% !important;
+    position: relative;
+  }
+  #command > .command-stage > .hero .hero-copy h2 { font-size: 34px; }
+  #command > .command-stage > .hero .hero-console {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    margin-top: 18px;
+    display: block !important;
+  }
+  #command > .command-stage > .hero .terminal-chart {
+    width: 100%;
+    height: 250px !important;
+    min-height: 250px;
+  }
+  .command-stage > .content-grid {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 14px;
+    margin: 0 !important;
+  }
+  #command > .command-stage > .content-grid .operations-panel,
+  #command > .command-stage > .content-grid .mission-panel {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+  }
+  .command-stage > .command-side-rail {
+    display: block !important;
+    width: 100%;
+    margin: 0 !important;
+  }
+  .command-side-rail > * { width: 100%; margin: 0 0 14px !important; }
+  .command-side-rail .terminal-instruments {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-rows: auto !important;
+    gap: 10px;
+  }
+  .command-side-rail .readiness-dial,
+  .command-side-rail .radar-dial,
+  .command-side-rail .market-tickers {
+    display: grid !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    min-height: 108px;
+  }
+  .command-side-rail .market-tickers { grid-column: 1 / -1 !important; }
+  #command > .command-stage .command-summary { margin: 0 !important; }
+}
