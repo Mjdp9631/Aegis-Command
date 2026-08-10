@@ -876,6 +876,16 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   background: linear-gradient(135deg, rgba(5, 14, 24, .72), rgba(6, 18, 32, .48)) !important;
 }
 
+/* Mission Control keeps the scene visible through its glass nodes. */
+#missions.active .mission-card,
+#missions.active .phase-protocol,
+#missions.active .phase-level-gate,
+#missions.active .phase-unlocks article,
+#missions.active .phase-node {
+  background: linear-gradient(135deg, rgba(10, 25, 43, .18), rgba(5, 14, 25, .08)) !important;
+  backdrop-filter: blur(1px) saturate(108%);
+}
+
 @media (max-width: 1120px) and (min-width: 761px) {
   #command > .hero { min-height: 690px; }
   #command > .hero .hero-console { top: 238px; width: 62%; }
