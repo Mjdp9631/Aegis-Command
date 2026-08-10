@@ -36,6 +36,8 @@
 .character-focus-stat .xp-ledger ul { max-height: 130px; }
 .character-focus-stat:hover, .character-focus-stat.is-highlighted { border-color: rgba(228, 173, 99, .62); background: rgba(45, 35, 22, .46); box-shadow: 0 0 18px rgba(228, 173, 99, .1); }
 .character-focus-stat:hover b, .character-focus-stat.is-highlighted b { color: var(--amber); }
+.character-intro-actions { display:flex; align-items:center; gap:10px; margin-top:14px; }
+.character-intro-actions small { color:var(--muted); font-size:10px; }
 .character-focus-stat.amber b { color: var(--amber); }
 .character-focus-stat.amber i em { background: var(--amber); }
 .character-focus-stat.green b { color: var(--green); }

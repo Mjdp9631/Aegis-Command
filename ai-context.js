@@ -296,10 +296,18 @@
        return within(date, monthStart, operatingDate);
      }).reduce((sum, trade) => sum + Number(trade.pnl_percent || 0), 0);
     const evidence = [];
+    const evidenceClass = (sourceType, row = {}, metadata = {}) => {
+      if (["trade_reviews", "ai_trade_scenarios", "activity_events"].includes(sourceType)) return "audited_record";
+      if (["trade_debriefs"].includes(sourceType) && (row.pnl_percent != null || row.r_multiple != null)) return "measurable_outcome";
+      if (["missions", "operations", "operation_occurrences"].includes(sourceType)) return row.completed || metadata.completed ? "completed_action" : "planned_intention";
+      if (["capability_skill_logs", "training_sets"].includes(sourceType)) return "repeated_behavior";
+      if (metadata.outcome_rating || metadata.result || row.outcome_rating) return "measurable_outcome";
+      return "self_reported_record";
+    };
     const addEvidence = (sourceType, row, occurredAt, summary, metadata = {}) => {
       const id = evidenceId(sourceType, idOf(row));
       if (!id || evidence.some((item) => item.id === id)) return id;
-      evidence.push({ id, source_type: sourceType, source_id: idOf(row), occurred_at: occurredAt || null, date: dateOnly(occurredAt), summary, metadata });
+      evidence.push({ id, source_type: sourceType, source_id: idOf(row), occurred_at: occurredAt || null, date: dateOnly(occurredAt), evidence_class: evidenceClass(sourceType, row, metadata), summary, metadata });
       return id;
     };
     activityEvents.forEach((event) => addEvidence(event.source_type || "activity_events", event, event.occurred_at, `${event.metric_key || "activity"} recorded`, event.metadata || {}));
@@ -323,6 +331,7 @@
     operations.forEach((item) => addEvidence("operations", item, item.completed_on || item.operation_date || item.scheduled_date || item.created_at, `${item.title || "Operation"} operation`, { status: item.status, completed: Boolean(item.completed) }));
     missions.forEach((item) => addEvidence("missions", item, item.completed_at || item.created_at, `${item.title || "Mission"} mission`, { completed: Boolean(item.completed), priority: item.priority }));
     const evidenceCatalog = evidence.filter((item) => item.date === targetDate).concat(evidence.filter((item) => item.date !== targetDate)).slice(0, 120);
+    const evidenceQuality = evidence.reduce((result, item) => { result[item.evidence_class] = (result[item.evidence_class] || 0) + 1; return result; }, {});
     const activityByMetric = activityEvents.reduce((result, event) => { const key = event.metric_key || "unclassified"; result[key] = (result[key] || 0) + Number(event.quantity || 1); return result; }, {});
     const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
     const todayOperations = effectiveOperations.filter((operation) => dateOnly(operation.scheduled_date || operation.operation_date) === operatingDate);
@@ -331,7 +340,7 @@
       generated_on: new Date().toISOString(), scan_mode: mode, operating_date: operatingDate, evidence_date: targetDate, evidence_window: mode === "morning" ? "previous_operating_day" : mode === "bedtime" ? "current_operating_day" : "current_context", market_context: marketContext,
       active_phase: `Phase ${phaseValue?.active_phase ?? 0}`,
       evidence_catalog: evidenceCatalog,
-      evidence_summary: { target_date: targetDate, target_count: evidence.filter((item) => item.date === targetDate).length, total_count: evidence.length },
+      evidence_summary: { target_date: targetDate, target_count: evidence.filter((item) => item.date === targetDate).length, total_count: evidence.length, by_class: evidenceQuality, definitions: { planned_intention: "Scheduled or proposed work not yet completed.", self_reported_record: "A logged statement or observation without an independent measurable result.", completed_action: "A record marked complete or an action with completion evidence.", repeated_behavior: "A repeated practice or set-level record showing behavior over time.", measurable_outcome: "A record with a measurable result such as PnL, rating, or quantified outcome.", audited_record: "A review or system event that independently evaluates or records evidence." } },
       derived_insights: derivedInsights,
       streaks: { execution: streakFor(effectiveOperations.filter((operation) => operation.completed || operation.status === "Complete").map((operation) => operation.completed_on || operation.scheduled_date || operation.created_at), operatingDate), trading_journal: streakFor(liveTrades.map((trade) => trade.traded_at || trade.created_at), operatingDate), mastery: streakFor(mastery.map((entry) => entry.created_at), operatingDate) },
        operations: { today_total: todayOperations.length, today_complete: todayOperations.filter((operation) => operation.completed || operation.status === "Complete").length, open_total: effectiveOperations.filter((operation) => !operation.completed && operation.status !== "Complete").length, ongoing_total: effectiveOperations.filter((operation) => operationIsOngoing(operation)).length, ongoing_attention: effectiveOperations.filter((operation) => operationIsOngoing(operation) && ongoingDays(operation, operatingDate) >= LONG_RUNNING_OPERATION_DAYS).map((operation) => ({ id: operation.id, title: operation.title, ongoing_since: ongoingStart(operation, operatingDate), ongoing_days: ongoingDays(operation, operatingDate), rollover_count: Number(operation.rollover_count || operation._occurrence?.rollover_count || 0), evidence_id: evidenceId(operation._occurrence?.id ? "operation_occurrences" : "operations", idOf(operation)) })).slice(0, 12), next: effectiveOperations.filter((operation) => !operation.completed && operation.status !== "Complete").slice(0, 8).map((operation) => ({ id: operation.id, title: operation.title, category: normalizeCategory(operation.category), status: operation.status || "Queued", scheduled_date: operation.scheduled_date || operation.operation_date || null, scheduled_time: operation.scheduled_time || null, ongoing_since: operation.ongoing_since || null, ongoing_days: operation.ongoing_days || null, needs_attention: Boolean(operation.needs_attention) })) },
