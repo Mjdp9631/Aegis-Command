@@ -295,20 +295,34 @@ function groupWithdrawalLedger(group) {
   return groupWithdrawals.filter((withdrawal) => withdrawal.group_id === group.id).sort((a, b) => new Date(b.withdrawn_at) - new Date(a.withdrawn_at));
 }
 
-function totalEarned() {
+function withdrawalIsEligible(withdrawal) {
+  const group = accountGroups.find((item) => item.id === withdrawal.group_id);
+  return group?.account_type === "Theoretical"
+    ? withdrawal.include_in_total_earned === true
+    : withdrawal.include_in_total_earned !== false;
+}
+
+function earnedForAccountType(accountType) {
   return cents(groupWithdrawals.reduce((total, withdrawal) => {
     const group = accountGroups.find((item) => item.id === withdrawal.group_id);
-    const included = group?.account_type === "Theoretical"
-      ? withdrawal.include_in_total_earned === true
-      : withdrawal.include_in_total_earned !== false;
-    return total + (included ? Number(withdrawal.payout_total_usd || 0) : 0);
+    return withdrawalIsEligible(withdrawal) && group?.account_type === accountType
+      ? total + Number(withdrawal.payout_total_usd || 0)
+      : total;
   }, 0));
+}
+
+function totalEarned() {
+  return cents(groupWithdrawals.reduce((total, withdrawal) => (
+    total + (withdrawalIsEligible(withdrawal) ? Number(withdrawal.payout_total_usd || 0) : 0)
+  ), 0));
 }
 
 function renderEarnedSummary() {
   const summary = $("#account-earned-summary");
   if (!summary) return;
-  summary.querySelector("strong").textContent = money(totalEarned());
+  summary.querySelector("[data-account-live-earned]").textContent = money(earnedForAccountType("Live"));
+  summary.querySelector("[data-account-funded-earned]").textContent = money(earnedForAccountType("Prop Firm"));
+  summary.querySelector("[data-account-total-earned]").textContent = money(totalEarned());
 }
 
 function renderBalanceSummary() {

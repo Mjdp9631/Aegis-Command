@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Rajdhani:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="auth-gate.css" />
-    <link rel="stylesheet" href="detective.css?v=account-profit-deposits-v1" />
+    <link rel="stylesheet" href="detective.css?v=account-profit-deposits-v2" />
     <link rel="stylesheet" href="brain-review.css" />
     <link rel="stylesheet" href="detective-visibility.css?v=tab-visibility-v1" />
     <link rel="stylesheet" href="trade-review-input.css?correction-feedback-v1" />
@@ -141,7 +141,7 @@
             <div class="panel-head"><div><p class="eyebrow blue-text">02 — ACCOUNT INTELLIGENCE</p><h3>Account Balances</h3></div></div>
             <p class="body-copy">Set each account’s starting balance once. Closed trade PnL percentages compound into its current balance automatically.</p>
             <form id="account-balance-form" class="account-balance-form"><label>Account name <input id="account-balance-name" required maxlength="80" placeholder="e.g. Master" /></label><label>Starting balance <input id="account-starting-balance" required min="0.01" step="0.01" type="number" placeholder="10000" /></label><label>Account type <select id="account-balance-type"><option>Live</option><option>Prop Firm</option><option>Theoretical</option></select></label><label>Assign group <select id="account-balance-group"><option value="">No group</option></select></label><label class="account-primary"><input id="account-primary" type="checkbox" /> Use as Command Center balance</label><button class="primary compact" type="submit">Save account</button></form>
-            <div id="account-earned-summary" class="account-earned-summary"><span>TOTAL EARNED</span><strong>$0.00</strong><small>Eligible group withdrawals only</small></div>
+            <div id="account-earned-summary" class="account-earned-summary"><article><span>LIVE EARNED</span><strong data-account-live-earned>$0.00</strong><small>Live withdrawals</small></article><article><span>PROP FIRM EARNED</span><strong data-account-funded-earned>$0.00</strong><small>Funded prop-firm payouts</small></article><article><span>TOTAL EARNED</span><strong data-account-total-earned>$0.00</strong><small>All eligible payouts</small></article></div>
             <div id="account-balance-summary" class="account-balance-summary"><article><span>LIVE TOTAL BALANCE</span><strong data-account-live-total>$0.00</strong></article><article><span>FUNDED TOTAL BALANCE</span><strong data-account-funded-total>$0.00</strong><small>Prop accounts marked Funded</small></article><article><span>LIVE TOTAL PROFIT</span><strong data-account-live-profit>$0.00</strong><small>Deposits excluded · withdrawals separate</small></article><article><span>FUNDED TOTAL PROFIT</span><strong data-account-funded-profit>$0.00</strong><small>Deposits excluded · withdrawals separate</small></article></div>
             <div id="account-ledger-controls"><form id="account-group-form" class="account-group-form"><div class="account-form-heading"><p class="eyebrow amber">CREATE GROUP</p><small>Separate live, prop-firm, and theoretical accounting.</small></div><label>Group name <input id="account-group-name" required maxlength="80" placeholder="e.g. Prop Group 1" /></label><label>Type <select id="account-group-type"><option>Live</option><option>Prop Firm</option><option>Theoretical</option></select></label><label id="account-group-split-wrap" hidden>Payout split (%) <input id="account-group-split" type="number" min="0" max="100" step="0.01" placeholder="e.g. 80" disabled /></label><label id="account-group-status-wrap" hidden>Prop status <select id="account-group-status" disabled><option value="pending">Pending</option><option value="funded">Funded</option></select></label><button class="primary compact" type="submit">Create group</button></form></div>
             <div class="account-balance-list" id="account-balance-list"><p class="empty-account-state">No account balance is configured yet.</p></div>
@@ -246,7 +246,7 @@
     <script type="module" src="cross-browser-sync.js?v=realtime-v1"></script>
     <script type="module" src="mission.js?v=category-sync-v4"></script>
     <script type="module" src="phase-protocol.js?v=phase-protocol-v7"></script>
-    <script type="module" src="detective.js?v=account-profit-deposits-v1"></script>
+    <script type="module" src="detective.js?v=account-profit-deposits-v2"></script>
     <script type="module" src="brain-review.js?v=correction-feedback-v1"></script>
     <script type="module" src="advisor.js?v=curated-advisory-v1"></script>
     <script type="module" src="notion-importer.js"></script>

@@ -17,6 +17,7 @@
 @media(max-width:850px){.account-balance-summary{grid-template-columns:1fr}.account-group-status-details{justify-self:start}}
 .account-group-form{grid-template-columns:1.2fr .8fr .8fr .9fr auto}
 @media(max-width:850px){.account-group-form{grid-template-columns:1fr}}
+.account-earned-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch;gap:12px}.account-earned-summary article{display:grid;gap:6px;padding:14px 16px;border:1px solid rgba(114,217,167,.24);border-radius:6px;background:linear-gradient(110deg,rgba(16,54,48,.38),rgba(8,24,35,.55))}.account-earned-summary article:last-child{border-color:rgba(228,173,99,.3)}.account-earned-summary article span{display:block}.account-earned-summary article strong{display:block}.account-earned-summary article small{display:block}@media(max-width:850px){.account-earned-summary{grid-template-columns:1fr}}
 .account-group-account-form{grid-template-columns:1.2fr .8fr .8fr .9fr auto auto}
 @media(max-width:850px){.account-group-account-form{grid-template-columns:1fr}}
 .group-admin-actions{align-self:end}
