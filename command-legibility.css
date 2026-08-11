@@ -75,12 +75,12 @@
 /* The journal can stay open to the desk scene because hover focus supplies
    the extra contrast for the trade currently being inspected. */
 #detective.active .trade-panel {
-  background: linear-gradient(135deg, rgba(7, 18, 31, .08), rgba(4, 12, 22, .025)) !important;
-  backdrop-filter: blur(1px) saturate(106%);
+  background: rgba(3, 12, 22, .055) !important;
+  backdrop-filter: none !important;
 }
 #detective.active .trade-panel tbody tr:not(.empty-row) {
-  background: rgba(2, 10, 19, .13);
-  backdrop-filter: blur(1px) saturate(106%);
+  background: rgba(3, 12, 22, .055);
+  backdrop-filter: none;
 }
 
 /* Keep the Command Center radar itself unchanged; move its numeric readout
