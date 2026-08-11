@@ -189,6 +189,14 @@ async function loadData() {
   renderRecovery(logs?.[0]);
 }
 
+async function refreshMissionSession() {
+  if (!client) return;
+  const { data, error } = await client.auth.getSession();
+  if (error || !data?.session) return;
+  session = data.session;
+  await loadData();
+}
+
 function bindDialogs() {
   configureCreateDialog();
   const editor = buildMissionEditor();
@@ -255,20 +263,20 @@ bindDialogs();
 
 if (cloudReady) {
   client = createClient(config.supabaseUrl, config.supabaseAnonKey);
-  ({ data: { session } } = await client.auth.getSession());
-  if (session) await loadData();
+  await refreshMissionSession();
   client.auth.onAuthStateChange((_event, nextSession) => {
-    session = nextSession;
-    if (!session) {
+    if (_event === "SIGNED_OUT") {
+      session = null;
       missions = [];
       renderMissions();
       renderCommandMissions();
       return;
     }
+    if (nextSession) session = nextSession;
     // Never await Supabase work inside its auth callback. Supabase can hold
     // the auth lock while dispatching this event, which can freeze refreshes.
     clearTimeout(missionLoadTimer);
-    missionLoadTimer = setTimeout(() => loadData(), 0);
+    missionLoadTimer = setTimeout(() => { void refreshMissionSession(); }, 0);
   });
 }
 
