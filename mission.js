@@ -212,7 +212,7 @@ function bindDialogs() {
     if (dialog && !dialog.open) dialog.showModal();
   });
   document.querySelectorAll('[data-action="log-recovery"]').forEach((button) => button.addEventListener("click", () => { if (!session) return alert("Sign in before logging recovery."); $("#recovery-logged-on").value = easternDateKey(); $("#recovery-dialog").showModal(); }));
-  $("#save-recovery").addEventListener("click", async (event) => { const pain = Number($("#recovery-pain").value), swelling = Number($("#recovery-swelling").value), logged_on = $("#recovery-logged-on").value || easternDateKey(); if (!Number.isInteger(pain) || !Number.isInteger(swelling) || pain < 0 || pain > 10 || swelling < 0 || swelling > 10 || !logged_on) return event.preventDefault(); const { data, error } = await client.from("recovery_logs").insert({ logged_on, pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single(); if (error) { event.preventDefault(); return console.error(error); } renderRecovery(data); $("#recovery-notes").value = ""; publishDataChange("recovery"); });
+  $("#save-recovery")?.addEventListener("click", async (event) => { const pain = Number($("#recovery-pain").value), swelling = Number($("#recovery-swelling").value), logged_on = $("#recovery-logged-on").value || easternDateKey(); if (!Number.isInteger(pain) || !Number.isInteger(swelling) || pain < 0 || pain > 10 || swelling < 0 || swelling > 10 || !logged_on) return event.preventDefault(); const { data, error } = await client.from("recovery_logs").insert({ logged_on, pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single(); if (error) { event.preventDefault(); return console.error(error); } renderRecovery(data); $("#recovery-notes").value = ""; publishDataChange("recovery"); });
 }
 
 window.addEventListener("aegis:open-mission", (event) => {
@@ -248,7 +248,10 @@ document.addEventListener("click", (event) => {
   if (typeof window.AEGIS_SCHEDULE_MISSION === "function") window.AEGIS_SCHEDULE_MISSION(button.dataset.scheduleMission);
 });
 
-bindDialogs(); renderMissions(); renderCommandMissions(); renderRecovery();
+// Paint the mission ledger before optional dialog wiring. A missing optional
+// control must never leave Active / Completed invisible.
+renderMissions(); renderCommandMissions(); renderRecovery();
+bindDialogs();
 
 if (cloudReady) {
   client = createClient(config.supabaseUrl, config.supabaseAnonKey);
