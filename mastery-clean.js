@@ -421,7 +421,17 @@ function openFitnessDialog(type, existing = null, editKind = "") {
        const matching = [...list.querySelectorAll(".exercise-row")].filter(row => row.querySelector('[name="exercise_name"]')?.value.trim().toLowerCase() === exerciseName);
        const nextNumber = matching.reduce((max, row) => Math.max(max, Number(row.dataset.setNumber || 0)), 0) + 1;
        const clone = source.cloneNode(true);
-       clone.dataset.setNumber = nextNumber;
+       // cloneNode copies markup defaults, not the live values the user just entered.
+       // Copy each field explicitly so the new set starts as an exact duplicate.
+       const sourceFields = [...source.querySelectorAll("input, select, textarea")];
+       const cloneFields = [...clone.querySelectorAll("input, select, textarea")];
+       sourceFields.forEach((field, index) => {
+         const copy = cloneFields[index];
+         if (!copy) return;
+         if (field.type === "checkbox" || field.type === "radio") copy.checked = field.checked;
+         else copy.value = field.value;
+       });
+       clone.dataset.setNumber = String(nextNumber);
        clone.querySelector("[data-set-number-label]").textContent = nextNumber;
        source.after(clone);
        syncResistanceFields(clone);
