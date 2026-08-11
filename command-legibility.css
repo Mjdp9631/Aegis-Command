@@ -82,6 +82,41 @@
   background: rgba(2, 10, 19, .13);
   backdrop-filter: blur(1px) saturate(106%);
 }
+
+/* Keep the Command Center radar itself unchanged; move its numeric readout
+   beside the radar so it no longer competes with the hexagon. */
+#command .readiness-dial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: left;
+  padding: 10px 14px;
+}
+#command .readiness-dial .character-radar {
+  position: relative;
+  inset: auto;
+  flex: 0 0 132px;
+  width: 132px;
+  transform: none;
+}
+#command .readiness-dial .readiness-readout {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 4px;
+  min-width: 82px;
+  margin: 0;
+  text-align: left;
+}
+#command .readiness-dial .readiness-readout > span { margin: 0; color: rgba(140, 185, 226, .72); font-size: 8px; letter-spacing: .12em; }
+#command .readiness-dial .readiness-readout strong { position: static; font-size: 25px; line-height: 1; }
+#command .readiness-dial .readiness-readout small { margin: 0; font-size: 9px; }
+@media (max-width: 760px) {
+  #command .readiness-dial { gap: 8px; padding: 8px 10px; }
+  #command .readiness-dial .character-radar { flex-basis: 112px; width: 112px; }
+  #command .readiness-dial .readiness-readout strong { font-size: 22px; }
+}
 #detective.active .trade-panel td {
   color: rgba(231, 243, 255, .94);
   font-size: 16px;
