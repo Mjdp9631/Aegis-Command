@@ -15,12 +15,8 @@
 .character-radar-axis { stroke: rgba(141, 183, 222, .15); stroke-width: .45; }
 .character-radar-data { fill: rgba(110, 183, 255, .22); stroke: #73c1ff; stroke-width: 1.2; filter: drop-shadow(0 0 5px rgba(110, 183, 255, .35)); }
 .character-radar-level { cursor: pointer; outline: none; }
-.character-radar-spoke { stroke: rgba(141, 183, 222, .18); stroke-width: .45; transition: stroke .2s, stroke-width .2s; }
-.character-radar-dot { fill: #73c1ff; stroke: #d9f0ff; stroke-width: .55; transition: r .2s, fill .2s, filter .2s; }
 .character-radar-hit { fill: transparent; pointer-events: all; }
 .character-radar-label { fill: #8fa6c0; font-size: 3.4px; font-weight: 800; letter-spacing: .08em; transition: fill .2s, font-size .2s, filter .2s; pointer-events: auto; cursor: pointer; }
-.character-radar-level:hover .character-radar-spoke, .character-radar-level.is-highlighted .character-radar-spoke { stroke: var(--amber); stroke-width: 1.1; }
-.character-radar-level:hover .character-radar-dot, .character-radar-level.is-highlighted .character-radar-dot { fill: var(--amber); r: 3.4; filter: drop-shadow(0 0 4px rgba(228, 173, 99, .85)); }
 .character-radar-level:hover .character-radar-label, .character-radar-level.is-highlighted .character-radar-label { fill: #fff1d7; font-size: 3.8px; filter: drop-shadow(0 0 3px rgba(228, 173, 99, .8)); }
 .character-hexagon-readout { display: grid; justify-items: center; text-align: center; margin-top: -2px; }
 .character-hexagon-readout span { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .13em; }
@@ -56,8 +52,8 @@
 .character-radar-axis { stroke: rgba(141, 183, 222, .2); }
 .character-radar-brackets { fill: none; stroke: rgba(239, 181, 79, .72); stroke-width: .7; stroke-linecap: square; filter: drop-shadow(0 0 3px rgba(239, 181, 79, .45)); }
 .character-radar-data { fill: rgba(126, 74, 20, .24); stroke: #d28b2d; stroke-width: .9; filter: drop-shadow(0 0 4px rgba(190, 123, 37, .32)); }
-.character-radar-node { fill: #b87422; stroke: rgba(24, 15, 8, .92); stroke-width: .75; filter: drop-shadow(0 0 2px rgba(171, 105, 27, .5)); transform-origin: center; }
+.character-radar-node { fill: #b87422; stroke: rgba(24, 15, 8, .92); stroke-width: .75; filter: drop-shadow(0 0 2px rgba(171, 105, 27, .5)); transform-box: fill-box; transform-origin: center; transition: fill .16s, transform .16s, filter .16s; }
 .character-radar-hit { fill: transparent; pointer-events: all; }
-.character-radar-level:hover .character-radar-node, .character-radar-level.is-highlighted .character-radar-node { fill: #d28b2d; stroke: #17100a; filter: drop-shadow(0 0 3px rgba(210, 139, 45, .72)); r: 2.1; }
+.character-radar-level:hover .character-radar-node, .character-radar-level.is-highlighted .character-radar-node { fill: #d28b2d; stroke: #17100a; filter: drop-shadow(0 0 3px rgba(210, 139, 45, .72)); transform: scale(1.28); }
 .character-radar-core-ring { fill: rgba(4, 14, 24, .7); stroke: rgba(110, 183, 255, .72); stroke-width: .65; }
 .character-radar-core { fill: #b87422; filter: drop-shadow(0 0 3px rgba(171, 105, 27, .65)); }
