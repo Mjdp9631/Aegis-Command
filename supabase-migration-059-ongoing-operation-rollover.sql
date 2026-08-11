@@ -20,7 +20,7 @@ begin
   ) then
     alter table public.operations
       add constraint operations_status_check
-      check (status in ('Queued', 'Scheduled', 'Ongoing', 'Complete'));
+      check (status in ('Queued', 'Scheduled', 'Ongoing', 'Complete', 'Missed'));
   end if;
 end $$;
 

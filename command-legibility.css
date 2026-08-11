@@ -30,6 +30,10 @@
   border-color: rgba(255, 141, 129, .78);
   opacity: 1;
 }
+.operation-status.missed {
+  color: #ff8d81;
+  border-color: rgba(255, 141, 129, .35);
+}
 /* Department headings should scroll with their tab content. Keep only local
    table/list headers sticky when the component itself needs orientation. */
 .view.active:not(#command) > .section-intro {

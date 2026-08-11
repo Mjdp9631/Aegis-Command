@@ -1,6 +1,6 @@
 alter table public.operations
   add column if not exists status text not null default 'Queued'
-  check (status in ('Queued', 'Scheduled', 'Ongoing', 'Complete'));
+  check (status in ('Queued', 'Scheduled', 'Ongoing', 'Complete', 'Missed'));
 
 update public.operations
 set status = 'Complete'

@@ -7,7 +7,7 @@ create table if not exists public.operation_occurrences (
   occurrence_date date not null,
   scheduled_time time,
   status text not null default 'Scheduled'
-    check (status in ('Queued', 'Scheduled', 'Ongoing', 'Complete')),
+    check (status in ('Queued', 'Scheduled', 'Ongoing', 'Complete', 'Missed')),
   completed boolean not null default false,
   completed_on date,
   created_at timestamptz not null default now(),

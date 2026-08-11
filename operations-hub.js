@@ -125,7 +125,7 @@ const saveCachedOperations = () => localStorage.setItem(operationsCacheKey(), JS
 const esc = (value = "") => String(value).replace(/[&<>\"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 // Claim the queue before legacy dashboard code has a chance to repaint it.
 window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
-const statusOrder = ["Queued", "Scheduled", "Ongoing", "Complete"];
+const statusOrder = ["Queued", "Scheduled", "Ongoing", "Complete", "Missed"];
 const LONG_RUNNING_OPERATION_DAYS = 3;
 const priorityFor = (category) => category === "Recovery" || category === "Trading" ? "High" : "Medium";
 const dateOnly = (value) => value ? String(value).slice(0, 10) : "";
@@ -356,7 +356,7 @@ function operationInstances() {
       // Before migration 044 is run, retain a safe single display instance;
       // after it runs, every scheduled date gets its own durable row.
       const first = recurringDateKeys(operation, 0)[0];
-      if (first) instances.push(ongoingDisplayOperation(completedDisplayOperation({ ...operation, id: `virtual:${operation.id}:${first}`, _series: operation, _occurrence: { occurrence_date: first }, scheduled_date: first, status: operation.status, completed: operation.completed })));
+      if (first) instances.push(ongoingDisplayOperation(completedDisplayOperation({ ...operation, id: `virtual:${operation.id}:${first}`, _series: operation, _occurrence: { occurrence_date: first, status_override: false }, scheduled_date: first, status: operation.status, completed: operation.completed })));
       return;
     }
     rows.forEach((row) => instances.push(ongoingDisplayOperation(completedDisplayOperation({
@@ -369,6 +369,7 @@ function operationInstances() {
       status: row.status || "Scheduled",
       completed: Boolean(row.completed),
       completed_on: row.completed_on || null,
+      status_override: Boolean(row.status_override),
     }))));
   });
   return instances;
@@ -436,7 +437,7 @@ async function loadOccurrences() {
     // A completed cloud occurrence is authoritative. An older browser can
     // still have a stale queued/missed cache entry with a later local stamp;
     // never let that stale cache undo a completion made elsewhere.
-    if (Boolean(remote.completed) || String(remote.status || "").toLowerCase() === "complete") continue;
+    if ((Boolean(remote.completed) || String(remote.status || "").toLowerCase() === "complete") && !row.status_override) continue;
     // Authenticated browsers use Supabase as the shared source of truth. If a
     // cached row has a newer explicit click than the remote snapshot, first
     // reconcile that pending click to Supabase; otherwise the remote row wins.
@@ -444,7 +445,7 @@ async function loadOccurrences() {
     const remoteStamp = Date.parse(remote.updated_at || remote.created_at || 0) || 0;
     if (localStamp > remoteStamp && row.id) {
       const { data: synced, error: syncError } = await client.from("operation_occurrences")
-        .update({ status: row.status, completed: Boolean(row.completed), completed_on: row.completed_on || null, updated_at: new Date().toISOString() })
+        .update({ status: row.status, completed: Boolean(row.completed), completed_on: row.completed_on || null, status_override: Boolean(row.status_override), updated_at: new Date().toISOString() })
         .eq("id", row.id)
         .eq("user_id", currentUser.id)
         .select()
@@ -454,6 +455,51 @@ async function loadOccurrences() {
   }
   operationOccurrences = [...merged.values()];
   saveCachedOccurrences();
+}
+
+async function markExpiredOperationsMissed() {
+  const today = operatingDayKey();
+  if (!today) return false;
+  const changedOperations = operations.filter((operation) => {
+    if (scheduleMode(operation) !== "one_time" || operation.status_override) return false;
+    const date = dateOnly(operation.scheduled_date || operation.operation_date);
+    const status = String(operation.status || "").toLowerCase();
+    return Boolean(date && date < today && !operation.completed && status !== "complete" && status !== "ongoing" && status !== "missed");
+  });
+  const changedOccurrences = operationOccurrences.filter((occurrence) => {
+    const date = dateOnly(occurrence.occurrence_date);
+    const status = String(occurrence.status || "").toLowerCase();
+    return Boolean(date && date < today && !occurrence.status_override && !occurrence.completed && status !== "complete" && status !== "ongoing" && status !== "missed");
+  });
+  if (!changedOperations.length && !changedOccurrences.length) return false;
+
+  changedOperations.forEach((operation) => Object.assign(operation, {
+    status: "Missed",
+    completed: false,
+    completed_on: null,
+    status_override: false,
+  }));
+  changedOccurrences.forEach((occurrence) => Object.assign(occurrence, {
+    status: "Missed",
+    completed: false,
+    completed_on: null,
+    status_override: false,
+  }));
+  saveCachedOperations();
+  saveCachedOccurrences();
+
+  if (!client || !currentUser) return true;
+  const writes = [
+    ...changedOperations.filter((operation) => operation.id && !String(operation.id).startsWith("local-")).map((operation) =>
+      client.from("operations").update({ status: "Missed", completed: false, completed_on: null, status_override: false, updated_at: new Date().toISOString() }).eq("id", operation.id).eq("user_id", currentUser.id)
+    ),
+    ...changedOccurrences.filter((occurrence) => occurrence.id).map((occurrence) =>
+      client.from("operation_occurrences").update({ status: "Missed", completed: false, completed_on: null, status_override: false, updated_at: new Date().toISOString() }).eq("id", occurrence.id).eq("user_id", currentUser.id)
+    ),
+  ];
+  const results = await Promise.all(writes);
+  results.filter((result) => result.error).forEach((result) => console.warn("Could not mark expired operation Missed", result.error.message));
+  return true;
 }
 
 async function ensureRecurringOccurrences() {
@@ -510,6 +556,7 @@ async function refreshDurableOperationState() {
     if (!remoteOccurrences.length && operationOccurrences.length) return;
     operations = remoteOperations;
     operationOccurrences = remoteOccurrences;
+    await markExpiredOperationsMissed();
     await rollOverOngoingOperations();
     await reconcileRecurringCompletion();
     saveCachedOperations();
@@ -577,15 +624,24 @@ function isDayOfOperation(operation, day = operatingDayKey()) {
 
 function displayStatus(operation, day = operatingDayKey()) {
   const status = normalizedStatus(operation);
+  if (status === "Complete" || status === "Ongoing" || status === "Missed") return status;
+  const operationDay = dateOnly(operation?._occurrence?.occurrence_date || operation?.scheduled_date || operation?.operation_date);
+  const manuallyOverridden = Boolean(operation?.status_override || operation?._occurrence?.status_override);
+  // A non-ongoing operation that was left behind its scheduled day becomes
+  // Missed automatically. Keep this derived fallback for offline/cache-first
+  // renders; the durable reconciliation below writes the same state to both
+  // the operation and its occurrence row.
+  if (operationDay && operatingDayKey() && operationDay < operatingDayKey() && !manuallyOverridden) return "Missed";
   // A schedule is already visible in its own column. Once its date arrives,
   // present it as actionable queued work instead of adding a redundant state.
   return status === "Scheduled" && isDayOfOperation(operation, day) ? "Queued" : status;
 }
 
 function statusOptionsFor(operation, day = operatingDayKey()) {
-  return isDayOfOperation(operation, day)
-    ? ["Queued", "Ongoing", "Complete"]
-    : statusOrder;
+  const operationDay = dateOnly(operation?._occurrence?.occurrence_date || operation?.scheduled_date || operation?.operation_date);
+  const isHistorical = operationDay && operatingDayKey() && operationDay < operatingDayKey();
+  if (isDayOfOperation(operation, day) && !isHistorical) return ["Queued", "Ongoing", "Complete"];
+  return statusOrder;
 }
 
 function statusControlMarkup(operation, day = operatingDayKey(), key = operation.id || operation.title) {
@@ -762,7 +818,7 @@ function mergeSavedStatus(remote = []) {
     if (localStamp <= remoteStamp) return operation;
     // A completion received from Supabase must not be overwritten by a stale
     // browser cache that still thinks the operation is queued or missed.
-    if (Boolean(operation.completed) || String(operation.status || "").toLowerCase() === "complete") return operation;
+    if ((Boolean(operation.completed) || String(operation.status || "").toLowerCase() === "complete") && !local.status_override) return operation;
     // A local schedule or status edit is newer than the cloud snapshot.
     // Overlay only mutable execution fields; identity and ownership remain
     // cloud-owned.
@@ -775,6 +831,7 @@ function mergeSavedStatus(remote = []) {
       status: local.status || operation.status,
       completed: Boolean(local.completed),
       completed_on: local.completed_on || null,
+      status_override: Boolean(local.status_override),
       local_updated_at: local.local_updated_at,
     };
   });
@@ -813,7 +870,7 @@ async function reconcileCachedOperationEdits(remote = []) {
   const pending = remote.filter((operation) => {
     const local = cachedById.get(String(operation.id));
     if (!local?.local_updated_at) return false;
-    if (Boolean(operation.completed) || String(operation.status || "").toLowerCase() === "complete") return false;
+    if ((Boolean(operation.completed) || String(operation.status || "").toLowerCase() === "complete") && !local.status_override) return false;
     const localStamp = Date.parse(local.local_updated_at) || Number(local.local_updated_at) || 0;
     const remoteStamp = Date.parse(operation.updated_at || operation.created_at) || 0;
     return localStamp > remoteStamp;
@@ -830,6 +887,7 @@ async function reconcileCachedOperationEdits(remote = []) {
         status: local.status || operation.status,
         completed: Boolean(local.completed),
         completed_on: local.completed_on || null,
+        status_override: Boolean(local.status_override),
         updated_at: new Date().toISOString(),
       })
       .eq("id", operation.id)
@@ -1100,6 +1158,7 @@ async function persist(operation) {
         status: operation.status,
         completed: Boolean(operation.completed),
         completed_on: operation.completed_on || null,
+        status_override: Boolean(operation.status_override ?? operation._occurrence.status_override),
         started_on: operation.started_on || operation._occurrence.started_on || null,
         last_rollover_on: operation.last_rollover_on || operation._occurrence.last_rollover_on || null,
         rollover_count: Number(operation.rollover_count ?? operation._occurrence.rollover_count ?? 0),
@@ -1110,7 +1169,7 @@ async function persist(operation) {
       .eq("user_id", currentUser.id)
       .select()
       .single();
-    if (error && /column|schema cache|rollover/i.test(String(error.message || ""))) {
+    if (error && /column|schema cache|rollover|status_override/i.test(String(error.message || ""))) {
       ({ data, error } = await client.from("operation_occurrences")
         .update({ status: operation.status, completed: Boolean(operation.completed), completed_on: operation.completed_on || null, scheduled_time: operation.scheduled_time || null, updated_at: new Date().toISOString() })
         .eq("id", operation._occurrence.id)
@@ -1134,6 +1193,7 @@ async function persist(operation) {
       status: operation.status,
       completed: Boolean(operation.completed),
       completed_on: operation.completed_on || null,
+      status_override: Boolean(operation.status_override),
       started_on: operation.started_on || null,
       last_rollover_on: operation.last_rollover_on || null,
       rollover_count: Number(operation.rollover_count || 0),
@@ -1142,8 +1202,9 @@ async function persist(operation) {
       .upsert(occurrencePayload, { onConflict: "operation_id,occurrence_date" })
       .select()
       .single();
-    if (error && /column|schema cache|rollover/i.test(String(error.message || ""))) {
+    if (error && /column|schema cache|rollover|status_override/i.test(String(error.message || ""))) {
       const legacyPayload = { ...occurrencePayload };
+      delete legacyPayload.status_override;
       delete legacyPayload.started_on;
       delete legacyPayload.last_rollover_on;
       delete legacyPayload.rollover_count;
@@ -1177,6 +1238,7 @@ async function persist(operation) {
     status: operation.status,
     completed: operation.completed,
     completed_on: operation.completed_on || null,
+    status_override: Boolean(operation.status_override),
     started_on: operation.started_on || null,
     last_rollover_on: operation.last_rollover_on || null,
     rollover_count: Number(operation.rollover_count || 0),
@@ -1201,8 +1263,9 @@ async function persist(operation) {
     ? client.from("operations").insert(payload).select().single()
     : client.from("operations").update(payload).eq("id", operation.id).eq("user_id", currentUser.id).select().single();
   let { data, error } = await request;
-  if (error && /column|schema cache|rollover/i.test(String(error.message || ""))) {
+  if (error && /column|schema cache|rollover|status_override/i.test(String(error.message || ""))) {
     const legacyPayload = { ...payload };
+    delete legacyPayload.status_override;
     delete legacyPayload.started_on;
     delete legacyPayload.last_rollover_on;
     delete legacyPayload.rollover_count;
@@ -1341,14 +1404,9 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
   const operation = findOperation(key);
   if (!operation) return;
   const next = String(requestedStatus || "").trim();
-  if (next === "Missed") {
-    renderQueue();
-    renderCalendar();
-    return;
-  }
   if (!statusOrder.includes(next)) return;
   const gate = morningGate(operation);
-  if (gate?.state === "expired" && next !== "Complete") {
+  if (gate?.state === "expired" && !["Missed", "Complete"].includes(next)) {
     renderQueue();
     renderCalendar();
     return;
@@ -1356,8 +1414,13 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
   const sourceOperation = operation._base || operation;
   const currentStatus = displayStatus(operation, selectedDay || operatingDayKey());
   const wasComplete = normalizedStatus(operation) === "Complete" || currentStatus === "Complete";
-  Object.assign(operation, { status: next, completed: next === "Complete" });
-  if (sourceOperation !== operation) Object.assign(sourceOperation, { status: next, completed: next === "Complete" });
+  const nextCompleted = next === "Complete";
+  Object.assign(operation, { status: next, completed: nextCompleted, status_override: true });
+  if (sourceOperation !== operation) Object.assign(sourceOperation, { status: next, completed: nextCompleted, status_override: true });
+  // The rendered recurring instance is a copy of its durable occurrence.
+  // Update that row before the first repaint, otherwise normalizedStatus()
+  // sees the old Complete flag and immediately locks the select again.
+  if (operation._occurrence) Object.assign(operation._occurrence, { status: next, completed: nextCompleted, status_override: true });
   if (next === "Ongoing") {
     const today = operatingDayKey();
     const started = ongoingStartDay(operation, dateOnly(selectedDay) || today);
@@ -1373,9 +1436,11 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
     const completionDay = dateOnly(operation._occurrence?.occurrence_date || operation.scheduled_date || operation.operation_date || selectedDay) || operatingDayKey();
     operation.completed_on = completionDay;
     if (sourceOperation !== operation) sourceOperation.completed_on = completionDay;
-  } else if (wasComplete) {
+    if (operation._occurrence) operation._occurrence.completed_on = completionDay;
+  } else if (wasComplete || next === "Missed") {
     operation.completed_on = null;
     if (sourceOperation !== operation) sourceOperation.completed_on = null;
+    if (operation._occurrence) operation._occurrence.completed_on = null;
   }
   const series = operation._series || operation;
   attachMissionLink(series);
@@ -1403,6 +1468,7 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
     operations = await seedIfEmpty();
     await loadOccurrences();
     await ensureRecurringOccurrences();
+    await markExpiredOperationsMissed();
     await rollOverOngoingOperations();
     await reconcileRecurringCompletion();
     await reconcileMeasuredMissionCounts();
@@ -1485,6 +1551,7 @@ async function cycleStatus(key, forcedStatus = null) {
     operations = await seedIfEmpty();
     await loadOccurrences();
     await ensureRecurringOccurrences();
+    await markExpiredOperationsMissed();
     await rollOverOngoingOperations();
     await reconcileRecurringCompletion();
     await reconcileMeasuredMissionCounts();
@@ -2076,6 +2143,7 @@ async function boot() {
     await syncDailyReadingOperation();
     await loadOccurrences();
     await ensureRecurringOccurrences();
+    await markExpiredOperationsMissed();
     await reconcileRecurringCompletion();
     await reconcileMeasuredMissionCounts();
     subscribeToOperationSync();
