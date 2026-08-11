@@ -21,3 +21,7 @@
 @media(max-width:850px){.account-group-account-form{grid-template-columns:1fr}}
 .group-admin-actions{align-self:end}
 @media(max-width:850px){.group-admin-actions{justify-self:start}}
+.account-group-header{flex-wrap:wrap;align-items:center}
+.account-group-header>div:first-child{min-width:0;flex:1 1 240px}
+.account-group-total,.account-group-status-details,.group-admin-actions{position:relative;z-index:1;flex:0 0 auto}
+.group-admin-actions{align-self:center;margin-left:auto}
