@@ -206,7 +206,7 @@ function calculatedBalance(account) {
 }
 
 function accountProfit(account) {
-  return cents(calculatedBalance(account) - Number(account.starting_balance || 0) - accountDepositTotal(account.id) + accountWithdrawalTotal(account.id));
+  return cents(calculatedBalance(account) - Number(account.starting_balance || 0) - accountDepositTotal(account.id));
 }
 
 function updateAccountSelect() {
