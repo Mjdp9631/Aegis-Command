@@ -166,8 +166,9 @@ function accountGroupAccounts(groupId) {
 
 function groupLinksForAccount(accountId) {
   return groupTradeLinks.filter((link) => {
-    const trade = loadedTrades.find((item) => item.id === link.trade_id);
-    return trade && membershipAt(accountId, trade.traded_at || trade.created_at)?.group_id === link.group_id;
+    // A group link is an allocation made now, so historical journal dates must
+    // not prevent an account from receiving its share of the linked PnL.
+    return membershipAt(accountId, link.created_at || new Date().toISOString())?.group_id === link.group_id;
   });
 }
 
