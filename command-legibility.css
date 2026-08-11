@@ -59,6 +59,29 @@
   font-size: 20px;
   text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
 }
+
+/* Special Projects and Character Systems should expose their tab artwork as
+   part of the workspace, while retaining enough contrast for live data. */
+#enterprise.active .metric,
+#enterprise.active .panel,
+#character.active .panel,
+#character.active .metric,
+#character.active .stat-grid article,
+#character.active .character-focus-stat {
+  background: linear-gradient(135deg, rgba(7, 18, 31, .12), rgba(4, 12, 22, .035)) !important;
+  backdrop-filter: blur(1px) saturate(108%);
+}
+
+/* The journal can stay open to the desk scene because hover focus supplies
+   the extra contrast for the trade currently being inspected. */
+#detective.active .trade-panel {
+  background: linear-gradient(135deg, rgba(7, 18, 31, .08), rgba(4, 12, 22, .025)) !important;
+  backdrop-filter: blur(1px) saturate(106%);
+}
+#detective.active .trade-panel tbody tr:not(.empty-row) {
+  background: rgba(2, 10, 19, .13);
+  backdrop-filter: blur(1px) saturate(106%);
+}
 #detective.active .trade-panel td {
   color: rgba(231, 243, 255, .94);
   font-size: 16px;
