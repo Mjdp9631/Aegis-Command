@@ -607,8 +607,8 @@ function normalizedStatus(operation) {
   if (operationCompletion && (!operationDay || operationCompletion === operationDay)) return "Complete";
   const series = operation?._series;
   const instanceDay = operationDay;
-  if (series && series !== operation && (Boolean(series.completed) || String(series.status || "").toLowerCase() === "complete") && dateOnly(series.completed_on || series.local_completed_on) === instanceDay) return "Complete";
-  if (series?.id) {
+  if (series && series !== operation && !operation?._occurrence?.status_override && (Boolean(series.completed) || String(series.status || "").toLowerCase() === "complete") && dateOnly(series.completed_on || series.local_completed_on) === instanceDay) return "Complete";
+  if (series?.id && !operation?._occurrence?.status_override) {
     const matchingOccurrence = operationOccurrences.find((row) => String(row.operation_id) === String(series.id) && dateOnly(row.occurrence_date) === instanceDay);
     if (matchingOccurrence && (Boolean(matchingOccurrence.completed) || String(matchingOccurrence.status || "").toLowerCase() === "complete")) return "Complete";
   }
@@ -1415,6 +1415,8 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
   const currentStatus = displayStatus(operation, selectedDay || operatingDayKey());
   const wasComplete = normalizedStatus(operation) === "Complete" || currentStatus === "Complete";
   const nextCompleted = next === "Complete";
+  const series = operation._series || operation;
+  let seriesNeedsPersistence = false;
   Object.assign(operation, { status: next, completed: nextCompleted, status_override: true });
   if (sourceOperation !== operation) Object.assign(sourceOperation, { status: next, completed: nextCompleted, status_override: true });
   // The rendered recurring instance is a copy of its durable occurrence.
@@ -1442,7 +1444,21 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
     if (sourceOperation !== operation) sourceOperation.completed_on = null;
     if (operation._occurrence) operation._occurrence.completed_on = null;
   }
-  const series = operation._series || operation;
+  // A recurring parent is a schedule, not an individual completion. Older
+  // status writes could leave the parent marked Complete, and that stale
+  // stamp would make a corrected occurrence appear Complete again after a
+  // reload. Clear and persist it whenever this occurrence is moved away from
+  // Complete.
+  if (series !== operation && operation._occurrence?.id && next !== "Complete"
+    && (Boolean(series.completed) || String(series.status || "").toLowerCase() === "complete")) {
+    Object.assign(series, {
+      status: series.status === "Complete" ? "Scheduled" : series.status,
+      completed: false,
+      completed_on: null,
+      status_override: true,
+    });
+    seriesNeedsPersistence = true;
+  }
   attachMissionLink(series);
   if (series !== operation) {
     operation.mission_id = series.mission_id;
@@ -1457,6 +1473,7 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
   renderQueue();
   renderCalendar();
   const saved = await persist(operation);
+  if (saved && seriesNeedsPersistence) await persist(series);
   if (!saved) {
     window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "operations-hub", operations, offline: true } }));
     return;
