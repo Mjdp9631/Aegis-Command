@@ -421,6 +421,8 @@ function openFitnessDialog(type, existing = null, editKind = "") {
   if (type === "Gym") dialog.innerHTML = `<form class="dialog-card mastery-form fitness-form" data-fitness-mode="gym"><button class="dialog-close" type="button">×</button><p class="eyebrow green-text">GYM LOG</p><h2>Record the work.</h2><p class="schedule-copy">Each line becomes training evidence. AEGIS compares the same exercise over time for load, reps, and total volume.</p><label>Workout split<select name="workout_split" required><option>Legs</option><option>Push</option><option>Pull</option><option>Upper Body</option><option>Lower Body</option><option>Recovery-safe mobility</option></select></label><label>Session note <span class="field-optional">optional</span><textarea name="notes" placeholder="Energy, pain, form cue, or anything worth tracking."></textarea></label><div class="form-subhead"><b>Exercise sets</b><button class="ghost compact" type="button" data-add-exercise>+ Add exercise</button></div><div class="exercise-list">${gymSetRow()}</div><button class="primary" type="submit">Save gym session</button></form>`;
   else dialog.innerHTML = `<form class="dialog-card mastery-form fitness-form" data-fitness-mode="health"><button class="dialog-close" type="button">×</button><p class="eyebrow green-text">HEALTH LOG</p><h2>Capture the signal.</h2><p class="schedule-copy">Enter a food and quantity. AEGIS will estimate calories and macros; review the assumptions before saving.</p><div class="health-weight-grid"><label>AM weight (lb) <span class="field-optional">optional</span><input name="am_weight" type="number" min="1" step="0.1" /></label><label>PM weight (lb) <span class="field-optional">optional</span><input name="pm_weight" type="number" min="1" step="0.1" /></label></div><div class="form-subhead"><b>Food intake · auto-estimated</b><button class="ghost compact" type="button" data-add-food>+ Add food</button></div><div class="food-list">${foodRow()}</div><label>Health note <span class="field-optional">optional</span><textarea name="notes" placeholder="Sleep, hydration, appetite, recovery, or a pattern worth remembering."></textarea></label><button class="primary" type="submit">Save health log</button></form>`;
   dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
+  const logDate = existing ? sessionLoggedDay(existing) : easternDateKey();
+  dialog.querySelector("form")?.insertAdjacentHTML("afterbegin", `<label>Log date<input name="logged_on" type="date" value="${escapeHtml(logDate)}" required /></label>`);
   dialog.querySelector("[data-add-exercise]")?.addEventListener("click", () => dialog.querySelector(".exercise-list").insertAdjacentHTML("beforeend", gymSetRow()));
   dialog.querySelector("[data-add-food]")?.addEventListener("click", () => dialog.querySelector(".food-list").insertAdjacentHTML("beforeend", foodRow()));
   dialog.onclick = event => {
@@ -562,7 +564,7 @@ async function saveFitnessLog(event) {
   if (!userId) return alert("Your session has expired. Please sign in again.");
   const editId = form.dataset.editId || "";
   const editKind = form.dataset.editKind || "";
-  const loggedOn = form.dataset.editLoggedOn || easternDateKey();
+  const loggedOn = String(data.get("logged_on") || form.dataset.editLoggedOn || easternDateKey()).slice(0, 10);
   try {
     if (mode === "gym") {
       const workoutSplit = String(data.get("workout_split") || "").trim();
