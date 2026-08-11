@@ -2025,11 +2025,10 @@ function ensurePermanentMissionCalendar() {
   panel.append(shell);
   const missionCards = missionsView.querySelector("#mission-cards");
   const phaseProtocol = missionsView.querySelector("#phase-protocol");
-  // Keep the mission board immediately visible after the phase protocol.
-  // The calendar is a supporting schedule surface and should not bury the
-  // Active / Completed mission controls below a large month view.
-  if (missionCards) missionCards.after(panel);
-  else if (phaseProtocol) phaseProtocol.after(panel);
+  // Keep the Active / Completed mission ledger first, the roadmap/directives
+  // second, and the calendar below both surfaces.
+  if (phaseProtocol) phaseProtocol.after(panel);
+  else if (missionCards) missionCards.after(panel);
   else missionsView.append(panel);
   dialog.remove();
   $("#open-operations-calendar")?.remove();
