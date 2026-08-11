@@ -178,9 +178,15 @@ function openEditor(dialog, mission) {
 
 async function loadData() {
   if (!session || !client) return;
-  const { data, error } = await client.from("missions").select("*").order("created_at", { ascending: false });
+  let { data, error } = await client.from("missions").select("*").order("created_at", { ascending: false });
+  // A legacy missions table may not expose the ordering column even though
+  // the rows themselves are readable. Keep the data path resilient to that
+  // older schema while preserving the normal newest-first ordering.
+  if (error) ({ data, error } = await client.from("missions").select("*"));
   if (error) {
     console.error("Could not load missions", error);
+    const target = $("#mission-cards");
+    if (target) target.querySelector("[data-mission-list]")?.replaceChildren(Object.assign(document.createElement("article"), { className: "mission-card", innerHTML: `<h3>Mission sync unavailable.</h3><small>${escape(error.message || "Supabase could not return mission records.")}</small>` }));
     return;
   }
   missions = (data || []).map(normalize);
