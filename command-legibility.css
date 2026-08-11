@@ -68,8 +68,8 @@
 #character.active .metric,
 #character.active .stat-grid article,
 #character.active .character-focus-stat {
-  background: linear-gradient(135deg, rgba(7, 18, 31, .12), rgba(4, 12, 22, .035)) !important;
-  backdrop-filter: blur(1px) saturate(108%);
+  background: rgba(3, 12, 22, .055) !important;
+  backdrop-filter: none !important;
 }
 
 /* The journal can stay open to the desk scene because hover focus supplies
