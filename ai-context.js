@@ -274,6 +274,7 @@
     const capabilityLogs = records.capabilityLogs || records.capabilitySkillLogs || [];
     const financialFoundation = Array.isArray(records.financialFoundation) ? records.financialFoundation[0] : (records.financialFoundation || records.financialFoundations?.[0] || null);
     const tradeReviews = records.tradeReviews || [];
+    const tradeReviewCorrections = records.tradeReviewCorrections || records.reviewCorrections || [];
     const scenarios = records.scenarios || records.tradeScenarios || [];
     const progressEvents = records.progressEvents || [];
     const feedback = records.feedback || records.recommendationFeedback || [];
@@ -314,6 +315,7 @@
     occurrences.forEach((item) => addEvidence("operation_occurrences", item, item.completed_on || item.occurrence_date, `${item.title || "Recurring operation"} occurrence`, { completed: Boolean(item.completed) }));
     trades.forEach((trade) => addEvidence("trade_debriefs", trade, trade.traded_at || trade.created_at, `${trade.pair || "Trade"} journaled`, { outcome: tradeOutcome(trade), plan_violation: Boolean(trade.plan_violation) }));
     tradeReviews.forEach((item) => addEvidence("trade_reviews", item, item.created_at || item.reviewed_at, "Trade review recorded"));
+    tradeReviewCorrections.forEach((item) => addEvidence("trade_review_corrections", item, item.created_at, "Director correction recorded", { area: item.correction_area, correction: item.correction }));
     scenarios.forEach((item) => addEvidence("ai_trade_scenarios", item, item.created_at || item.reviewed_at, "Blind AI scenario recorded", { result: item.scenario_result }));
     recovery.forEach((item) => addEvidence("recovery_logs", item, item.logged_on || item.created_at, "Recovery report logged"));
     mastery.forEach((item) => addEvidence("mastery_entries", item, item.created_at, item.title || "Mastery entry logged", { category: item.category }));
@@ -355,6 +357,7 @@
        deep_work: deepWork.slice(0, 12).map((item) => ({ evidence_id: evidenceId("deep_work_logs", idOf(item)), date: item.created_at || item.logged_on, area: item.area, focus: item.focus, minutes: item.duration_minutes, output: item.output })),
        mastery_challenges: challenges.slice(0, 12).map((item) => ({ evidence_id: evidenceId("mastery_challenges", idOf(item)), title: item.title, status: item.status, completed_at: item.completed_at })),
        trade_reviews: tradeReviews.slice(0, 12).map((item) => ({ evidence_id: evidenceId("trade_reviews", idOf(item)), date: item.created_at || item.reviewed_at, summary: item.summary || item.review || null })),
+       trade_review_corrections: tradeReviewCorrections.slice(0, 40).map((item) => ({ evidence_id: evidenceId("trade_review_corrections", idOf(item)), trade_review_id: item.trade_review_id || null, trade_id: item.trade_id || null, area: item.correction_area, correction: item.correction, chart_evidence: item.chart_evidence || null, created_at: item.created_at })),
        mission_progress_events: progressEvents.slice(0, 24).map((item) => ({ evidence_id: evidenceId("mission_progress_events", idOf(item)), mission_id: item.mission_id, metric: item.metric_key, quantity: item.quantity, occurred_at: item.occurred_at, source: item.source_type })),
        content_library: contentItems.slice(0, 12).map((item) => ({ evidence_id: evidenceId("content_items", idOf(item)), title: item.title, type: item.content_type || item.type, status: item.status })),
        director_review: directorReviews[0] ? { evidence_id: evidenceId("director_reviews", idOf(directorReviews[0])), quarter: directorReviews[0].quarter_key, wins: directorReviews[0].wins, bottlenecks: directorReviews[0].bottlenecks, standards: directorReviews[0].standards, next_focus: directorReviews[0].next_focus } : null,

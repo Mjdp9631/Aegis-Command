@@ -5,6 +5,7 @@ const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(con
 const $ = (selector) => document.querySelector(selector);
 let trades = [];
 let reviews = [];
+let corrections = [];
 let chainStep = 0;
 let chainAnswers = [];
 let chainTerminal = "";
@@ -48,7 +49,10 @@ function renderReview(review, entry = null) {
   const scenarioMarkup = scenario?.scenario_action ? `<div class="brain-scenario-readout"><h4>BLIND AI SCENARIO</h4><p><b>${esc(scenario.scenario_action)}</b> · ${esc(scenario.scenario_bias || "No directional bias established.")}</p><p>${esc(scenario.scenario_reason || "No scenario rationale returned.")}</p><small>Simulated PnL is tracked after review against the logged result; it never changes the blind call.</small></div>` : "";
   const evidenceButton = entry?.evidence_saved && Array.isArray(entry.evidence_paths) && entry.evidence_paths.length ? `<button type="button" class="secondary compact" data-open-review-evidence="${entry.id}">Open saved screenshots</button>` : "";
   const deleteButton = entry?.id ? `<button type="button" class="danger compact" data-delete-review="${entry.id}">Delete review</button>` : "";
-  return `<article class="brain-review-card"><div class="brain-review-card-head"><div><p class="eyebrow blue-text">SYSTEM AUDIT</p><h3>${esc(review.process_grade || "Process review")}</h3></div><span class="review-verdict ${verdictClass}">${esc(review.verdict || "Pending")}</span></div><p>${esc(review.executive_summary || "No summary returned.")}</p>${scenarioMarkup}<div class="review-columns"><div><h4>Observed evidence</h4><ul>${(review.observed_evidence || []).map((item) => `<li>${esc(item)}</li>`).join("") || "<li>No decisive evidence captured.</li>"}</ul></div><div><h4>Missing evidence</h4><ul>${(review.missing_evidence || []).map((item) => `<li>${esc(item)}</li>`).join("") || "<li>None identified.</li>"}</ul></div></div><div class="review-rules">${audit}</div><div class="thesis-compare"><h4>Thesis comparison</h4><p><b>Where it aligns:</b> ${(review.thesis_comparison?.matches || []).map(esc).join("; ") || "No alignment established."}</p><p><b>Correction:</b> ${esc(review.thesis_comparison?.correction || "No correction returned.")}</p></div><p class="review-focus"><b>Next review focus:</b> ${esc(review.next_review_focus || "Review the full evidence chain.")}</p><div class="brain-history-actions">${evidenceButton}${deleteButton}</div></article>`;
+  const reviewCorrections = entry?.id ? corrections.filter((item) => item.trade_review_id === entry.id) : [];
+  const correctionMarkup = reviewCorrections.length ? `<div class="review-corrections"><h4>Director corrections</h4>${reviewCorrections.map((item) => `<article><b>${esc(item.correction_area)}</b><p>${esc(item.correction)}</p>${item.chart_evidence ? `<small>Chart evidence: ${esc(item.chart_evidence)}</small>` : ""}</article>`).join("")}</div>` : "";
+  const correctionButton = entry?.id ? `<button type="button" class="secondary compact" data-correct-review="${entry.id}">Correct this review</button>` : "";
+  return `<article class="brain-review-card"><div class="brain-review-card-head"><div><p class="eyebrow blue-text">SYSTEM AUDIT</p><h3>${esc(review.process_grade || "Process review")}</h3></div><span class="review-verdict ${verdictClass}">${esc(review.verdict || "Pending")}</span></div><p>${esc(review.executive_summary || "No summary returned.")}</p>${scenarioMarkup}<div class="review-columns"><div><h4>Observed evidence</h4><ul>${(review.observed_evidence || []).map((item) => `<li>${esc(item)}</li>`).join("") || "<li>No decisive evidence captured.</li>"}</ul></div><div><h4>Missing evidence</h4><ul>${(review.missing_evidence || []).map((item) => `<li>${esc(item)}</li>`).join("") || "<li>None identified.</li>"}</ul></div></div><div class="review-rules">${audit}</div><div class="thesis-compare"><h4>Thesis comparison</h4><p><b>Where it aligns:</b> ${(review.thesis_comparison?.matches || []).map(esc).join("; ") || "No alignment established."}</p><p><b>Correction:</b> ${esc(review.thesis_comparison?.correction || "No correction returned.")}</p></div><p class="review-focus"><b>Next review focus:</b> ${esc(review.next_review_focus || "Review the full evidence chain.")}</p>${correctionMarkup}<div class="brain-history-actions">${correctionButton}${evidenceButton}${deleteButton}</div></article>`;
 }
 
 function renderHistory() {
@@ -61,8 +65,8 @@ function renderHistory() {
 async function loadReviewerData() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession(); if (!sessionData.session) return;
-  const [tradeResult, reviewResult, scenarioResult] = await Promise.all([supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }), supabase.from("trade_reviews").select("*, trade_debriefs(*)").order("created_at", { ascending: false }).limit(24), supabase.from("ai_trade_scenarios").select("*").order("created_at", { ascending: false }).limit(100)]);
-  trades = tradeResult.data || []; reviews = reviewResult.data || [];
+  const [tradeResult, reviewResult, scenarioResult, correctionResult] = await Promise.all([supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }), supabase.from("trade_reviews").select("*, trade_debriefs(*)").order("created_at", { ascending: false }).limit(24), supabase.from("ai_trade_scenarios").select("*").order("created_at", { ascending: false }).limit(100), supabase.from("trade_review_corrections").select("*").order("created_at", { ascending: false }).limit(100)]);
+  trades = tradeResult.data || []; reviews = reviewResult.data || []; corrections = correctionResult.error ? [] : (correctionResult.data || []);
   renderScenarioSummary(scenarioResult.error ? [] : (scenarioResult.data || []));
   const control = $("#brain-review-trade");
   if (control) control.innerHTML = '<option value="">Choose a journal trade number</option>' + trades.map((trade) => `<option value="${trade.id}">${esc(tradeLabel(trade))}</option>`).join("");
@@ -221,6 +225,23 @@ async function undoDeleteReview() {
   await loadReviewerData();
 }
 
+function openCorrectionDialog(entry) {
+  const trade = trades.find((item) => item.id === entry.trade_id);
+  const dialog = document.createElement("dialog");
+  dialog.innerHTML = `<form class="dialog-card mastery-form review-correction-form"><button class="dialog-close" type="button">×</button><p class="eyebrow amber">AI REVIEW CALIBRATION</p><h2>Correct the audit.</h2><p class="body-copy">The original review stays unchanged. This labeled correction is used to re-check the same visual pattern in future reviews.</p><label>Area<select name="correction_area"><option>Stop placement</option><option>Entry model</option><option>Both</option><option>Condition</option><option>Location</option><option>Confirmation</option><option>Other</option></select></label><label>What did the review get wrong?<textarea name="correction" required placeholder="Example: The stop was below the relevant low, and the chart showed a valid Type 3 entry."></textarea></label><label>Chart evidence <span class="field-optional">optional</span><textarea name="chart_evidence" placeholder="Describe the visible level, marker, or candle sequence that proves the correction."></textarea></label><button class="primary" type="submit">Save correction</button></form>`;
+  document.body.append(dialog);
+  dialog.querySelector(".dialog-close").onclick = () => { dialog.close(); dialog.remove(); };
+  dialog.querySelector("form").onsubmit = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const { error } = await supabase.from("trade_review_corrections").insert({ user_id: sessionData.session.user.id, trade_review_id: entry.id, trade_id: entry.trade_id || trade?.id || null, correction_area: String(form.get("correction_area")), correction: String(form.get("correction")).trim(), chart_evidence: String(form.get("chart_evidence") || "").trim() || null });
+    if (error) return alert(`Correction could not be saved: ${error.message}`);
+    dialog.close(); dialog.remove(); await loadReviewerData(); $("#brain-review-history-list").innerHTML = renderReview(entry.review_payload, entry);
+  };
+  dialog.showModal();
+}
+
 function reviewWriteup() {
   return {
     thesis: $("#brain-review-thesis")?.value.trim() || "",
@@ -244,7 +265,8 @@ async function runReview(event) {
     const screenshots = Object.fromEntries(await Promise.all(evidenceControls.map(async (input) => [input.dataset.reviewFrame, await compressImage(input.files[0])])));
     const noEntryReason = isTheoretical(trade) ? $("#brain-no-entry-reason").value.trim() : "";
     const writeup = reviewWriteup();
-    const response = await fetch("/api/trade-review", { method: "POST", headers: { "content-type":"application/json", authorization:`Bearer ${sessionData.session.access_token}` }, body: JSON.stringify({ trade, noEntryReason, writeup, screenshots }) });
+    const priorCorrections = corrections.slice(0, 40).map((item) => ({ trade_id: item.trade_id || null, same_trade: item.trade_id === trade.id, area: item.correction_area, correction: item.correction, chart_evidence: item.chart_evidence || null }));
+    const response = await fetch("/api/trade-review", { method: "POST", headers: { "content-type":"application/json", authorization:`Bearer ${sessionData.session.access_token}` }, body: JSON.stringify({ trade, noEntryReason, writeup, screenshots, priorCorrections }) });
     const body = await response.json(); if (!response.ok) throw new Error(body.error || "The reviewer did not return an audit.");
     const scenario = body.scenario || {};
     const actualR = Number(trade.r_multiple || 0);
@@ -352,6 +374,7 @@ function init() {
     const slide = event.target.closest("[data-briefing-slide]"); if (slide) { briefingSlide = Number(slide.dataset.briefingSlide); renderBriefing(); }
     const direction = event.target.closest("[data-briefing-direction]"); if (direction) { briefingSlide = (briefingSlide + Number(direction.dataset.briefingDirection) + BRIEFING.length) % BRIEFING.length; renderBriefing(); }
     const history = event.target.closest("[data-review-id]"); if (history) { const review = reviews.find((entry) => entry.id === history.dataset.reviewId); if (review) $("#brain-review-history-list").innerHTML = renderReview(review.review_payload, review); }
+    const correction = event.target.closest("[data-correct-review]"); if (correction) { const review = reviews.find((entry) => entry.id === correction.dataset.correctReview); if (review) openCorrectionDialog(review); }
     const evidence = event.target.closest("[data-open-review-evidence]"); if (evidence) { const review = reviews.find((entry) => entry.id === evidence.dataset.openReviewEvidence); if (review) openSavedEvidence(review); }
     const deleteReviewButton = event.target.closest("[data-delete-review]"); if (deleteReviewButton) { const review = reviews.find((entry) => entry.id === deleteReviewButton.dataset.deleteReview); deleteReview(review); }
     if (event.target.closest("[data-undo-review-delete]")) undoDeleteReview();

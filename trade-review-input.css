@@ -24,3 +24,8 @@
 .brain-delete-undo button{border:1px solid #e3a33e;background:rgba(227,163,62,.14);color:#ffd27e;padding:6px 10px;font:inherit;cursor:pointer}
 @media(max-width:800px){.brain-saved-evidence-grid{grid-template-columns:1fr}}
 @media(max-width:800px){.brain-evidence-columns{grid-template-columns:1fr}}
+.review-corrections{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
+.review-corrections article{border-left:2px solid var(--amber);padding:8px 10px;margin-top:7px;background:rgba(228,173,99,.06)}
+.review-corrections article p{margin:4px 0;color:#d7e1ed}
+.review-corrections article small{color:#9bb1c9}
+.review-correction-form{max-height:calc(100vh - 30px);overflow:auto}

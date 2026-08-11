@@ -96,7 +96,7 @@ async function exportSystemData(button) {
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return alert("Please sign in before exporting your data.");
   const tables = [
-    "operations", "operation_occurrences", "missions", "mission_progress_events", "trade_debriefs", "trade_reviews", "ai_trade_scenarios",
+    "operations", "operation_occurrences", "missions", "mission_progress_events", "trade_debriefs", "trade_reviews", "trade_review_corrections", "ai_trade_scenarios",
     "mastery_entries", "mastery_challenges", "training_sessions", "training_sets", "health_weight_logs", "health_food_logs", "recovery_logs",
     "deep_work_logs", "capability_skills", "capability_skill_logs", "business_projects", "content_items", "financial_foundations", "activity_events",
     "account_balances", "account_groups", "account_group_memberships", "account_group_trade_links", "account_group_withdrawals", "account_group_withdrawal_allocations",
