@@ -79,6 +79,13 @@ function trainingSessionDay(session) {
   return logged && created && logged === shiftDateKey(created, 1) ? created : logged || created;
 }
 
+function evidenceDay(record, explicitKey = "logged_on", createdKey = "created_at") {
+  const explicit = campaignDay(record?.[explicitKey]);
+  if (explicit) return explicit;
+  const created = record?.[createdKey] ? easternDateKey(new Date(record[createdKey])) : "";
+  return created || campaignDay(record?.[createdKey]);
+}
+
 function operatingDayKey() {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -166,25 +173,24 @@ export function disciplineXp(operations = [], occurrences = [], startedAt) {
 
 export function enterpriseXp(projects = [], contentItems = [], financialFoundation = null, startedAt) {
   const ledger = [];
-  projects.filter((project) => isOnOrAfter(project.created_at, startedAt)).forEach((project) => {
-    const label = new Date(project.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  projects.filter((project) => isOnOrAfter(evidenceDay(project), startedAt)).forEach((project) => {
+    const label = evidenceDay(project);
     ledger.push({ label, detail: `Started project: ${project.title || "project"}`, change: 5 });
     if (project.status === "Complete") ledger.push({ label, detail: `Completed project: ${project.title || "project"}`, change: 30 });
   });
-  contentItems.filter((item) => isOnOrAfter(item.created_at, startedAt) && item.status === "Published").forEach((item) => ledger.push({ label: new Date(item.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `Published ${item.platform || "content"}: ${item.title || "item"}`, change: 8 }));
-  if (financialFoundation && isOnOrAfter(financialFoundation.updated_at || financialFoundation.created_at, startedAt)) {
-    const timestamp = financialFoundation.updated_at || financialFoundation.created_at;
-    ledger.push({ label: new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: "Financial foundation baseline recorded", change: 20 });
+  contentItems.filter((item) => isOnOrAfter(evidenceDay(item), startedAt) && item.status === "Published").forEach((item) => ledger.push({ label: evidenceDay(item), detail: `Published ${item.platform || "content"}: ${item.title || "item"}`, change: 8 }));
+  if (financialFoundation && isOnOrAfter(evidenceDay(financialFoundation), startedAt)) {
+    ledger.push({ label: evidenceDay(financialFoundation), detail: "Financial foundation baseline recorded", change: 20 });
   }
   return { xp: ledger.reduce((total, entry) => total + entry.change, 0), ledger: ledger.sort((a, b) => b.label.localeCompare(a.label)) };
 }
 
 export function masteryXp(entries = [], challenges = [], trainingSessions = [], capabilityLogs = [], startedAt) {
-  const ledgerFor = (awards) => entries.filter((entry) => isOnOrAfter(entry.created_at, startedAt) && awards[entry.category]).map((entry) => ({
-    label: new Date(entry.created_at || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+  const ledgerFor = (awards) => entries.filter((entry) => isOnOrAfter(evidenceDay(entry), startedAt) && awards[entry.category]).map((entry) => ({
+    label: evidenceDay(entry),
     detail: `${entry.category}: ${entry.title || "entry"} · base evidence XP`,
     change: awards[entry.category],
-    evidenceKey: `entry|${campaignDay(entry.created_at)}|${String(entry.category || "").toLowerCase()}|${String(entry.title || "entry").trim().toLowerCase()}`,
+    evidenceKey: `entry|${evidenceDay(entry)}|${String(entry.category || "").toLowerCase()}|${String(entry.title || "entry").trim().toLowerCase()}`,
   }));
   const mindLedger = ledgerFor(MIND_AWARDS);
   const bodyLedger = ledgerFor(BODY_AWARDS);

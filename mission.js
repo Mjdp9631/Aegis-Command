@@ -4,6 +4,7 @@ const config = window.AEGIS_CONFIG || {};
 const cloudReady = Boolean(config.supabaseUrl && config.supabaseAnonKey);
 const $ = (selector) => document.querySelector(selector);
 const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
+const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 const priorities = '<option value="Do now">DO NOW - important + urgent</option><option value="Schedule">SCHEDULE - important + not urgent</option><option value="Delegate">DELEGATE - urgent + not important</option><option value="Eliminate">ELIMINATE - not urgent + not important</option>';
 let client = null, session = null, missions = [];
 let missionEditor = null;
@@ -205,8 +206,8 @@ function bindDialogs() {
     const dialog = $("#mission-dialog");
     if (dialog && !dialog.open) dialog.showModal();
   });
-  document.querySelectorAll('[data-action="log-recovery"]').forEach((button) => button.addEventListener("click", () => { if (!session) return alert("Sign in before logging recovery."); $("#recovery-dialog").showModal(); }));
-  $("#save-recovery").addEventListener("click", async (event) => { const pain = Number($("#recovery-pain").value), swelling = Number($("#recovery-swelling").value); if (!Number.isInteger(pain) || !Number.isInteger(swelling) || pain < 0 || pain > 10 || swelling < 0 || swelling > 10) return event.preventDefault(); const { data, error } = await client.from("recovery_logs").insert({ pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single(); if (error) { event.preventDefault(); return console.error(error); } renderRecovery(data); $("#recovery-notes").value = ""; publishDataChange("recovery"); });
+  document.querySelectorAll('[data-action="log-recovery"]').forEach((button) => button.addEventListener("click", () => { if (!session) return alert("Sign in before logging recovery."); $("#recovery-logged-on").value = easternDateKey(); $("#recovery-dialog").showModal(); }));
+  $("#save-recovery").addEventListener("click", async (event) => { const pain = Number($("#recovery-pain").value), swelling = Number($("#recovery-swelling").value), logged_on = $("#recovery-logged-on").value || easternDateKey(); if (!Number.isInteger(pain) || !Number.isInteger(swelling) || pain < 0 || pain > 10 || swelling < 0 || swelling > 10 || !logged_on) return event.preventDefault(); const { data, error } = await client.from("recovery_logs").insert({ logged_on, pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single(); if (error) { event.preventDefault(); return console.error(error); } renderRecovery(data); $("#recovery-notes").value = ""; publishDataChange("recovery"); });
 }
 
 window.addEventListener("aegis:open-mission", (event) => {

@@ -72,9 +72,9 @@ function qualityReport({ operations, occurrences, missions, trades, masteryEntri
 
   const tradeMissing = trades.filter((trade) => !dateValue(trade.traded_at || trade.created_at) || !normalize(trade.pair));
   if (tradeMissing.length) add("warning", "Trade records need required fields", `${tradeMissing.length} trade${tradeMissing.length === 1 ? "" : "s"} missing a timestamp or pair.`);
-  const masteryMissing = masteryEntries.filter((entry) => !dateValue(entry.created_at) || !normalize(entry.category) || !normalize(entry.title));
+  const masteryMissing = masteryEntries.filter((entry) => !dateValue(entry.logged_on || entry.created_at) || !normalize(entry.category) || !normalize(entry.title));
   if (masteryMissing.length) add("warning", "Mastery records need required fields", `${masteryMissing.length} entry record${masteryMissing.length === 1 ? "" : "s"} missing a date, category, or title.`);
-  const trainingMissing = trainingSessions.filter((session) => !dateValue(session.created_at || session.logged_on));
+  const trainingMissing = trainingSessions.filter((session) => !dateValue(session.logged_on || session.created_at));
   if (trainingMissing.length) add("warning", "Training records need a date", `${trainingMissing.length} workout record${trainingMissing.length === 1 ? "" : "s"} cannot be placed on the timeline.`);
 
   const operationIds = new Set(operations.map((operation) => String(operation.id)));
@@ -107,9 +107,9 @@ function crossSystemSignals(data) {
   rows.forEach((operation) => {
     if (operation.completed) completedOperationDays.add(dayKey(operation.completed_on || operation.operation_date || operation.scheduled_date));
   });
-  data.masteryEntries.forEach((entry) => { if (dateValue(entry.created_at) >= cutoff) evidenceDays.add(dayKey(entry.created_at)); });
-  data.trainingSessions.forEach((session) => { if (dateValue(session.created_at || session.logged_on) >= cutoff) evidenceDays.add(dayKey(session.created_at || session.logged_on)); });
-  data.recoveryLogs.forEach((log) => { if (dateValue(log.created_at || log.logged_on) >= cutoff) evidenceDays.add(dayKey(log.created_at || log.logged_on)); });
+  data.masteryEntries.forEach((entry) => { if (dateValue(entry.logged_on || entry.created_at) >= cutoff) evidenceDays.add(dayKey(entry.logged_on || entry.created_at)); });
+  data.trainingSessions.forEach((session) => { if (dateValue(session.logged_on || session.created_at) >= cutoff) evidenceDays.add(dayKey(session.logged_on || session.created_at)); });
+  data.recoveryLogs.forEach((log) => { if (dateValue(log.logged_on || log.created_at) >= cutoff) evidenceDays.add(dayKey(log.logged_on || log.created_at)); });
   completedOperationDays.forEach((day) => evidenceDays.add(day));
   const trades = data.trades.filter((trade) => closedTrade(trade) && dateValue(trade.traded_at || trade.created_at) >= cutoff);
   const compare = (label, richDays, sparseDays) => {
@@ -137,10 +137,10 @@ function weeklyReview(data, issues) {
   const wins = closedTrades.filter((trade) => tradeOutcome(trade) === "Win").length;
   const losses = closedTrades.filter((trade) => tradeOutcome(trade) === "Loss").length;
   const pnl = closedTrades.reduce((total, trade) => total + Number(trade.pnl_percent || 0), 0);
-  const mindEntries = data.masteryEntries.filter((entry) => inWindow(entry.created_at, start, end)).length;
-  const workouts = data.trainingSessions.filter((session) => inWindow(session.created_at || session.logged_on, start, end)).length;
-  const recoveryLogs = data.recoveryLogs.filter((log) => inWindow(log.created_at || log.logged_on, start, end)).length;
-  const projectsStarted = data.projects.filter((project) => inWindow(project.created_at, start, end)).length;
+  const mindEntries = data.masteryEntries.filter((entry) => inWindow(entry.logged_on || entry.created_at, start, end)).length;
+  const workouts = data.trainingSessions.filter((session) => inWindow(session.logged_on || session.created_at, start, end)).length;
+  const recoveryLogs = data.recoveryLogs.filter((log) => inWindow(log.logged_on || log.created_at, start, end)).length;
+  const projectsStarted = data.projects.filter((project) => inWindow(project.logged_on || project.created_at, start, end)).length;
   const missionWins = data.missions.filter((mission) => mission.completed && inWindow(mission.completed_on || mission.updated_at, start, end)).length;
   const operationRate = rows.length ? Math.round((completedOperations / rows.length) * 100) : null;
   const tradeRate = wins + losses ? Math.round((wins / (wins + losses)) * 100) : null;

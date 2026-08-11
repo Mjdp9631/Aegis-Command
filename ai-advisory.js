@@ -103,6 +103,10 @@ function missionProgress(mission) {
 }
 
 function legacyBuildContext({ operations, occurrences = [], missions, trades, recovery, mastery, projects, contentItems = [], tradeReviews = [], progressEvents = [], phase, directives = [], roadmap = [], deepWork = [], challenges = [], directorReviews = [], trainingSessions = [], trainingSets = [], weightLogs = [], foodLogs = [], activityEvents = [], accounts = [], groups = [], withdrawals = [], advisoryHistory = [], campaign = null }, operatingDate = operatingDayKey()) {
+  mastery = mastery.map((entry) => ({ ...entry, created_at: entry.logged_on || entry.created_at }));
+  deepWork = deepWork.map((entry) => ({ ...entry, created_at: entry.logged_on || entry.created_at }));
+  projects = projects.map((project) => ({ ...project, created_at: project.logged_on || project.created_at }));
+  contentItems = contentItems.map((item) => ({ ...item, created_at: item.logged_on || item.created_at }));
   const recurringIds = new Set(operations.filter(operation => ["daily", "weekly", "recurring"].includes(String(operation.schedule_mode || "").toLowerCase())).map(operation => String(operation.id)));
   const occurrenceRows = occurrences.map(occurrence => {
     const parent = operations.find(operation => String(operation.id) === String(occurrence.operation_id)) || {};

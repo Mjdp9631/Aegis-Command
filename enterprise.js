@@ -4,6 +4,7 @@ const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const $ = (selector) => document.querySelector(selector);
 const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
+const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 let projects = [], content = [], financialFoundation = null;
 
 function render() {
@@ -22,8 +23,8 @@ async function load() {
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
   const [projectResult, contentResult, foundationResult] = await Promise.all([
-    supabase.from("business_projects").select("*").order("created_at", { ascending: false }),
-    supabase.from("content_items").select("*").order("created_at", { ascending: false }),
+    supabase.from("business_projects").select("*").order("logged_on", { ascending: false }),
+    supabase.from("content_items").select("*").order("logged_on", { ascending: false }),
     supabase.from("financial_foundations").select("*").maybeSingle()
   ]);
   if (projectResult.error || contentResult.error) return;
@@ -34,6 +35,38 @@ function buildDialogs() {
   const dialogs = document.createElement("div");
   dialogs.innerHTML = '<dialog id="project-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">x</button><p class="eyebrow amber">NEW REAL PROJECT</p><h2>Build a useful asset.</h2><label>Project <input id="project-title" required placeholder="e.g. CCFX website foundation" /></label><div class="two-col"><label>Type <select id="project-type"><option>Real-world project</option><option>CCFX system</option><option>Business asset</option><option>Learning build</option></select></label><label>Status <select id="project-status"><option>Active</option><option>Backlog</option><option>Complete</option></select></label></div><div class="two-col"><label>Priority <select id="project-priority"><option>Do now</option><option>Schedule</option><option>Delegate</option><option>Eliminate</option></select></label><label>Progress % <input id="project-progress" type="number" min="0" max="100" value="0" /></label></div><label>Definition of useful outcome <textarea id="project-outcome" placeholder="What will exist, work, or help someone when this is done?"></textarea></label><label>Next physical action <input id="project-next-action" placeholder="The next visible step" /></label><label>Due date <input id="project-due" type="date" /></label><button class="primary" value="default">Open project</button></form></dialog><dialog id="content-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">x</button><p class="eyebrow amber">NEW CONTENT ITEM</p><h2>Ship a useful signal.</h2><label>Working title <input id="content-title" required placeholder="e.g. The risk rule that protects a funded account" /></label><div class="two-col"><label>Platform <select id="content-platform"><option>YouTube</option><option>Instagram</option><option>X</option><option>Newsletter</option></select></label><label>Status <select id="content-status"><option>Idea</option><option>Drafting</option><option>Ready</option><option>Published</option></select></label></div><button class="primary" value="default">Add to pipeline</button></form></dialog><dialog id="finance-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">x</button><p class="eyebrow amber">FINANCIAL FOUNDATION</p><h2>Protect the mission.</h2><div class="two-col"><label>Monthly income <input id="finance-income" type="number" min="0" step="0.01" /></label><label>Monthly expenses <input id="finance-expenses" type="number" min="0" step="0.01" /></label><label>Liquid reserves <input id="finance-reserves" type="number" min="0" step="0.01" /></label><label>Emergency fund target <input id="finance-emergency" type="number" min="0" step="0.01" /></label><label>Debt balance <input id="finance-debt" type="number" min="0" step="0.01" /></label><label>Business revenue / month <input id="finance-revenue" type="number" min="0" step="0.01" /></label></div><label>Notes <textarea id="finance-notes" placeholder="Rules, obligations, or the next financial priority."></textarea></label><button class="primary" value="default">Save foundation</button></form></dialog>';
   document.body.append(...Array.from(dialogs.children));
+  [["#project-dialog", "#project-title", "project-logged-on"], ["#content-dialog", "#content-title", "content-logged-on"], ["#finance-dialog", "#finance-income", "finance-logged-on"]].forEach(([dialogSelector, anchorSelector, id]) => {
+    const anchor = document.querySelector(`${dialogSelector} ${anchorSelector}`);
+    anchor?.closest("label")?.insertAdjacentHTML("beforebegin", `<label>Log date <input id="${id}" type="date" required /></label>`);
+    const input = document.querySelector(`#${id}`); if (input) input.value = easternDateKey();
+  });
+  const evidenceDateSubmit = async (event) => {
+    const form = event.target;
+    if (!form?.closest("#project-dialog, #content-dialog, #finance-dialog")) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    let error;
+    if (form.closest("#project-dialog")) {
+      const title = $("#project-title").value.trim(); if (!title) return;
+      ({ error } = await supabase.from("business_projects").insert({ logged_on: $("#project-logged-on").value || easternDateKey(), title, project_type: $("#project-type").value, status: $("#project-status").value, priority: $("#project-priority").value, progress: Number($("#project-progress").value || 0), outcome: $("#project-outcome").value.trim() || null, next_action: $("#project-next-action").value.trim() || null, due_on: $("#project-due").value || null }));
+      if (!error) { $("#project-dialog").close(); await load(); window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "business-project" } })); }
+    } else if (form.closest("#content-dialog")) {
+      const title = $("#content-title").value.trim(); if (!title) return;
+      ({ error } = await supabase.from("content_items").insert({ logged_on: $("#content-logged-on").value || easternDateKey(), title, platform: $("#content-platform").value, status: $("#content-status").value }));
+      if (!error) { $("#content-dialog").close(); await load(); window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "content-item" } })); }
+    } else {
+      const { data: sessionData } = await supabase.auth.getSession(); const userId = sessionData.session?.user?.id; if (!userId) return alert("Sign in before saving your financial foundation.");
+      ({ error } = await supabase.from("financial_foundations").upsert({ user_id: userId, logged_on: $("#finance-logged-on").value || easternDateKey(), monthly_income: Number($("#finance-income").value || 0), monthly_expenses: Number($("#finance-expenses").value || 0), liquid_reserves: Number($("#finance-reserves").value || 0), emergency_fund_target: Number($("#finance-emergency").value || 0), debt_balance: Number($("#finance-debt").value || 0), business_revenue: Number($("#finance-revenue").value || 0), notes: $("#finance-notes").value.trim() || null, updated_at: new Date().toISOString() }, { onConflict: "user_id" }));
+      if (!error) { $("#finance-dialog").close(); await load(); window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "financial-foundation" } })); }
+    }
+    if (error) alert(error.message);
+  };
+  ["#project-dialog form", "#content-dialog form", "#finance-dialog form"].forEach((selector) => document.querySelector(selector)?.addEventListener("submit", evidenceDateSubmit, true));
+  document.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-enterprise-action]")?.dataset.enterpriseAction;
+    if (action === "project") $("#project-logged-on").value = easternDateKey();
+    if (action === "content") $("#content-logged-on").value = easternDateKey();
+    if (action === "finance") $("#finance-logged-on").value = financialFoundation?.logged_on || easternDateKey();
+  }, true);
   document.querySelectorAll("#project-dialog .dialog-close,#content-dialog .dialog-close,#finance-dialog .dialog-close").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
   $("#project-dialog form").addEventListener("submit", async (event) => { event.preventDefault(); const title = $("#project-title").value.trim(); if (!title) return; const { error } = await supabase.from("business_projects").insert({ title, project_type: $("#project-type").value, status: $("#project-status").value, priority: $("#project-priority").value, progress: Number($("#project-progress").value || 0), outcome: $("#project-outcome").value.trim() || null, next_action: $("#project-next-action").value.trim() || null, due_on: $("#project-due").value || null }); if (error) return alert(error.message); $("#project-dialog").close(); $("#project-title").value = ""; load(); window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "business-project" } })); });
   $("#content-dialog form").addEventListener("submit", async (event) => { event.preventDefault(); const title = $("#content-title").value.trim(); if (!title) return; const { error } = await supabase.from("content_items").insert({ title, platform: $("#content-platform").value, status: $("#content-status").value }); if (error) return alert(error.message); $("#content-dialog").close(); $("#content-title").value = ""; load(); window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "content-item" } })); });

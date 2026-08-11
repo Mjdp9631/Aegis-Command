@@ -26,6 +26,9 @@ function sessionLoggedDay(session) {
   if (logged && created && logged === shiftDateKey(created, 1)) return created;
   return logged || created || easternDateKey();
 }
+function entryLoggedDay(entry) {
+  return String(entry?.logged_on || (entry?.created_at ? easternDateKey(new Date(entry.created_at)) : easternDateKey())).slice(0, 10);
+}
 const researchTopics = [
   ["Self-determination theory", "Psychology", "advanced", 55, "How autonomy, competence, and relatedness affect durable motivation."],
   ["Locus of control", "Psychology", "standard", 35, "How internal and external control beliefs shape decisions, responsibility, and resilience."],
@@ -130,7 +133,7 @@ const activeChallenge = kind => challenges.find(item => item.lane === kind && ["
 const difficultyLabel = challenge => `${String(challenge.difficulty || "standard").toUpperCase()} · +${Number(challenge.xp_reward || 0)} BONUS XP`;
 
 function entryCard(entry) {
-  return `<article class="mastery-entry"><div class="entry-meta"><span>${escapeHtml(entry.category)}</span>${entry.rating ? `<b>${entry.rating}/5</b>` : ""}</div><h3>${escapeHtml(entry.title)}</h3>${entry.summary ? `<p>${escapeHtml(entry.summary)}</p>` : ""}${entry.key_lessons ? `<p><b>Key takeaways:</b> ${escapeHtml(entry.key_lessons)}</p>` : ""}<button type="button" class="ghost compact mastery-entry-edit" data-mastery-edit-entry="${escapeHtml(entry.id)}">Edit entry</button></article>`;
+  return `<article class="mastery-entry"><div class="entry-meta"><span>${escapeHtml(entry.category)}</span><b>${escapeHtml(entryLoggedDay(entry))}</b>${entry.rating ? `<b>${entry.rating}/5</b>` : ""}</div><h3>${escapeHtml(entry.title)}</h3>${entry.summary ? `<p>${escapeHtml(entry.summary)}</p>` : ""}${entry.key_lessons ? `<p><b>Key takeaways:</b> ${escapeHtml(entry.key_lessons)}</p>` : ""}<button type="button" class="ghost compact mastery-entry-edit" data-mastery-edit-entry="${escapeHtml(entry.id)}">Edit entry</button></article>`;
 }
 
 function sessionTimestamp(session) {
@@ -242,7 +245,7 @@ function challengeCard(challenge) {
 
 function systemsPanel() {
   const current = activeChallenge(lane);
-  const recentMinutes = deepWork.filter(log => Date.now() - new Date(log.created_at || log.logged_on).getTime() < 7 * 86400000).reduce((sum, log) => sum + Number(log.duration_minutes || 0), 0);
+  const recentMinutes = deepWork.filter(log => Date.now() - new Date(log.logged_on || log.created_at).getTime() < 7 * 86400000).reduce((sum, log) => sum + Number(log.duration_minutes || 0), 0);
   const label = lane === "mind" ? "Generate research mission" : recoveryReady ? "Generate body mission" : "Generate recovery-safe mission";
   const copy = lane === "mind" ? "Generate a topic, then decide deliberately. Acceptance reserves bonus XP; completion files the work under its subject." : recoveryReady ? "Generate an accessible activity, then decide deliberately. Completion files it under Health, Gym, Mobility, Performance, Sports, or Outdoor Skills." : "Generate only recovery-safe Health, Mobility, and Outdoor Skills activity until Recovery is cleared.";
   const deep = lane === "mind" ? `<article class="mastery-system-card deep-work-card"><div><p class="eyebrow blue-text">DEEP-WORK OUTPUT</p><h3>${recentMinutes} min</h3><p>Focused work from the last seven days. The output matters more than the timer.</p></div><button class="primary compact" data-mastery-deep-work>+ Log deep work</button></article>` : "";
@@ -279,6 +282,7 @@ function buildDialogs() {
   const entryDialog = document.createElement("dialog");
   entryDialog.id = "mastery-clean-dialog";
   entryDialog.innerHTML = `<form class="dialog-card mastery-form"><button class="dialog-close" type="button">×</button><p class="eyebrow blue-text">MASTERY ENTRY</p><h2>Capture the useful thing.</h2><label>Entry type<select name="category"></select></label><div id="mastery-clean-fields"></div><button class="primary" type="submit">Save entry</button></form>`;
+  entryDialog.querySelector('select[name="category"]')?.closest("label")?.insertAdjacentHTML("afterend", `<label>Log date<input name="logged_on" type="date" value="${easternDateKey()}" required /></label>`);
   document.body.append(entryDialog);
   entryDialog.querySelector(".dialog-close").addEventListener("click", () => entryDialog.close());
   entryDialog.querySelector("select").addEventListener("change", event => { entryDialog.querySelector("#mastery-clean-fields").innerHTML = fieldsFor(event.target.value); });
@@ -351,6 +355,7 @@ function openDialog(existing = null) {
   dialog.querySelector("#mastery-clean-fields").innerHTML = fieldsFor(category);
   const form = dialog.querySelector("form");
   form.dataset.editId = existing?.id || "";
+  if (form.elements.logged_on) form.elements.logged_on.value = entryLoggedDay(existing);
   dialog.querySelector("h2").textContent = existing ? "Edit the useful thing." : "Capture the useful thing.";
   dialog.querySelector(".primary").textContent = existing ? "Update entry" : "Save entry";
   if (existing) {
@@ -533,6 +538,7 @@ function openSystemDialog(mode, challenge) {
   const dialog = document.querySelector("#mastery-system-dialog"), close = `<button class="dialog-close" type="button" data-mastery-system-close>×</button>`;
   if (mode === "deep-work") dialog.innerHTML = `<form class="dialog-card mastery-form" data-system-mode="deep-work">${close}<p class="eyebrow blue-text">DEEP-WORK OUTPUT</p><h2>What did focused work produce?</h2><label>Focus area<select name="area"><option>Mind</option><option>Trading</option><option>Business</option></select></label><label>Focus<input name="focus" required placeholder="e.g. Market replay and structured notes" /></label><label>Minutes<input name="duration_minutes" type="number" min="1" max="1440" value="30" required /></label><label>Tangible output<textarea name="output" required placeholder="What exists now that did not exist before this session?"></textarea></label><button class="primary" type="submit">Log deep work</button></form>`;
   if (mode === "complete") dialog.innerHTML = `<form class="dialog-card mastery-form" data-system-mode="complete" data-challenge-id="${challenge.id}">${close}<p class="eyebrow ${challenge.lane === "mind" ? "blue-text" : "green-text"}">TRANSMISSION DEBRIEF</p><h2>${escapeHtml(challenge.title)}</h2><p>${escapeHtml(challenge.instructions)}</p>${challenge.lane === "mind" ? `<label class="mastery-check"><input name="spoken_confirmed" type="checkbox" required /> I explained this aloud for at least 30 seconds.</label><label>1 - What is it?<small>Define the concept in your own words.</small><textarea name="definition" required placeholder="Give a clear, accurate definition."></textarea></label><label>2 - What does this mean for you?<small>Connect it to your decisions, behavior, or perspective.</small><textarea name="personal_meaning" required placeholder="What does this clarify, challenge, or change for you?"></textarea></label><label>3 - How can you apply this?<small>Name one concrete action, experiment, or decision rule.</small><textarea name="application" required placeholder="How will you use this in real life?"></textarea></label><p class="mastery-ai-note">AEGIS will check factual accuracy and name corrections. It will not grade you for agreeing with it.</p>` : `<label>Your summary / observation<textarea name="summary" required placeholder="What did you learn, notice, or change your mind about?"></textarea></label>`}<button class="primary" type="submit">${challenge.lane === "mind" ? "Submit for AEGIS accuracy check" : "Complete transmission"}</button><p class="mastery-form-status" aria-live="polite"></p></form>`;
+  if (mode === "deep-work") dialog.querySelector("form")?.querySelector('[name="area"]')?.closest("label")?.insertAdjacentHTML("beforebegin", `<label>Log date<input name="logged_on" type="date" value="${easternDateKey()}" required /></label>`);
   dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close()); dialog.querySelector("form").addEventListener("submit", saveSystem); dialog.showModal();
 }
 
@@ -540,7 +546,7 @@ async function currentUserId() { if (!db) return null; const { data: { user } } 
 
 async function saveEntry(event) {
   event.preventDefault(); const form = event.currentTarget, data = new FormData(form), category = data.get("category");
-  const record = { category, title: String(data.get("title") || "").trim(), rating: Number(data.get("rating")) || null, summary: String(data.get("summary") || "").trim() || null, favorite_quotes: String(data.get("quotes") || "").trim() || null, key_lessons: String(data.get("lessons") || "").trim() || null, action_items: String(data.get("actions") || "").trim() || null };
+  const record = { category, logged_on: String(data.get("logged_on") || easternDateKey()).slice(0, 10), title: String(data.get("title") || "").trim(), rating: Number(data.get("rating")) || null, summary: String(data.get("summary") || "").trim() || null, favorite_quotes: String(data.get("quotes") || "").trim() || null, key_lessons: String(data.get("lessons") || "").trim() || null, action_items: String(data.get("actions") || "").trim() || null };
   if (!record.title) return;
   const editId = form.dataset.editId;
   if (db) {
@@ -728,7 +734,7 @@ async function clearLaneQueue(kind) {
 async function saveSystem(event) {
   event.preventDefault(); const form = event.currentTarget, mode = form.dataset.systemMode, data = new FormData(form); if (!db) return alert("Connect your private system database before using this feature.");
   let error;
-  if (mode === "deep-work") ({ error } = await db.from("deep_work_logs").insert({ area: data.get("area"), focus: String(data.get("focus")).trim(), duration_minutes: Number(data.get("duration_minutes")), output: String(data.get("output")).trim() }));
+  if (mode === "deep-work") ({ error } = await db.from("deep_work_logs").insert({ area: data.get("area"), logged_on: String(data.get("logged_on") || easternDateKey()).slice(0, 10), focus: String(data.get("focus")).trim(), duration_minutes: Number(data.get("duration_minutes")), output: String(data.get("output")).trim() }));
   if (mode === "complete") {
     const challenge = challenges.find(item => item.id === form.dataset.challengeId); if (!challenge) return;
     const definition = String(data.get("definition") || "").trim();
@@ -750,7 +756,7 @@ async function saveSystem(event) {
       }
     }
     ({ error } = await db.from("mastery_challenges").update({ summary, spoken_confirmed: data.get("spoken_confirmed") === "on", research_definition: definition || null, research_personal_meaning: personalMeaning || null, research_application: application || null, ai_assessment: assessment, status: "completed", completed_at: new Date().toISOString() }).eq("id", challenge.id));
-    if (!error) ({ error } = await db.from("mastery_entries").insert({ category: challenge.category, title: challenge.title, summary, key_lessons: `Completed ${challenge.lane === "mind" ? "research" : "activity"} transmission · ${String(challenge.difficulty).toUpperCase()} difficulty.`, action_items: `Potential bonus XP reserved: +${Number(challenge.xp_reward || 0)}. XP remains paused until the campaign is launched.` }));
+    if (!error) ({ error } = await db.from("mastery_entries").insert({ category: challenge.category, logged_on: easternDateKey(), title: challenge.title, summary, key_lessons: `Completed ${challenge.lane === "mind" ? "research" : "activity"} transmission · ${String(challenge.difficulty).toUpperCase()} difficulty.`, action_items: `Potential bonus XP reserved: +${Number(challenge.xp_reward || 0)}. XP remains paused until the campaign is launched.` }));
   }
   if (error) return alert(error.message);
   document.querySelector("#mastery-system-dialog").close(); await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
