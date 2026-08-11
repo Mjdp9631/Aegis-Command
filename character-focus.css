@@ -50,11 +50,10 @@
 .character-radar-grid { fill: rgba(110, 183, 255, .018); stroke: rgba(141, 183, 222, .34); }
 .character-radar-grid.inner { fill: rgba(110, 183, 255, .012); stroke: rgba(141, 183, 222, .18); }
 .character-radar-axis { stroke: rgba(141, 183, 222, .2); }
-.character-radar-brackets { fill: none; stroke: rgba(184, 198, 201, .72); stroke-width: .7; stroke-linecap: square; filter: drop-shadow(0 0 3px rgba(184, 198, 201, .28)); }
-.character-radar-data { fill: url(#character-radar-level-fill); stroke: #aebabb; stroke-width: 1.1; filter: drop-shadow(0 0 6px rgba(142, 180, 162, .38)); }
-.character-radar-node { fill: #aebabb; stroke: rgba(19, 25, 27, .96); stroke-width: .75; filter: drop-shadow(0 0 2px rgba(174, 186, 187, .48)); transform-box: fill-box; transform-origin: center; transition: fill .16s, transform .16s, filter .16s; }
+.character-radar-brackets { fill: none; stroke: rgba(191, 224, 246, .82); stroke-width: .7; stroke-linecap: square; filter: drop-shadow(0 0 3px rgba(133, 195, 235, .4)); }
+.character-radar-data { fill: url(#character-radar-level-fill); stroke: #bfe4fa; stroke-width: 1.15; filter: drop-shadow(0 0 7px rgba(116, 190, 231, .52)); }
+.character-radar-node { fill: #c5e8fb; stroke: rgba(12, 25, 36, .98); stroke-width: .75; filter: drop-shadow(0 0 3px rgba(151, 211, 244, .62)); transform-box: fill-box; transform-origin: center; transition: fill .16s, transform .16s, filter .16s; }
 .character-radar-hit { fill: transparent; pointer-events: all; }
-.character-radar-level:hover .character-radar-node, .character-radar-level.is-highlighted .character-radar-node { fill: #edf3f0; stroke: #283335; filter: drop-shadow(0 0 4px rgba(213, 232, 222, .82)); transform: scale(1.28); }
-.character-radar-level:hover .character-radar-label, .character-radar-level.is-highlighted .character-radar-label { fill: #f0f5f3; filter: drop-shadow(0 0 3px rgba(205, 225, 216, .72)); }
-.character-radar-core-ring { fill: rgba(4, 14, 24, .7); stroke: rgba(174, 186, 187, .74); stroke-width: .65; }
-.character-radar-core { display: none; }
+.character-radar-level:hover .character-radar-node, .character-radar-level.is-highlighted .character-radar-node { fill: #f1fbff; stroke: #28485c; filter: drop-shadow(0 0 5px rgba(189, 231, 255, .95)); transform: scale(1.28); }
+.character-radar-level:hover .character-radar-label, .character-radar-level.is-highlighted .character-radar-label { fill: #eaf8ff; filter: drop-shadow(0 0 3px rgba(176, 222, 250, .84)); }
+.character-radar-core-ring, .character-radar-core { display: none; }
