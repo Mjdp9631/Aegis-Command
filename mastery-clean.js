@@ -8,6 +8,24 @@ const mindTypes = ["Book", "Quote", "Trading Note", "Psychology", "Space", "Phil
 // Body is deliberately broad enough to hold the full capability campaign, without
 // confusing a rehabilitation log with a sport, combat session, or outdoor skill.
 const bodyTypes = ["Health", "Gym", "Mobility", "Performance", "Sports", "Outdoor Skills"];
+function easternDateKey(value = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(value).reduce((result, part) => { result[part.type] = part.value; return result; }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+function shiftDateKey(value, amount) {
+  const date = new Date(`${String(value).slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return String(value || "").slice(0, 10);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+function sessionLoggedDay(session) {
+  const logged = String(session?.logged_on || "").slice(0, 10);
+  const created = session?.created_at ? easternDateKey(new Date(session.created_at)) : "";
+  // Older rows were created after 8 PM ET with UTC's next calendar date.
+  // Treat that exact one-day mismatch as a legacy timestamp error.
+  if (logged && created && logged === shiftDateKey(created, 1)) return created;
+  return logged || created || easternDateKey();
+}
 const researchTopics = [
   ["Self-determination theory", "Psychology", "advanced", 55, "How autonomy, competence, and relatedness affect durable motivation."],
   ["Locus of control", "Psychology", "standard", 35, "How internal and external control beliefs shape decisions, responsibility, and resilience."],
@@ -116,7 +134,7 @@ function entryCard(entry) {
 }
 
 function sessionTimestamp(session) {
-  const value = session.logged_on || session.created_at;
+  const value = sessionLoggedDay(session);
   const timestamp = new Date(value || 0).getTime();
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
@@ -145,15 +163,15 @@ function progressForExercise(session, rows, exerciseName, resistanceType) {
   const previousReps = previous.rows.reduce((sum, row) => sum + Number(row.reps || 0) * Math.max(1, Number(row.sets || 1)), 0);
   if (["Bands", "Bodyweight"].includes(resistanceType)) {
     const delta = currentReps - previousReps;
-    return delta ? `${delta > 0 ? "↑" : "↓"} ${Math.abs(delta)} total reps vs ${dateOnly(previous.session.logged_on || previous.session.created_at)}` : `→ holding reps vs ${dateOnly(previous.session.logged_on || previous.session.created_at)}`;
+    return delta ? `${delta > 0 ? "↑" : "↓"} ${Math.abs(delta)} total reps vs ${sessionLoggedDay(previous.session)}` : `→ holding reps vs ${sessionLoggedDay(previous.session)}`;
   }
   const currentTop = Math.max(...rows.map(row => Number(row.weight_lbs || 0)));
   const previousTop = Math.max(...previous.rows.map(row => Number(row.weight_lbs || 0)));
   const currentVolume = rows.reduce((sum, row) => sum + Number(row.weight_lbs || 0) * Number(row.reps || 0) * Math.max(1, Number(row.sets || 1)), 0);
   const previousVolume = previous.rows.reduce((sum, row) => sum + Number(row.weight_lbs || 0) * Number(row.reps || 0) * Math.max(1, Number(row.sets || 1)), 0);
-  if (currentTop !== previousTop) return `${currentTop > previousTop ? "↑" : "↓"} ${Math.abs(currentTop - previousTop).toFixed(1).replace(/\.0$/, "")} lb top set vs ${dateOnly(previous.session.logged_on || previous.session.created_at)}`;
-  if (currentVolume !== previousVolume) return `${currentVolume > previousVolume ? "↑" : "↓"} ${Math.abs(currentVolume - previousVolume).toFixed(0)} lb volume vs ${dateOnly(previous.session.logged_on || previous.session.created_at)}`;
-  return `→ holding load and volume vs ${dateOnly(previous.session.logged_on || previous.session.created_at)}`;
+  if (currentTop !== previousTop) return `${currentTop > previousTop ? "↑" : "↓"} ${Math.abs(currentTop - previousTop).toFixed(1).replace(/\.0$/, "")} lb top set vs ${sessionLoggedDay(previous.session)}`;
+  if (currentVolume !== previousVolume) return `${currentVolume > previousVolume ? "↑" : "↓"} ${Math.abs(currentVolume - previousVolume).toFixed(0)} lb volume vs ${sessionLoggedDay(previous.session)}`;
+  return `→ holding load and volume vs ${sessionLoggedDay(previous.session)}`;
 }
 
 function trainingCard(session) {
@@ -170,7 +188,7 @@ function trainingCard(session) {
     }).join("");
     return `<div class="training-exercise"><div class="training-exercise-head"><b>${escapeHtml(exerciseName)}</b><small>${escapeHtml(resistanceType)}</small></div><div class="training-set-summary">${detail}</div><small class="training-progress">${escapeHtml(progressForExercise(session, rows, exerciseName, resistanceType))}</small></div>`;
   }).join("");
-  return `<article class="mastery-entry training-entry"><div class="entry-meta"><span>${escapeHtml(session.workout_split || session.session_type || "GYM")}</span><b>${dateOnly(session.logged_on || session.created_at)}</b></div><h3>${escapeHtml(session.title || "Training session")}</h3>${exerciseBlocks ? `<div class="training-exercise-list">${exerciseBlocks}</div>` : ""}${session.notes ? `<p>${escapeHtml(session.notes)}</p>` : ""}<button type="button" class="ghost compact mastery-entry-edit" data-mastery-edit-session="${escapeHtml(session.id)}">Edit session</button></article>`;
+  return `<article class="mastery-entry training-entry"><div class="entry-meta"><span>${escapeHtml(session.workout_split || session.session_type || "GYM")}</span><b>${sessionLoggedDay(session)}</b></div><h3>${escapeHtml(session.title || "Training session")}</h3>${exerciseBlocks ? `<div class="training-exercise-list">${exerciseBlocks}</div>` : ""}${session.notes ? `<p>${escapeHtml(session.notes)}</p>` : ""}<button type="button" class="ghost compact mastery-entry-edit" data-mastery-edit-session="${escapeHtml(session.id)}">Edit session</button></article>`;
 }
 
 function trainingProgressOverview() {
@@ -181,7 +199,7 @@ function trainingProgressOverview() {
   const resistanceTypes = new Set(latestSets.map(set => set.resistance_type || "Weights"));
   const volumeLabel = weightedVolume ? `${weightedVolume.toFixed(0)} lb` : resistanceTypes.has("Bodyweight") ? "Bodyweight" : "Bands";
   const exercises = new Set(latestSets.map(set => String(set.exercise_name || "").trim().toLowerCase()).filter(Boolean));
-  return `<section class="training-progress-overview"><div><p class="eyebrow green-text">PROGRESS TRACKING</p><h3>${escapeHtml(latest.workout_split || latest.title || "Latest session")}</h3><small>Latest session · ${dateOnly(latest.logged_on || latest.created_at)} · compare each exercise below against its prior entry.</small></div><div class="training-progress-stats"><span><b>${trainingSessions.length}</b> sessions</span><span><b>${exercises.size}</b> exercises</span><span><b>${volumeLabel}</b> latest volume</span></div></section>`;
+  return `<section class="training-progress-overview"><div><p class="eyebrow green-text">PROGRESS TRACKING</p><h3>${escapeHtml(latest.workout_split || latest.title || "Latest session")}</h3><small>Latest session · ${sessionLoggedDay(latest)} · compare each exercise below against its prior entry.</small></div><div class="training-progress-stats"><span><b>${trainingSessions.length}</b> sessions</span><span><b>${exercises.size}</b> exercises</span><span><b>${volumeLabel}</b> latest volume</span></div></section>`;
 }
 
 function laneInputDock() {
@@ -198,7 +216,7 @@ function capabilityPanel() {
 }
 
 function healthCard() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = easternDateKey();
   const todayWeights = weightLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today);
   const todayFoods = foodLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today);
   const sum = field => Math.round(todayFoods.reduce((total, item) => total + Number(item[field] || 0), 0));
@@ -279,7 +297,7 @@ function openCapabilityDialog(mode, skillType = "Practical", skill = null) {
   if (mode === "add") {
     dialog.innerHTML = `<form class="dialog-card mastery-form" data-capability-mode="add"><div>${close}</div><p class="eyebrow blue-text">CAPABILITY TRACK</p><h2>Add a useful skill.</h2><label>Track <select name="skill_type"><option ${skillType === "Practical" ? "selected" : ""}>Practical</option><option ${skillType === "Adversarial" ? "selected" : ""}>Adversarial</option></select></label><label>Skill <input name="title" required placeholder="e.g. Learning a language" /></label><label>Definition <textarea name="description" required placeholder="What does useful competence look like?"></textarea></label><button class="primary" type="submit">Add skill</button></form>`;
   } else {
-    dialog.innerHTML = `<form class="dialog-card mastery-form" data-capability-mode="log" data-capability-id="${escapeHtml(skill.id)}"><div>${close}</div><p class="eyebrow ${skill.skill_type === "Practical" ? "blue-text" : "amber"}">${escapeHtml(skill.skill_type)} SKILL</p><h2>${escapeHtml(skill.title)}</h2><p class="body-copy">${escapeHtml(skill.description || "Record the conditions and result, not just the intention.")}</p><div class="two-col"><label>Practice date <input name="practiced_on" type="date" value="${new Date().toISOString().slice(0, 10)}" required /></label><label>Minutes <input name="duration_minutes" type="number" min="1" max="1440" /></label></div><label>Pressure <select name="pressure_level"><option>Low</option><option>Moderate</option><option>High</option></select></label><label>Result / evidence <textarea name="result" required placeholder="What did you practice, what happened, and what needs work next?"></textarea></label><label>Status <select name="status"><option>Active</option><option>Complete</option><option>Paused</option></select></label><button class="primary" type="submit">Save practice</button></form>`;
+    dialog.innerHTML = `<form class="dialog-card mastery-form" data-capability-mode="log" data-capability-id="${escapeHtml(skill.id)}"><div>${close}</div><p class="eyebrow ${skill.skill_type === "Practical" ? "blue-text" : "amber"}">${escapeHtml(skill.skill_type)} SKILL</p><h2>${escapeHtml(skill.title)}</h2><p class="body-copy">${escapeHtml(skill.description || "Record the conditions and result, not just the intention.")}</p><div class="two-col"><label>Practice date <input name="practiced_on" type="date" value="${easternDateKey()}" required /></label><label>Minutes <input name="duration_minutes" type="number" min="1" max="1440" /></label></div><label>Pressure <select name="pressure_level"><option>Low</option><option>Moderate</option><option>High</option></select></label><label>Result / evidence <textarea name="result" required placeholder="What did you practice, what happened, and what needs work next?"></textarea></label><label>Status <select name="status"><option>Active</option><option>Complete</option><option>Paused</option></select></label><button class="primary" type="submit">Save practice</button></form>`;
   }
   dialog.querySelector("[data-capability-close]").addEventListener("click", () => dialog.close());
   dialog.querySelector("form").addEventListener("submit", saveCapability);
@@ -449,7 +467,7 @@ function openFitnessDialog(type, existing = null, editKind = "") {
   const form = dialog.querySelector("form");
   form.dataset.editId = existing?.id || "";
   form.dataset.editKind = editKind;
-  form.dataset.editLoggedOn = existing?.logged_on || "";
+  form.dataset.editLoggedOn = existing ? sessionLoggedDay(existing) : "";
   form.dataset.editMeasuredAt = existing?.measured_at || "";
   if (existing) {
     dialog.querySelector("h2").textContent = type === "Gym" ? "Edit the training record." : "Edit the health record.";
@@ -544,7 +562,7 @@ async function saveFitnessLog(event) {
   if (!userId) return alert("Your session has expired. Please sign in again.");
   const editId = form.dataset.editId || "";
   const editKind = form.dataset.editKind || "";
-  const loggedOn = form.dataset.editLoggedOn || new Date().toISOString().slice(0, 10);
+  const loggedOn = form.dataset.editLoggedOn || easternDateKey();
   try {
     if (mode === "gym") {
       const workoutSplit = String(data.get("workout_split") || "").trim();
@@ -759,7 +777,7 @@ document.addEventListener("click", event => {
   const editSession = event.target.closest("[data-mastery-edit-session]");
   if (editSession) { const session = trainingSessions.find(item => String(item.id) === String(editSession.dataset.masteryEditSession)); if (session) { lane = "body"; activeType = "Gym"; saveView(); openFitnessDialog("Gym", session); } return; }
   const editHealth = event.target.closest("[data-mastery-edit-health]");
-  if (editHealth) { const today = new Date().toISOString().slice(0, 10); lane = "body"; activeType = "Health"; saveView(); openFitnessDialog("Health", { logged_on: today, weights: weightLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today), foods: foodLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today) }, "health"); return; }
+  if (editHealth) { const today = easternDateKey(); lane = "body"; activeType = "Health"; saveView(); openFitnessDialog("Health", { logged_on: today, weights: weightLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today), foods: foodLogs.filter(item => String(item.logged_on || "").slice(0, 10) === today) }, "health"); return; }
   const editWeight = event.target.closest("[data-mastery-edit-weight]");
   if (editWeight) { const weight = weightLogs.find(item => String(item.id) === String(editWeight.dataset.masteryEditWeight)); if (weight) { lane = "body"; activeType = "Health"; saveView(); openFitnessDialog("Health", weight, "weight"); } return; }
   const editFood = event.target.closest("[data-mastery-edit-food]");

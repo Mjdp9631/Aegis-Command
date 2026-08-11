@@ -61,6 +61,24 @@ function campaignDay(value) {
   return value ? String(value).slice(0, 10) : "";
 }
 
+function easternDateKey(value = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(value).reduce((result, part) => { result[part.type] = part.value; return result; }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function shiftDateKey(value, amount) {
+  const date = new Date(`${String(value).slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return String(value || "").slice(0, 10);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+function trainingSessionDay(session) {
+  const logged = campaignDay(session?.logged_on);
+  const created = session?.created_at ? easternDateKey(new Date(session.created_at)) : "";
+  return logged && created && logged === shiftDateKey(created, 1) ? created : logged || created;
+}
+
 function operatingDayKey() {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -171,9 +189,9 @@ export function masteryXp(entries = [], challenges = [], trainingSessions = [], 
   const mindLedger = ledgerFor(MIND_AWARDS);
   const bodyLedger = ledgerFor(BODY_AWARDS);
   const uniqueTrainingSessions = new Map();
-  trainingSessions.filter((session) => isOnOrAfter(session.logged_on || session.created_at, startedAt)).forEach((session) => {
+  trainingSessions.filter((session) => isOnOrAfter(trainingSessionDay(session), startedAt)).forEach((session) => {
     const category = session.session_type || "Gym";
-    const day = campaignDay(session.logged_on || session.created_at);
+    const day = trainingSessionDay(session);
     const title = String(session.title || "training session").trim().toLowerCase().replace(/\s+/g, " ");
     const key = `${day}|${String(category).toLowerCase()}|${title}`;
     if (uniqueTrainingSessions.has(key)) return;
