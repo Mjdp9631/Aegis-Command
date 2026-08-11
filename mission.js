@@ -278,11 +278,16 @@ if (cloudReady) {
       renderCommandMissions();
       return;
     }
-    if (nextSession) session = nextSession;
+    // The auth callback already gives us the authoritative session. Do not
+    // immediately call getSession() again: during token refresh Supabase can
+    // briefly return an empty snapshot, leaving the mission ledger on its
+    // boot-time 0/0 shell even though the user is signed in.
+    session = nextSession || session;
+    if (!session) return;
     // Never await Supabase work inside its auth callback. Supabase can hold
     // the auth lock while dispatching this event, which can freeze refreshes.
     clearTimeout(missionLoadTimer);
-    missionLoadTimer = setTimeout(() => { void refreshMissionSession(); }, 0);
+    missionLoadTimer = setTimeout(() => { void loadData(); }, 0);
   });
 }
 
