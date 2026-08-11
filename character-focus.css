@@ -50,10 +50,11 @@
 .character-radar-grid { fill: rgba(110, 183, 255, .018); stroke: rgba(141, 183, 222, .34); }
 .character-radar-grid.inner { fill: rgba(110, 183, 255, .012); stroke: rgba(141, 183, 222, .18); }
 .character-radar-axis { stroke: rgba(141, 183, 222, .2); }
-.character-radar-brackets { fill: none; stroke: rgba(239, 181, 79, .72); stroke-width: .7; stroke-linecap: square; filter: drop-shadow(0 0 3px rgba(239, 181, 79, .45)); }
-.character-radar-data { fill: rgba(126, 74, 20, .24); stroke: #d28b2d; stroke-width: .9; filter: drop-shadow(0 0 4px rgba(190, 123, 37, .32)); }
-.character-radar-node { fill: #b87422; stroke: rgba(24, 15, 8, .92); stroke-width: .75; filter: drop-shadow(0 0 2px rgba(171, 105, 27, .5)); transform-box: fill-box; transform-origin: center; transition: fill .16s, transform .16s, filter .16s; }
+.character-radar-brackets { fill: none; stroke: rgba(184, 198, 201, .72); stroke-width: .7; stroke-linecap: square; filter: drop-shadow(0 0 3px rgba(184, 198, 201, .28)); }
+.character-radar-data { fill: url(#character-radar-level-fill); stroke: #aebabb; stroke-width: 1.1; filter: drop-shadow(0 0 6px rgba(142, 180, 162, .38)); }
+.character-radar-node { fill: #aebabb; stroke: rgba(19, 25, 27, .96); stroke-width: .75; filter: drop-shadow(0 0 2px rgba(174, 186, 187, .48)); transform-box: fill-box; transform-origin: center; transition: fill .16s, transform .16s, filter .16s; }
 .character-radar-hit { fill: transparent; pointer-events: all; }
-.character-radar-level:hover .character-radar-node, .character-radar-level.is-highlighted .character-radar-node { fill: #d28b2d; stroke: #17100a; filter: drop-shadow(0 0 3px rgba(210, 139, 45, .72)); transform: scale(1.28); }
-.character-radar-core-ring { fill: rgba(4, 14, 24, .7); stroke: rgba(110, 183, 255, .72); stroke-width: .65; }
-.character-radar-core { fill: #b87422; filter: drop-shadow(0 0 3px rgba(171, 105, 27, .65)); }
+.character-radar-level:hover .character-radar-node, .character-radar-level.is-highlighted .character-radar-node { fill: #edf3f0; stroke: #283335; filter: drop-shadow(0 0 4px rgba(213, 232, 222, .82)); transform: scale(1.28); }
+.character-radar-level:hover .character-radar-label, .character-radar-level.is-highlighted .character-radar-label { fill: #f0f5f3; filter: drop-shadow(0 0 3px rgba(205, 225, 216, .72)); }
+.character-radar-core-ring { fill: rgba(4, 14, 24, .7); stroke: rgba(174, 186, 187, .74); stroke-width: .65; }
+.character-radar-core { display: none; }
