@@ -2023,9 +2023,14 @@ function ensurePermanentMissionCalendar() {
   panel.className = "mission-calendar panel";
   panel.innerHTML = '<div class="panel-head mission-calendar-head"><div><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h3>Mission calendar</h3><p class="body-copy">Select a date to review its tasks. Use Add operation to schedule an unscheduled item or create something new.</p></div><button class="primary compact" id="mission-add-operation" type="button">+ Add operation</button></div>';
   panel.append(shell);
+  const missionCards = missionsView.querySelector("#mission-cards");
   const phaseProtocol = missionsView.querySelector("#phase-protocol");
-  if (phaseProtocol) phaseProtocol.after(panel);
-  else missionsView.querySelector("#mission-cards")?.before(panel);
+  // Keep the mission board immediately visible after the phase protocol.
+  // The calendar is a supporting schedule surface and should not bury the
+  // Active / Completed mission controls below a large month view.
+  if (missionCards) missionCards.after(panel);
+  else if (phaseProtocol) phaseProtocol.after(panel);
+  else missionsView.append(panel);
   dialog.remove();
   $("#open-operations-calendar")?.remove();
   wireCalendarPanels();
