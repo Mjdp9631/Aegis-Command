@@ -16,6 +16,7 @@ let accountMemberships = [];
 let groupTradeLinks = [];
 let groupWithdrawals = [];
 let withdrawalAllocations = [];
+let accountDeposits = [];
 let accountTestTrades = [];
 let editingAccountId = null;
 let editingGroupId = null;
@@ -155,6 +156,18 @@ function currentMembership(accountId) {
   return accountMemberships.find((membership) => membership.account_id === accountId && !membership.left_at) || null;
 }
 
+function accountDepositTotal(accountId) {
+  return accountDeposits
+    .filter((deposit) => deposit.account_id === accountId)
+    .reduce((total, deposit) => total + Number(deposit.amount_usd || 0), 0);
+}
+
+function accountWithdrawalTotal(accountId) {
+  return withdrawalAllocations
+    .filter((allocation) => allocation.account_id === accountId)
+    .reduce((total, allocation) => total + Number(allocation.gross_deduction_usd || 0), 0);
+}
+
 function groupForAccountAt(accountId, timestamp) {
   const membership = membershipAt(accountId, timestamp);
   return membership ? accountGroups.find((group) => group.id === membership.group_id) || null : null;
@@ -187,8 +200,13 @@ function calculatedBalance(account) {
     .filter((trade) => trade.account_id === account.id)
     .reduce((total, trade) => total + Number(trade.pnl_usd || 0), 0);
   balance += groupLinksForAccount(account.id).reduce((total, link) => total + Number(link.actual_pnl_usd || 0), 0);
-  balance -= withdrawalAllocations.filter((allocation) => allocation.account_id === account.id).reduce((total, allocation) => total + Number(allocation.gross_deduction_usd || 0), 0);
+  balance += accountDepositTotal(account.id);
+  balance -= accountWithdrawalTotal(account.id);
   return cents(balance);
+}
+
+function accountProfit(account) {
+  return cents(calculatedBalance(account) - Number(account.starting_balance || 0) - accountDepositTotal(account.id) + accountWithdrawalTotal(account.id));
 }
 
 function updateAccountSelect() {
@@ -217,10 +235,27 @@ function renderAccountAdminControls() {
     groupField.innerHTML = 'Group <select id="account-balance-group"><option value="">No group</option></select>';
     accountForm.insertBefore(groupField, accountForm.querySelector(".account-primary") || accountForm.querySelector("button"));
   }
+  if (!$("#account-deposit-wrap")) {
+    const depositField = document.createElement("label");
+    depositField.id = "account-deposit-wrap";
+    depositField.innerHTML = 'Deposit funds <span class="field-optional">optional · does not count as profit</span><input id="account-deposit-amount" type="number" min="0.01" step="0.01" placeholder="e.g. 500.00" disabled />';
+    accountForm.insertBefore(depositField, accountForm.querySelector(".account-primary") || accountForm.querySelector("button"));
+  }
   $("#account-balance-type").onchange = syncGroupOptionsForAccountType;
   host.querySelector("#account-group-type").onchange = syncGroupSplitVisibility;
   syncGroupOptionsForAccountType();
   syncGroupSplitVisibility();
+}
+
+function syncDepositVisibility() {
+  const wrap = $("#account-deposit-wrap");
+  const input = $("#account-deposit-amount");
+  if (!wrap || !input) return;
+  const account = editingAccountId ? accountBalances.find((item) => item.id === editingAccountId) : null;
+  const visible = Boolean(editingAccountId && (account?.account_type || $("#account-balance-type")?.value) === "Live");
+  wrap.hidden = !visible;
+  input.disabled = !visible;
+  input.required = false;
 }
 
 function syncGroupSplitVisibility() {
@@ -240,10 +275,11 @@ function syncGroupSplitVisibility() {
 function syncGroupOptionsForAccountType() {
   const select = $("#account-balance-group");
   const type = $("#account-balance-type")?.value;
-  if (!select) return;
+  if (!select) { syncDepositVisibility(); return; }
   const selected = select.value;
   select.innerHTML = '<option value="">No group</option>' + accountGroups.filter((group) => group.account_type === type).map((group) => `<option value="${group.id}">${escapeHtml(group.name)} · ${escapeHtml(group.account_type)}</option>`).join("");
   if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+  syncDepositVisibility();
 }
 
 function tradeNumberFor(tradeId) {
@@ -289,8 +325,21 @@ function renderBalanceSummary() {
       return group && normalizedPropStatus(group.prop_status) === "funded";
     })
     .reduce((total, account) => total + calculatedBalance(account), 0);
+  const liveProfit = accountBalances
+    .filter((account) => (account.account_type || "Live") === "Live")
+    .reduce((total, account) => total + accountProfit(account), 0);
+  const fundedProfit = accountBalances
+    .filter((account) => (account.account_type || "Live") === "Prop Firm")
+    .filter((account) => {
+      const membership = currentMembership(account.id);
+      const group = membership ? accountGroups.find((item) => item.id === membership.group_id) : null;
+      return group && normalizedPropStatus(group.prop_status) === "funded";
+    })
+    .reduce((total, account) => total + accountProfit(account), 0);
   summary.querySelector("[data-account-live-total]").textContent = money(liveTotal);
   summary.querySelector("[data-account-funded-total]").textContent = money(fundedTotal);
+  summary.querySelector("[data-account-live-profit]").textContent = money(liveProfit);
+  summary.querySelector("[data-account-funded-profit]").textContent = money(fundedProfit);
 }
 
 function renderTheoreticalTradeControls() {
@@ -426,13 +475,14 @@ async function loadAccountLedger() {
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
   const userId = sessionData.session.user.id;
-  const [accountsResult, groupsResult, membershipsResult, linksResult, withdrawalsResult, allocationsResult, testTradesResult] = await Promise.all([
+  const [accountsResult, groupsResult, membershipsResult, linksResult, withdrawalsResult, allocationsResult, depositsResult, testTradesResult] = await Promise.all([
     supabase.from("account_balances").select("*").order("is_primary", { ascending: false }).order("created_at", { ascending: true }),
     supabase.from("account_groups").select("*").order("created_at", { ascending: true }),
     supabase.from("account_group_memberships").select("*").order("joined_at", { ascending: true }),
     supabase.from("account_group_trade_links").select("*").order("created_at", { ascending: true }),
     supabase.from("account_group_withdrawals").select("*").order("withdrawn_at", { ascending: false }),
     supabase.from("account_group_withdrawal_allocations").select("*").order("created_at", { ascending: true }),
+    supabase.from("account_deposits").select("*").order("deposited_at", { ascending: false }),
     supabase.from("account_test_trades").select("*").order("traded_at", { ascending: false })
   ]);
   if (accountsResult.error) { console.error(accountsResult.error); return; }
@@ -442,6 +492,7 @@ async function loadAccountLedger() {
   groupTradeLinks = linksResult.data || [];
   groupWithdrawals = withdrawalsResult.data || [];
   withdrawalAllocations = allocationsResult.data || [];
+  accountDeposits = depositsResult.error ? [] : (depositsResult.data || []);
   accountTestTrades = testTradesResult.data || [];
   renderGroupedAccountBalances();
 }
@@ -457,7 +508,9 @@ async function saveAccountWithGroup(event) {
   const accountType = $("#account-balance-type")?.value || "Live";
   const groupId = $("#account-balance-group")?.value || "";
   const primary = $("#account-primary").checked;
+  const depositAmount = editingAccountId && accountType === "Live" ? numberOrNull($("#account-deposit-amount")?.value) : null;
   if (!accountName || !startingBalance || startingBalance <= 0) return;
+  if (depositAmount != null && (!Number.isFinite(depositAmount) || depositAmount <= 0)) return alert("Enter a positive deposit amount or leave it blank.");
   const group = accountGroups.find((item) => item.id === groupId);
   if (group && group.account_type !== accountType) return alert("The account type must match the group type.");
   const existingAccount = editingAccountId ? accountBalances.find((item) => item.id === editingAccountId) : accountBalances.find((item) => item.account_name === accountName);
@@ -473,12 +526,18 @@ async function saveAccountWithGroup(event) {
     : supabase.from("account_balances").upsert(accountPayload, { onConflict: "user_id,account_name" }).select().single();
   const { data: account, error } = await accountQuery;
   if (error) return alert(`The account could not be saved: ${error.message}`);
+  if (depositAmount != null) {
+    const depositResult = await supabase.from("account_deposits").insert({ user_id: userId, account_id: account.id, amount_usd: cents(depositAmount) });
+    if (depositResult.error) return alert(`The account was updated, but the deposit could not be recorded: ${depositResult.error.message}`);
+  }
   if (groupId && (!current || current.group_id !== groupId)) {
     const membershipResult = await supabase.from("account_group_memberships").insert({ user_id: userId, account_id: account.id, group_id: groupId });
     if (membershipResult.error) return alert(`The account was saved, but could not join the group: ${membershipResult.error.message}`);
   }
   event.target.reset();
   editingAccountId = null;
+  $("#account-deposit-amount").value = "";
+  syncDepositVisibility();
   event.target.querySelector("button[type=submit]").textContent = "Save account";
   $("#account-balance-type").value = "Live";
   syncGroupOptionsForAccountType();
@@ -569,6 +628,8 @@ function editAccount(accountId) {
   syncGroupOptionsForAccountType();
   $("#account-balance-group").value = currentMembership(accountId)?.group_id || "";
   $("#account-primary").checked = Boolean(account.is_primary);
+  $("#account-deposit-amount").value = "";
+  syncDepositVisibility();
   $("#account-balance-form button[type=submit]").textContent = "Update account";
   $("#account-balance-name").focus();
 }

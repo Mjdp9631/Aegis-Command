@@ -25,3 +25,4 @@
 .account-group-header>div:first-child{min-width:0;flex:1 1 240px}
 .account-group-total,.account-group-status-details,.group-admin-actions{position:relative;z-index:1;flex:0 0 auto}
 .group-admin-actions{align-self:center;margin-left:auto}
+.account-group-account-form{grid-template-columns:1.2fr .8fr .8fr .9fr .9fr auto auto}
