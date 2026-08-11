@@ -582,9 +582,25 @@ function displayStatus(operation, day = operatingDayKey()) {
   return status === "Scheduled" && isDayOfOperation(operation, day) ? "Queued" : status;
 }
 
+function statusOptionsFor(operation, day = operatingDayKey()) {
+  return isDayOfOperation(operation, day)
+    ? ["Queued", "Ongoing", "Complete"]
+    : statusOrder;
+}
+
+function statusControlMarkup(operation, day = operatingDayKey(), key = operation.id || operation.title) {
+  const gate = morningGate(operation);
+  const gateExpired = gate?.state === "expired";
+  const status = gateExpired ? "Missed" : displayStatus(operation, day);
+  const options = gateExpired ? ["Missed", "Complete"] : statusOptionsFor(operation, day);
+  const gateTitle = gateExpired
+    ? "This morning window expired. Choose Complete to correct the record, or leave it Missed."
+    : "Choose an operation status";
+  return `<select class="operation-status ${status.toLowerCase()}${gateExpired ? " morning-gated" : ""}" data-hub-set-status="${esc(key)}" data-hub-status-day="${esc(day)}" aria-label="Status for ${esc(operation.title)}" title="${esc(gateTitle)}">${options.map((option) => `<option value="${option}"${option === status ? " selected" : ""}>${option}</option>`).join("")}</select>`;
+}
+
 function calendarStatusMarkup(operation, day) {
-  const status = displayStatus(operation, day);
-  return `<span class="operation-status ${status.toLowerCase()}"><i></i>${esc(status)}</span>`;
+  return statusControlMarkup(operation, day, operation.id || operation.title);
 }
 
 function isReadingOperation(operation) {
@@ -968,7 +984,7 @@ function emergencyQueueMarkup() {
     const gateExpired = gate?.state === "expired";
     const priority = operation.priority || priorityFor(operation.category);
     return `<article class="operation operation-table-row operation-table-v2">
-      <button type="button" class="operation-status ${gateExpired ? "morning-gated" : "queued"}" ${gateExpired ? `data-hub-change-status="${esc(operation.title)}" title="Missed — click to change status"` : `data-hub-status="${esc(operation.title)}"`}><i></i>${gateExpired ? "Missed" : "Queued"}</button>
+      ${statusControlMarkup(operation, operatingDayKey(), operation.title)}
       <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.title)}">${esc(operation.title)}</button>
       <button type="button" class="operation-schedule-control" data-hub-schedule="${esc(operation.title)}">+ Schedule</button>
       <span>${esc(operation.category || "Mission")}</span>
@@ -1004,7 +1020,6 @@ function renderQueue() {
       const timing = scheduleLabel(operation, operatingDayKey());
       const doneClass = status === "Complete" ? " done operation-complete" : "";
       const gateExpired = gate?.state === "expired";
-      const statusLabel = gateExpired ? "Missed" : status;
       const gateNote = gateExpired
         ? '<small class="morning-window-note is-expired">9-hour window expired</small>'
         : gate?.deadline
@@ -1016,7 +1031,7 @@ function renderQueue() {
           ? `Conquer the morning window: ${formatRemaining(gate.remaining)} remaining.`
           : "";
       return `<article class="operation operation-table-row operation-table-v2${doneClass}">
-        <button type="button" class="operation-status ${gateExpired ? "morning-gated" : status.toLowerCase()}" ${gateExpired ? `data-hub-change-status="${esc(operation.id || operation.title)}"` : `data-hub-status="${esc(operation.id || operation.title)}"`} title="${esc(gateExpired ? `${gateTitle} Click to change status.` : gateTitle)}"><i></i>${esc(statusLabel)}</button>
+        ${statusControlMarkup(operation, operatingDayKey(), operation.id || operation.title)}
         <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.id || operation.title)}">${esc(operation.title)}${gateNote}</button>
         <button type="button" class="operation-schedule-control ${scheduled ? "is-scheduled" : ""}" data-hub-schedule="${esc(operation.id || operation.title)}">${esc(timing)}</button>
         <span>${esc(operation.category || "Mission")}</span>
@@ -1037,8 +1052,7 @@ function renderQueue() {
     targets.forEach((target) => {
       target.innerHTML = markup;
       target.dataset.aegisQueueMounted = "true";
-      target.querySelectorAll("[data-hub-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.hubStatus)));
-      target.querySelectorAll("[data-hub-change-status]").forEach((button) => button.addEventListener("click", () => changeGatedStatus(button.dataset.hubChangeStatus)));
+      target.querySelectorAll("[data-hub-set-status]").forEach((select) => select.addEventListener("change", () => setOperationStatus(select.dataset.hubSetStatus, select.value, select.dataset.hubStatusDay)));
       target.querySelectorAll("[data-hub-schedule]").forEach((button) => button.addEventListener("click", () => openScheduleDialog(findOperation(button.dataset.hubSchedule))));
       target.querySelectorAll("[data-hub-detail]").forEach((button) => button.addEventListener("click", () => showOperationDetail(button.dataset.hubDetail)));
     });
@@ -1047,8 +1061,7 @@ function renderQueue() {
     targets.forEach((target) => {
       target.innerHTML = emergencyQueueMarkup();
       target.dataset.aegisQueueMounted = "true";
-      target.querySelectorAll("[data-hub-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.hubStatus)));
-      target.querySelectorAll("[data-hub-change-status]").forEach((button) => button.addEventListener("click", () => changeGatedStatus(button.dataset.hubChangeStatus)));
+      target.querySelectorAll("[data-hub-set-status]").forEach((select) => select.addEventListener("change", () => setOperationStatus(select.dataset.hubSetStatus, select.value, select.dataset.hubStatusDay)));
       target.querySelectorAll("[data-hub-schedule]").forEach((button) => button.addEventListener("click", () => openScheduleDialog(findOperation(button.dataset.hubSchedule))));
       target.querySelectorAll("[data-hub-detail]").forEach((button) => button.addEventListener("click", () => showOperationDetail(button.dataset.hubDetail)));
     });
@@ -1220,7 +1233,10 @@ async function rollOverOngoingOperations() {
     Object.assign(operation, { scheduled_date: today, operation_date: today, started_on: started, last_rollover_on: today, rollover_count: rolloverCount });
     Object.assign(source, { started_on: started, last_rollover_on: today, rollover_count: rolloverCount });
     if (operation._occurrence) {
-      operation._occurrence.occurrence_date = today;
+      // Keep the occurrence's original scheduled date as its durable identity.
+      // The display layer already rolls ongoing work onto the current day;
+      // mutating occurrence_date here can collide with the current daily row
+      // and erase the historical calendar entry.
       Object.assign(operation._occurrence, { started_on: started, last_rollover_on: today, rollover_count: rolloverCount });
     } else if (scheduleMode(source) === "one_time") {
       source.scheduled_date = today;
@@ -1319,6 +1335,85 @@ async function changeGatedStatus(key) {
     return;
   }
   await cycleStatus(key, "Complete");
+}
+
+async function setOperationStatus(key, requestedStatus, selectedDay = operatingDayKey()) {
+  const operation = findOperation(key);
+  if (!operation) return;
+  const next = String(requestedStatus || "").trim();
+  if (next === "Missed") {
+    renderQueue();
+    renderCalendar();
+    return;
+  }
+  if (!statusOrder.includes(next)) return;
+  const gate = morningGate(operation);
+  if (gate?.state === "expired" && next !== "Complete") {
+    renderQueue();
+    renderCalendar();
+    return;
+  }
+  const sourceOperation = operation._base || operation;
+  const currentStatus = displayStatus(operation, selectedDay || operatingDayKey());
+  const wasComplete = normalizedStatus(operation) === "Complete" || currentStatus === "Complete";
+  Object.assign(operation, { status: next, completed: next === "Complete" });
+  if (sourceOperation !== operation) Object.assign(sourceOperation, { status: next, completed: next === "Complete" });
+  if (next === "Ongoing") {
+    const today = operatingDayKey();
+    const started = ongoingStartDay(operation, dateOnly(selectedDay) || today);
+    const rolloverCount = Number(operation.rollover_count ?? operation._occurrence?.rollover_count ?? 0);
+    Object.assign(operation, { started_on: started, last_rollover_on: today, rollover_count: rolloverCount });
+    if (sourceOperation !== operation) Object.assign(sourceOperation, { started_on: started, last_rollover_on: today, rollover_count: rolloverCount });
+    if (operation._occurrence) Object.assign(operation._occurrence, { started_on: started, last_rollover_on: today, rollover_count: rolloverCount });
+    else if (scheduleMode(sourceOperation) === "one_time" && dateOnly(selectedDay) === today) Object.assign(sourceOperation, { scheduled_date: today, operation_date: today });
+  }
+  if (next === "Complete") {
+    // Completing from a calendar day belongs to that occurrence/date. Never
+    // use the browser's current day for a historical correction.
+    const completionDay = dateOnly(operation._occurrence?.occurrence_date || operation.scheduled_date || operation.operation_date || selectedDay) || operatingDayKey();
+    operation.completed_on = completionDay;
+    if (sourceOperation !== operation) sourceOperation.completed_on = completionDay;
+  } else if (wasComplete) {
+    operation.completed_on = null;
+    if (sourceOperation !== operation) sourceOperation.completed_on = null;
+  }
+  const series = operation._series || operation;
+  attachMissionLink(series);
+  if (series !== operation) {
+    operation.mission_id = series.mission_id;
+    operation.metric_key = series.metric_key;
+    if (!operation._occurrence?.id) Object.assign(series, { status: operation.status, completed: Boolean(operation.completed), completed_on: operation.completed_on || null });
+  }
+  const localUpdatedAt = new Date().toISOString();
+  operation.local_updated_at = localUpdatedAt;
+  if (operation._occurrence) operation._occurrence.local_updated_at = localUpdatedAt;
+  saveCachedOperations();
+  if (operation._occurrence) saveCachedOccurrences();
+  renderQueue();
+  renderCalendar();
+  const saved = await persist(operation);
+  if (!saved) {
+    window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "operations-hub", operations, offline: true } }));
+    return;
+  }
+  saveCachedOperations();
+  if (operation._occurrence) saveCachedOccurrences();
+  if (currentUser) {
+    await loadMissions();
+    operations = await seedIfEmpty();
+    await loadOccurrences();
+    await ensureRecurringOccurrences();
+    await rollOverOngoingOperations();
+    await reconcileRecurringCompletion();
+    await reconcileMeasuredMissionCounts();
+    subscribeToOperationSync();
+    saveCachedOperations();
+  }
+  renderQueue();
+  renderCalendar();
+  window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "operations-hub", operations } }));
+  window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "operation-status", operation } }));
+  setTimeout(() => { renderQueue(); renderCalendar(); }, 0);
 }
 
 async function cycleStatus(key, forcedStatus = null) {
@@ -1882,8 +1977,8 @@ function renderCalendar() {
   const selected = displayOperations.filter((operation) => isScheduledOn(operation, selectedDay));
   if (agendaLabel) agendaLabel.textContent = selectedDay ? formatKey(selectedDay, { weekday: "long", month: "long", day: "numeric" }) : "Select a day";
   if (agenda) {
-    agenda.innerHTML = selected.length ? `<div class="calendar-agenda-list">${selected.map((operation) => `<button type="button" class="calendar-agenda-item" data-calendar-status="${esc(operation.id || operation.title)}">${calendarStatusMarkup(operation, selectedDay)}<strong>${esc(operation.title)}</strong><small>${esc(operation.category || "Mission")} · advance status</small></button>`).join("")}</div>` : '<p class="calendar-empty">No operations scheduled. Select another day or schedule an operation in Mission Control.</p>';
-    agenda.querySelectorAll("[data-calendar-status]").forEach((button) => button.addEventListener("click", () => cycleStatus(button.dataset.calendarStatus)));
+    agenda.innerHTML = selected.length ? `<div class="calendar-agenda-list">${selected.map((operation) => `<article class="calendar-agenda-item">${calendarStatusMarkup(operation, selectedDay)}<strong>${esc(operation.title)}</strong><small>${esc(operation.category || "Mission")} · choose status</small></article>`).join("")}</div>` : '<p class="calendar-empty">No operations scheduled. Select another day or schedule an operation in Mission Control.</p>';
+    agenda.querySelectorAll("[data-hub-set-status]").forEach((select) => select.addEventListener("change", () => setOperationStatus(select.dataset.hubSetStatus, select.value, select.dataset.hubStatusDay)));
   }
   if (needsScheduling) {
     const measured = missions
