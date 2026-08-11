@@ -61,6 +61,24 @@ function campaignDay(value) {
   return value ? String(value).slice(0, 10) : "";
 }
 
+function operatingDayKey() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  const date = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), 12));
+  if (Number(parts.hour) < 5) date.setUTCDate(date.getUTCDate() - 1);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
 function isOnOrAfterCampaignDay(value, startedAt) {
   const day = campaignDay(value);
   if (!day || !startedAt) return false;
@@ -97,7 +115,7 @@ export function disciplineXp(operations = [], occurrences = [], startedAt) {
   const recurringIds = new Set(operations.filter((operation) => ["daily", "weekly", "recurring"].includes(String(operation.schedule_mode || "").toLowerCase())).map((operation) => String(operation.id)));
   const occurrenceRows = occurrences.map((occurrence) => {
     const parent = operations.find((operation) => String(operation.id) === String(occurrence.operation_id)) || {};
-    return { ...parent, operation_date: occurrence.occurrence_date, scheduled_date: occurrence.occurrence_date, completed_on: occurrence.completed_on, completed: occurrence.completed, id: `occurrence:${occurrence.id}` };
+    return { ...parent, operation_date: occurrence.occurrence_date, scheduled_date: occurrence.occurrence_date, scheduled_time: occurrence.scheduled_time || parent.scheduled_time, completed_on: occurrence.completed_on, completed: Boolean(occurrence.completed) || String(occurrence.status || "").toLowerCase() === "complete", status: occurrence.status, id: `occurrence:${occurrence.id}` };
   });
   const rows = [...operations.filter((operation) => !recurringIds.has(String(operation.id)) || !occurrences.some((occurrence) => String(occurrence.operation_id) === String(operation.id))), ...occurrenceRows];
   const uniqueRows = new Map();
@@ -110,7 +128,9 @@ export function disciplineXp(operations = [], occurrences = [], startedAt) {
   });
   [...uniqueRows.values()].forEach((operation) => {
     const dayKey = campaignDay(operation.operation_date || operation.completed_on || operation.scheduled_date);
-    if (!dayKey || !isOnOrAfterCampaignDay(dayKey, startedAt)) return;
+    // Do not penalize the active operating day or any future plan. The day is
+    // not measurable until the 5 AM rollover makes it historical.
+    if (!dayKey || dayKey >= operatingDayKey() || !isOnOrAfterCampaignDay(dayKey, startedAt)) return;
     if (/evening\s+(mission\s+)?debrief/i.test(operation.title || "")) return;
     const day = days.get(dayKey) || { total: 0, done: 0 };
     day.total += 1;
@@ -146,28 +166,42 @@ export function masteryXp(entries = [], challenges = [], trainingSessions = [], 
     label: new Date(entry.created_at || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     detail: `${entry.category}: ${entry.title || "entry"} · base evidence XP`,
     change: awards[entry.category],
+    evidenceKey: `entry|${campaignDay(entry.created_at)}|${String(entry.category || "").toLowerCase()}|${String(entry.title || "entry").trim().toLowerCase()}`,
   }));
   const mindLedger = ledgerFor(MIND_AWARDS);
   const bodyLedger = ledgerFor(BODY_AWARDS);
-  trainingSessions.filter((session) => isOnOrAfter(session.created_at || session.logged_on, startedAt)).forEach((session) => {
+  const uniqueTrainingSessions = new Map();
+  trainingSessions.filter((session) => isOnOrAfter(session.logged_on || session.created_at, startedAt)).forEach((session) => {
     const category = session.session_type || "Gym";
+    const day = campaignDay(session.logged_on || session.created_at);
+    const title = String(session.title || "training session").trim().toLowerCase().replace(/\s+/g, " ");
+    const key = `${day}|${String(category).toLowerCase()}|${title}`;
+    if (uniqueTrainingSessions.has(key)) return;
+    uniqueTrainingSessions.set(key, session);
     const change = BODY_AWARDS[category] || BODY_AWARDS.Gym;
-    bodyLedger.push({ label: new Date(session.created_at || `${session.logged_on}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `${category}: ${session.title || "training session"}`, change });
+    bodyLedger.push({ label: new Date(`${day}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `${category}: ${session.title || "training session"}`, change, evidenceKey: `training|${key}` });
   });
   challenges.filter((challenge) => challenge.status === "completed" && isOnOrAfter(challenge.completed_at, startedAt) && Number(challenge.xp_reward || 0) > 0).forEach((challenge) => {
     const ledger = challenge.lane === "body" ? bodyLedger : mindLedger;
-    ledger.push({ label: new Date(challenge.completed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `${challenge.category || "Mastery"} transmission: ${challenge.title || "challenge"} · bonus XP`, change: Number(challenge.xp_reward) });
+    ledger.push({ label: new Date(challenge.completed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `${challenge.category || "Mastery"} transmission: ${challenge.title || "challenge"} · bonus XP`, change: Number(challenge.xp_reward), evidenceKey: `challenge|${challenge.id || challenge.completed_at}` });
   });
-  capabilityLogs.filter((log) => isOnOrAfter(log.created_at || log.practiced_on, startedAt)).forEach((log) => {
+  capabilityLogs.filter((log) => isOnOrAfter(log.practiced_on || log.created_at, startedAt)).forEach((log) => {
     const skillType = log.skill_type || log.capability_skills?.skill_type || "Practical";
     const skillTitle = log.skill_title || log.capability_skills?.title || "capability practice";
     const pressureBonus = log.pressure_level === "High" ? 3 : log.pressure_level === "Moderate" ? 1 : 0;
     const change = (skillType === "Adversarial" ? 12 : 10) + pressureBonus;
-    mindLedger.push({ label: new Date(log.created_at || `${log.practiced_on}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `${skillType}: ${skillTitle} · practice evidence`, change });
+    const practiceDay = campaignDay(log.practiced_on || log.created_at);
+    mindLedger.push({ label: new Date(`${practiceDay}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `${skillType}: ${skillTitle} · practice evidence`, change, evidenceKey: `capability|${log.id || practiceDay}|${skillTitle}` });
   });
+  const uniqueBodyLedger = new Map();
+  bodyLedger.forEach((entry) => {
+    const key = entry.evidenceKey || `${entry.label}|${entry.detail}|${entry.change}`;
+    if (!uniqueBodyLedger.has(key)) uniqueBodyLedger.set(key, entry);
+  });
+  const dedupedBodyLedger = [...uniqueBodyLedger.values()].map(({ evidenceKey, ...entry }) => entry);
   return {
     mind: { xp: mindLedger.reduce((total, entry) => total + entry.change, 0), ledger: mindLedger.sort((a, b) => b.label.localeCompare(a.label)) },
-    body: { xp: bodyLedger.reduce((total, entry) => total + entry.change, 0), ledger: bodyLedger.sort((a, b) => b.label.localeCompare(a.label)) },
+    body: { xp: dedupedBodyLedger.reduce((total, entry) => total + entry.change, 0), ledger: dedupedBodyLedger.sort((a, b) => b.label.localeCompare(a.label)) },
   };
 }
 
