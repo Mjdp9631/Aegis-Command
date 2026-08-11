@@ -8,6 +8,7 @@ const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", 
 const priorities = '<option value="Do now">DO NOW - important + urgent</option><option value="Schedule">SCHEDULE - important + not urgent</option><option value="Delegate">DELEGATE - urgent + not important</option><option value="Eliminate">ELIMINATE - not urgent + not important</option>';
 let client = null, session = null, missions = [];
 let missionEditor = null;
+let missionLoadTimer = null;
 
 function isMeasured(mission) { return mission.completion_type === "units" && Number(mission.target_count) > 0; }
 function missionProgress(mission) { return isMeasured(mission) ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission.completed ? 100 : 0; }
@@ -176,8 +177,12 @@ function openEditor(dialog, mission) {
 }
 
 async function loadData() {
+  if (!session || !client) return;
   const { data, error } = await client.from("missions").select("*").order("created_at", { ascending: false });
-  if (error) return console.error(error);
+  if (error) {
+    console.error("Could not load missions", error);
+    return;
+  }
   missions = (data || []).map(normalize);
   renderMissions(); renderCommandMissions(); publishMissionChange(); syncRecoveryVisibility();
   const { data: logs } = await client.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1);
@@ -251,10 +256,16 @@ if (cloudReady) {
   if (session) await loadData();
   client.auth.onAuthStateChange((_event, nextSession) => {
     session = nextSession;
-    if (!session || _event === "INITIAL_SESSION") return;
+    if (!session) {
+      missions = [];
+      renderMissions();
+      renderCommandMissions();
+      return;
+    }
     // Never await Supabase work inside its auth callback. Supabase can hold
     // the auth lock while dispatching this event, which can freeze refreshes.
-    setTimeout(() => loadData(), 0);
+    clearTimeout(missionLoadTimer);
+    missionLoadTimer = setTimeout(() => loadData(), 0);
   });
 }
 
