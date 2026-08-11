@@ -1137,8 +1137,16 @@ function refreshMorningCountdown() {
 }
 
 function findOperation(key) {
-  return operationInstances().find((operation) => String(operation.id || operation.title) === String(key))
-    || operations.find((operation) => String(operation.id || operation.title) === String(key));
+  const instance = operationInstances().find((operation) => String(operation.id || operation.title) === String(key));
+  if (!instance) return operations.find((operation) => String(operation.id || operation.title) === String(key));
+  // Calendar rendering can return a copy when a completed operation is pinned
+  // to its completion date. Status edits must target the canonical operation,
+  // or the next repaint will restore the old Complete value from `operations`.
+  // Recurring instances remain instance-specific so their occurrence row is
+  // still the record being edited.
+  if (instance._occurrence || instance._series) return instance;
+  const canonical = operations.find((operation) => String(operation.id || operation.title) === String(instance._base?.id || instance.id || key));
+  return canonical || instance._base || instance;
 }
 
 function showOperationDetail(key) {
