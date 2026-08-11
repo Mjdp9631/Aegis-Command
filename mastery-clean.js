@@ -143,7 +143,7 @@ function progressForExercise(session, rows, exerciseName, resistanceType) {
   if (!previous) return "BASELINE · first logged comparison";
   const currentReps = rows.reduce((sum, row) => sum + Number(row.reps || 0) * Math.max(1, Number(row.sets || 1)), 0);
   const previousReps = previous.rows.reduce((sum, row) => sum + Number(row.reps || 0) * Math.max(1, Number(row.sets || 1)), 0);
-  if (resistanceType === "Bands") {
+  if (["Bands", "Bodyweight"].includes(resistanceType)) {
     const delta = currentReps - previousReps;
     return delta ? `${delta > 0 ? "↑" : "↓"} ${Math.abs(delta)} total reps vs ${dateOnly(previous.session.logged_on || previous.session.created_at)}` : `→ holding reps vs ${dateOnly(previous.session.logged_on || previous.session.created_at)}`;
   }
@@ -165,7 +165,7 @@ function trainingCard(session) {
     const rows = sets.filter(set => String(set.exercise_name || "").trim().toLowerCase() === String(exerciseName).trim().toLowerCase() && String(set.resistance_type || "Weights") === resistanceType);
     const detail = rows.map((set, index) => {
       const setNumber = Number(set.set_number || index + 1);
-      const resistance = resistanceType === "Bands" ? (set.band_resistance || "Band") : `${Number(set.weight_lbs || 0)} lb`;
+      const resistance = resistanceType === "Bands" ? (set.band_resistance || "Band") : resistanceType === "Bodyweight" ? "Bodyweight" : `${Number(set.weight_lbs || 0)} lb`;
       return `<span><b>S${setNumber}</b> ${escapeHtml(resistance)} × ${Number(set.reps || 0)} reps</span>`;
     }).join("");
     return `<div class="training-exercise"><div class="training-exercise-head"><b>${escapeHtml(exerciseName)}</b><small>${escapeHtml(resistanceType)}</small></div><div class="training-set-summary">${detail}</div><small class="training-progress">${escapeHtml(progressForExercise(session, rows, exerciseName, resistanceType))}</small></div>`;
@@ -178,8 +178,10 @@ function trainingProgressOverview() {
   if (!latest) return "";
   const latestSets = trainingSets.filter(set => set.session_id === latest.id);
   const weightedVolume = latestSets.reduce((sum, set) => sum + Number(set.weight_lbs || 0) * Number(set.reps || 0) * Math.max(1, Number(set.sets || 1)), 0);
+  const resistanceTypes = new Set(latestSets.map(set => set.resistance_type || "Weights"));
+  const volumeLabel = weightedVolume ? `${weightedVolume.toFixed(0)} lb` : resistanceTypes.has("Bodyweight") ? "Bodyweight" : "Bands";
   const exercises = new Set(latestSets.map(set => String(set.exercise_name || "").trim().toLowerCase()).filter(Boolean));
-  return `<section class="training-progress-overview"><div><p class="eyebrow green-text">PROGRESS TRACKING</p><h3>${escapeHtml(latest.workout_split || latest.title || "Latest session")}</h3><small>Latest session · ${dateOnly(latest.logged_on || latest.created_at)} · compare each exercise below against its prior entry.</small></div><div class="training-progress-stats"><span><b>${trainingSessions.length}</b> sessions</span><span><b>${exercises.size}</b> exercises</span><span><b>${weightedVolume ? `${weightedVolume.toFixed(0)} lb` : "Bands"}</b> latest volume</span></div></section>`;
+  return `<section class="training-progress-overview"><div><p class="eyebrow green-text">PROGRESS TRACKING</p><h3>${escapeHtml(latest.workout_split || latest.title || "Latest session")}</h3><small>Latest session · ${dateOnly(latest.logged_on || latest.created_at)} · compare each exercise below against its prior entry.</small></div><div class="training-progress-stats"><span><b>${trainingSessions.length}</b> sessions</span><span><b>${exercises.size}</b> exercises</span><span><b>${volumeLabel}</b> latest volume</span></div></section>`;
 }
 
 function laneInputDock() {
@@ -343,7 +345,7 @@ function openDialog(existing = null) {
 }
 
 function gymSetRow() {
-  return `<div class="exercise-row" data-set-number="1"><label class="set-number-label">Set <b data-set-number-label>1</b></label><label>Exercise<input name="exercise_name" required placeholder="e.g. DB bench press" /></label><label>Resistance<select name="resistance_type" data-resistance-type><option value="Weights">Weights</option><option value="Bands">Bands</option></select></label><label data-weight-field>Weight (lb)<input name="weight_lbs" type="number" min="0" step="0.5" required /></label><label data-band-field hidden>Band resistance<select name="band_resistance" disabled><option value="">Select band</option><option>Light</option><option>Medium</option><option>Heavy</option><option>Extra heavy</option><option>Other</option></select></label><label>Reps<input name="reps" type="number" min="1" required /></label><button class="ghost compact" type="button" data-add-set>+ Set</button><button class="ghost compact" type="button" data-remove-exercise>Remove</button></div>`;
+  return `<div class="exercise-row" data-set-number="1"><label class="set-number-label">Set <b data-set-number-label>1</b></label><label>Exercise<input name="exercise_name" required placeholder="e.g. DB bench press" /></label><label>Resistance<select name="resistance_type" data-resistance-type><option value="Weights">Weights</option><option value="Bands">Bands</option><option value="Bodyweight">Bodyweight</option></select></label><label data-weight-field>Weight (lb)<input name="weight_lbs" type="number" min="0" step="0.5" required /></label><label data-band-field hidden>Band resistance<select name="band_resistance" disabled><option value="">Select band</option><option>Light</option><option>Medium</option><option>Heavy</option><option>Extra heavy</option><option>Other</option></select></label><label>Reps<input name="reps" type="number" min="1" required /></label><button class="ghost compact" type="button" data-add-set>+ Set</button><button class="ghost compact" type="button" data-remove-exercise>Remove</button></div>`;
 }
 
 function syncResistanceFields(row) {
@@ -353,9 +355,10 @@ function syncResistanceFields(row) {
   const weight = row.querySelector('[name="weight_lbs"]');
   const band = row.querySelector('[name="band_resistance"]');
   const bands = type === "Bands";
-  if (weightField) weightField.hidden = bands;
+  const bodyweight = type === "Bodyweight";
+  if (weightField) weightField.hidden = bands || bodyweight;
   if (bandField) bandField.hidden = !bands;
-  if (weight) { weight.disabled = bands; weight.required = !bands; if (bands) weight.value = ""; }
+  if (weight) { weight.disabled = bands || bodyweight; weight.required = !bands && !bodyweight; if (bands || bodyweight) weight.value = ""; }
   if (band) { band.disabled = !bands; band.required = bands; if (!bands) band.value = ""; }
 }
 
@@ -539,11 +542,11 @@ async function saveFitnessLog(event) {
          set_number: Number(row.dataset.setNumber || 1),
          exercise_name: String(row.querySelector('[name="exercise_name"]')?.value || "").trim(),
         resistance_type: String(row.querySelector('[name="resistance_type"]')?.value || "Weights"),
-        weight_lbs: row.querySelector('[name="resistance_type"]')?.value === "Bands" ? null : Number(row.querySelector('[name="weight_lbs"]')?.value || 0),
+        weight_lbs: ["Bands", "Bodyweight"].includes(row.querySelector('[name="resistance_type"]')?.value) ? null : Number(row.querySelector('[name="weight_lbs"]')?.value || 0),
         band_resistance: row.querySelector('[name="resistance_type"]')?.value === "Bands" ? String(row.querySelector('[name="band_resistance"]')?.value || "").trim() : null,
         reps: Number(row.querySelector('[name="reps"]')?.value || 0),
          sets: 1
-       })).filter(row => row.exercise_name && row.reps > 0 && (row.resistance_type === "Bands" ? row.band_resistance : row.weight_lbs !== null));
+       })).filter(row => row.exercise_name && row.reps > 0 && (row.resistance_type === "Bands" ? row.band_resistance : true));
       if (!rows.length) return alert("Add at least one completed exercise set.");
       let session;
       if (editId) {
