@@ -909,36 +909,17 @@ function resolveMission(operation, includeCompleted = false) {
   return operation.completed ? missions[0] || null : null;
 }
 
-// Every operation has a single, durable mission link before it is saved.  The
-// database trigger can then advance the correct measured mission without the
-// command center, calendar, and mission page trying to maintain separate
-// counters in the browser.
+// Operation pathways are durable only when explicitly chosen. The database
+// trigger advances every selected mission without browser-side guessing.
 function attachMissionLink(operation) {
-  if (operation?.allow_unlinked || operationCategory(operation).toLowerCase() === "life admin") {
-    operation.mission_id = null;
-    return;
-  }
-  const mission = resolveMission(operation, true);
-  const category = operationCategory(operation, mission);
-  const metric = inferredMetricForOperation(operation) || mission?.metric_key || null;
+  // Do not guess a mission from category, title, metric, or the newest active
+  // mission. The user chooses the pathway explicitly; this function only
+  // normalizes operation metadata and preserves durable links already chosen.
+  const category = operationCategory(operation);
+  const metric = inferredMetricForOperation(operation) || operation.metric_key || null;
   if (category && operation.category !== category) operation.category = category;
   if (metric && operation.metric_key !== metric) operation.metric_key = metric;
-  if (category === "Life Admin") {
-    operation.mission_id = null;
-    return;
-  }
-  if (!mission) {
-    // After the final chapter, keep the standing daily operation available for
-    // the next book but do not leave it attached to a completed book mission.
-    if (isReadingOperation(operation) && (!dateOnly(operation.operation_date || operation.scheduled_date)
-      || dateOnly(operation.operation_date || operation.scheduled_date) === operatingDayKey())) {
-      operation.mission_id = null;
-      operation.metric_key = "chapters_read";
-    }
-    return;
-  }
-  operation.mission_id = mission.id;
-  operation.metric_key = operation.metric_key || mission.metric_key || null;
+  if (operation?.allow_unlinked || category === "Life Admin") operation.mission_id = null;
 }
 
 function missionNeedsScheduling(mission) {
@@ -1307,9 +1288,8 @@ function showOperationDetail(key) {
   const linked = Array.isArray(operation.linked_mission_ids)
     ? missions.filter((mission) => operation.linked_mission_ids.some((id) => String(id) === String(mission.id)))
     : [];
-  const mission = linked[0] || resolveMission(operation);
   const checklist = checklistFor(operation).map((item, index) => `${index + 1}. ${item}`).join("\n");
-  const missionList = linked.length ? linked : mission ? [mission] : [];
+  const missionList = linked;
   const advances = missionList.length ? `\n\nADVANCES:\n${missionList.map((item) => `• ${item.title}${item.completion_type === "units" ? ` (${Number(item.completed_count || 0)}/${Number(item.target_count || 0)} ${item.unit_label || "units"})` : ""}`).join("\n")}` : "";
   window.alert(`${operation.title}${advances}\n\nDEFINITION OF DONE\n${checklist}`);
 }
@@ -1486,22 +1466,9 @@ async function updateMissionEvidence(operation, direction) {
   // (or another explicitly-linked operation) supplies the evidence; reading
   // the advisory must never advance the same 30-day mission twice.
   if (/evening\s+mission\s+debrief/i.test(String(operation.title || ""))) return;
-  const mission = resolveMission(operation);
-  if (!mission || String(mission.completion_type || "").toLowerCase() !== "units") return;
-  const target = Math.max(1, Number(mission.target_count || 1));
-  const current = Math.max(0, Number(mission.completed_count || 0));
-  const next = Math.max(0, Math.min(target, current + direction));
-  const completed = next >= target;
-  mission.completed_count = next;
-  mission.completed = completed;
-  operation.mission_id = mission.id;
-  if (client && currentUser) {
-    const { error } = await client.from("missions").update({ completed_count: next, completed, progress: Math.round((next / target) * 100) }).eq("id", mission.id).eq("user_id", currentUser.id);
-    if (error) {
-      console.warn("Could not update mission evidence", error.message);
-      return;
-    }
-  }
+  // Durable database progress is reconciled from explicit operation links.
+  // Never manufacture a pathway in the browser while changing a status.
+  if (!operationMissionIds(operation).length) return;
   window.dispatchEvent(new CustomEvent("aegis:missions-refresh", { detail: { source: "operations-hub" } }));
 }
 
@@ -1515,12 +1482,9 @@ async function reconcileMeasuredMissionCounts() {
     if (normalizedStatus(operation) !== "Complete") return;
     if (/evening\s+mission\s+debrief/i.test(String(operation.title || ""))) return;
     reconcileOperationIdentity(operation);
-    // Reading is the one standing operation whose mission follows the active
-    // book. Do not let a stale legacy mission_id keep a chapter attached to a
-    // previous book.
-    const linkedMissionIds = operationMissionIds(operation).length
-      ? operationMissionIds(operation)
-      : [isReadingOperation(operation) ? activeBookMission()?.id : resolveMission(operation, true)?.id].filter(Boolean);
+    // Only explicit durable links count. A matching category or an active book
+    // is a suggestion, never evidence for a mission.
+    const linkedMissionIds = operationMissionIds(operation);
     if (!linkedMissionIds.length) return;
     // Occurrence rows are already unique by their durable occurrence id.
     // Legacy/one-time rows need a semantic key instead of their database id,
@@ -1570,27 +1534,30 @@ async function reconcileMeasuredMissionCounts() {
 // absent, so this cannot create duplicate progress on a healthy deployment.
 async function repairMissionProgressFromCompletion(operation) {
   if (!client || !currentUser || normalizedStatus(operation) !== "Complete") return;
-  const mission = isReadingOperation(operation) ? activeBookMission() : resolveMission(operation, true);
-  if (!mission || String(mission.completion_type || "").toLowerCase() !== "units") return;
+  const linkedMissions = operationMissionIds(operation).map((id) => missions.find((mission) => String(mission.id) === String(id))).filter(Boolean);
+  const measuredMissions = linkedMissions.filter((mission) => String(mission.completion_type || "").toLowerCase() === "units");
+  if (!measuredMissions.length) return;
   const eventQuery = client.from("mission_progress_events").select("id").eq("user_id", currentUser.id).limit(1);
   if (operation._occurrence?.id) eventQuery.eq("occurrence_id", operation._occurrence.id);
   else if (operation.id && !String(operation.id).startsWith("local-")) eventQuery.eq("operation_id", operation.id);
   else return;
   const { data: events, error: eventError } = await eventQuery;
   if (!eventError && events?.length) return;
-  const target = Math.max(1, Number(mission.target_count || 1));
-  const current = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
-  if (current >= target) return;
-  const next = Math.min(target, current + 1);
-  const { data, error } = await client.from("missions")
-    .update({ completed_count: next, completed: next >= target, progress: Math.round((next / target) * 100) })
-    .eq("id", mission.id)
-    .eq("user_id", currentUser.id)
-    .select()
-    .maybeSingle();
-  if (!error && data) {
-    const index = missions.findIndex((item) => String(item.id) === String(data.id));
-    if (index >= 0) missions[index] = data;
+  for (const mission of measuredMissions) {
+    const target = Math.max(1, Number(mission.target_count || 1));
+    const current = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
+    if (current >= target) continue;
+    const next = Math.min(target, current + 1);
+    const { data, error } = await client.from("missions")
+      .update({ completed_count: next, completed: next >= target, progress: Math.round((next / target) * 100) })
+      .eq("id", mission.id)
+      .eq("user_id", currentUser.id)
+      .select()
+      .maybeSingle();
+    if (!error && data) {
+      const index = missions.findIndex((item) => String(item.id) === String(data.id));
+      if (index >= 0) missions[index] = data;
+    }
   }
 }
 
@@ -1850,8 +1817,7 @@ async function ensureTodayOperations(records = []) {
   if (!client || !currentUser) return appendOperationsWithoutTouchingExisting(records, additions.map((item, index) => ({ ...item, id: `local-${activeDay}-${index}-${item.title}` })));
   const prepared = additions.map((item) => {
     const { priority, ...operationFields } = item;
-    const mission = item.mission_id ? missions.find((candidate) => candidate.id === item.mission_id) : resolveMission(item);
-    return { ...operationFields, user_id: currentUser.id, mission_id: mission?.id || null, metric_key: item.metric_key || mission?.metric_key || null };
+    return { ...operationFields, user_id: currentUser.id, mission_id: item.mission_id || null, metric_key: item.metric_key || null };
   });
   const { data, error } = await client.from("operations").insert(prepared).select();
   if (error) {
@@ -2281,7 +2247,7 @@ function scheduledCountForMission(missionId) {
   const seen = new Set();
   dedupeOperationInstances(operationInstances()).forEach((operation) => {
     const series = operation._series || operation;
-    const linkedMissionIds = operationMissionIds(operation).length ? operationMissionIds(operation) : [resolveMission(operation)?.id].filter(Boolean);
+    const linkedMissionIds = operationMissionIds(operation);
     if (!linkedMissionIds.some((id) => String(id) === String(missionId))) return;
     const mode = scheduleMode(series);
     if (mode !== "one_time") {

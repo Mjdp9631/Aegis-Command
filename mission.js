@@ -15,33 +15,11 @@ function isMeasured(mission) { return mission.completion_type === "units" && Num
 function missionProgress(mission) { return isMeasured(mission) ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission.completed ? 100 : 0; }
 function missionLabel(mission) { return isMeasured(mission) ? `${Math.min(Number(mission.completed_count) || 0, Number(mission.target_count))} / ${mission.target_count} ${mission.unit_label || "units"}` : mission.completed ? "Complete" : "Not complete"; }
 function operationMatchesMission(operation, mission) {
-  const operationText = `${operation.title || ""} ${operation.metric_key || ""}`.toLowerCase();
-  const missionText = `${mission.title || ""} ${mission.completion_definition || ""} ${mission.metric_key || ""}`.toLowerCase();
-
-  // A durable mission_id is authoritative. Special handling for the standing
-  // reading operation must never hide an operation that was explicitly linked
-  // to this mission.
+  // Mission pathways are explicit. Similarity can be useful as an editor
+  // suggestion, but it must never make an unrelated operation advance a
+  // mission automatically.
   if (String(operation.mission_id || "") === String(mission.id)
     || (Array.isArray(operation.linked_mission_ids) && operation.linked_mission_ids.some((id) => String(id) === String(mission.id)))) return true;
-
-  if (/chapter|read|book/.test(operationText)) {
-    const operationDay = String(operation.operation_date || operation.scheduled_date || "").slice(0, 10);
-    const currentReading = Boolean(operation.is_daily) || !operationDay || operationDay === easternDateKey()
-      || (/^read one chapter$/i.test(String(operation.title || "").trim()) && !operation.completed);
-    // The current daily reading operation follows only the active book. Once
-    // that book is complete, currentBookMissionId is empty and the operation
-    // intentionally has no mission attachment until a new book is added.
-    if (currentReading) {
-      const activeBookKey = currentBookTitle.toLowerCase().replace(/[^a-z0-9]+/g, "");
-      const missionKey = missionText.replace(/[^a-z0-9]+/g, "");
-      const isActiveBookMission = activeBookKey.length >= 5 && missionKey.includes(activeBookKey) && !mission.completed;
-      return isActiveBookMission || (Boolean(currentBookMissionId) && String(mission.id) === String(currentBookMissionId));
-    }
-    return false;
-  }
-  if (/pt|physical therapy|orthopedic|acl|rehab/.test(operationText) && /pt|physical therapy|orthopedic|acl|rehab|recovery/.test(missionText)) return true;
-  if (/gym|workout|strength/.test(operationText) && /gym|workout|strength|training/.test(missionText)) return true;
-  if (/journal|mastery\.entry/.test(operationText) && /journal|mastery\.entry|self mastery/.test(missionText)) return true;
   return false;
 }
 function operationsForMission(mission) { return missionOperations.filter((operation) => operationMatchesMission(operation, mission)); }
@@ -128,9 +106,65 @@ function buildMissionDetails() {
 
 function wireMissionDetailsDialog(dialog) {
   const button = dialog?.querySelector("#mission-details-edit");
-  if (!button || button.dataset.aegisWired === "true") return;
-  button.dataset.aegisWired = "true";
-  button.addEventListener("click", openMissionEditorFromDetails);
+  if (button && button.dataset.aegisWired !== "true") {
+    button.dataset.aegisWired = "true";
+    button.addEventListener("click", openMissionEditorFromDetails);
+  }
+  if (dialog && dialog.dataset.aegisUnlinkWired !== "true") {
+    dialog.dataset.aegisUnlinkWired = "true";
+    dialog.addEventListener("click", (event) => {
+      const unlink = event.target.closest("[data-unlink-operation]");
+      if (!unlink) return;
+      event.preventDefault();
+      event.stopPropagation();
+      unlinkMissionOperation(unlink.dataset.unlinkOperation, unlink.dataset.unlinkMission);
+    });
+  }
+}
+
+async function unlinkMissionOperation(operationId, missionId) {
+  if (!operationId || !missionId || !session?.user?.id) return;
+  const operation = missionOperations.find((item) => String(item.id) === String(operationId));
+  if (!operation) return;
+  let manyToManyAvailable = false;
+  if (client) {
+    const result = await client.from("operation_mission_links")
+      .delete()
+      .eq("user_id", session.user.id)
+      .eq("operation_id", operationId)
+      .eq("mission_id", missionId);
+    if (!result.error) manyToManyAvailable = true;
+    else if (!/relation|table|schema cache|operation_mission_links/i.test(String(result.error.message || ""))) {
+      window.alert(`Could not unlink operation: ${result.error.message}`);
+      return;
+    }
+  }
+  let remainingIds = (Array.isArray(operation.linked_mission_ids) ? operation.linked_mission_ids : [])
+    .filter((id) => String(id) !== String(missionId));
+  if (client && manyToManyAvailable) {
+    const { data } = await client.from("operation_mission_links")
+      .select("mission_id")
+      .eq("user_id", session.user.id)
+      .eq("operation_id", operationId);
+    remainingIds = (data || []).map((row) => row.mission_id);
+  }
+  const nextLegacyMission = remainingIds[0] || null;
+  if (client && !isLocalOperationId(operationId) && String(operation.mission_id || "") === String(missionId)) {
+    const result = await client.from("operations")
+      .update({ mission_id: nextLegacyMission })
+      .eq("id", operationId)
+      .eq("user_id", session.user.id);
+    if (result.error && !/column|schema cache/i.test(String(result.error.message || ""))) {
+      window.alert(`The link was removed, but the legacy operation path could not be updated: ${result.error.message}`);
+    }
+  }
+  missionOperations = missionOperations.map((item) => String(item.id) === String(operationId)
+    ? { ...item, mission_id: nextLegacyMission, linked_mission_ids: remainingIds }
+    : item);
+  window.AEGIS_OPERATIONS = missionOperations;
+  window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "mission-unlink", operations: missionOperations } }));
+  const mission = missions.find((item) => String(item.id) === String(missionId));
+  if (mission) openMissionDetails(mission);
 }
 
 function openMissionEditorFromDetails(event) {
@@ -182,7 +216,7 @@ function openMissionDetails(mission) {
   dialog.querySelector("#mission-details-definition").textContent = mission.completion_definition || "Define the evidence that proves this mission is complete.";
   const linked = operationsForMission(mission);
   dialog.querySelector("#mission-details-operations").innerHTML = linked.length
-    ? linked.map((operation) => `<article class="mission-operation-link"><strong>${escape(operation.title)}</strong><span>${escape(operationStatus(operation))}${operationDate(operation) ? ` · ${escape(operationDate(operation))}` : ""}${operation.category ? ` · ${escape(operation.category)}` : ""}</span></article>`).join("")
+    ? linked.map((operation) => `<article class="mission-operation-link"><div><strong>${escape(operation.title)}</strong><span>${escape(operationStatus(operation))}${operationDate(operation) ? ` · ${escape(operationDate(operation))}` : ""}${operation.category ? ` · ${escape(operation.category)}` : ""}</span></div><button type="button" class="secondary mission-operation-unlink" data-unlink-operation="${escape(operation.id)}" data-unlink-mission="${escape(mission.id)}">Unlink</button></article>`).join("")
     : '<p class="mission-details-empty">No operation is attached yet. Schedule one from this mission or link it when creating an operation.</p>';
   if (dialog.open) dialog.close();
   setTimeout(() => {
@@ -258,6 +292,16 @@ function operationPlanRows() {
   });
 }
 
+function operationSuggestionScore(operation, mission) {
+  if (!mission) return 0;
+  let score = 0;
+  if (mission.metric_key && operation.metric_key && String(mission.metric_key).toLowerCase() === String(operation.metric_key).toLowerCase()) score += 3;
+  const missionWords = `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length >= 4);
+  const operationText = `${operation.title || ""} ${operation.brief || ""}`.toLowerCase();
+  if (missionWords.some((word) => operationText.includes(word))) score += 1;
+  return score;
+}
+
 function isLocalOperationId(id) {
   return String(id || "").startsWith("local-");
 }
@@ -297,10 +341,13 @@ function populateOperationPlanChoices(form, prefix, mission = null) {
   const select = form?.querySelector(`#${prefix}-operation-existing`);
   if (!select) return;
   const currentMissionId = String(mission?.id || "");
-  const rows = operationPlanRows();
-  select.innerHTML = rows.length ? rows.map((operation) => `<option value="${escape(operation.id)}">${escape(operation.title)}${operation.scheduled_date ? ` · ${escape(operation.scheduled_date)}` : " · unscheduled"}${operation.category ? ` · ${escape(operation.category)}` : ""}${operation.mission_id || operation.linked_mission_ids?.length ? " · already linked" : ""}</option>`).join("") : `<option value="">No existing operations available</option>`;
+  const rows = operationPlanRows().sort((a, b) => operationSuggestionScore(b, mission) - operationSuggestionScore(a, mission) || String(a.title || "").localeCompare(String(b.title || "")));
+  select.innerHTML = rows.length ? rows.map((operation) => {
+    const suggestion = operationSuggestionScore(operation, mission) > 0 ? " · exact match suggestion" : "";
+    return `<option value="${escape(operation.id)}">${escape(operation.title)}${operation.scheduled_date ? ` · ${escape(operation.scheduled_date)}` : " · unscheduled"}${operation.category ? ` · ${escape(operation.category)}` : ""}${operation.mission_id || operation.linked_mission_ids?.length ? " · already linked" : ""}${suggestion}</option>`;
+  }).join("") : `<option value="">No existing operations available</option>`;
   const note = form.querySelector(`#${prefix}-operation-existing-note`);
-  if (note) note.textContent = rows.length ? `${rows.length} existing operation${rows.length === 1 ? "" : "s"} available. Select one or more; each advances this mission by one measurement when completed. Existing links are preserved.` : "No existing operations are available yet.";
+  if (note) note.textContent = rows.length ? `${rows.length} existing operation${rows.length === 1 ? "" : "s"} available. Exact metric/title matches are shown first as suggestions; nothing is attached until you select it. One operation may advance multiple missions.` : "No existing operations are available yet.";
 }
 
 function refreshOperationPlanChoices() {
