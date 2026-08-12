@@ -256,6 +256,19 @@ function isLocalOperationId(id) {
   return String(id || "").startsWith("local-");
 }
 
+async function insertMissionOperation(payload) {
+  const attempt = { ...payload };
+  let result = await client.from("operations").insert(attempt).select().single();
+  if (!result.error || !/allow_unlinked|scheduled_end_date|schedule_mode|operation_date|is_daily|scheduled_time|metric_key|brief|column|schema cache/i.test(String(result.error.message || ""))) return result;
+
+  // Browser-cached operations can outlive a partially migrated database. Keep
+  // the durable mission link and core schedule fields, while gracefully
+  // dropping only columns that this older schema does not expose.
+  ["allow_unlinked", "scheduled_end_date", "schedule_mode", "operation_date", "is_daily", "scheduled_time", "metric_key", "brief"].forEach((key) => delete attempt[key]);
+  result = await client.from("operations").insert(attempt).select().single();
+  return result;
+}
+
 function populateOperationPlanChoices(form, prefix, mission = null) {
   const select = form?.querySelector(`#${prefix}-operation-existing`);
   if (!select) return;
@@ -347,7 +360,7 @@ async function applyMissionOperationPlan(mission, plan) {
         brief: selectedOperation.brief || mission.completion_definition || `Complete one ${mission.unit_label || "operation"} for this mission.`,
         status: selectedOperation.status || (selectedOperation.completed ? "Complete" : "Queued"),
         completed: Boolean(selectedOperation.completed),
-        scheduled_date: selectedOperation.scheduled_date || selectedOperation.operation_date || null,
+        scheduled_date: selectedOperation.scheduled_date || selectedOperation.operation_date || easternDateKey(),
         scheduled_time: selectedOperation.scheduled_time || null,
         scheduled_end_date: selectedOperation.scheduled_end_date || null,
         schedule_mode: selectedOperation.schedule_mode || "one_time",
@@ -357,11 +370,7 @@ async function applyMissionOperationPlan(mission, plan) {
         metric_key: mission.metric_key || selectedOperation.metric_key || "operation.complete",
         allow_unlinked: false,
       };
-      let { data, error } = await client.from("operations").insert(localPayload).select().single();
-      if (error && /allow_unlinked|column|schema cache/i.test(String(error.message || ""))) {
-        delete localPayload.allow_unlinked;
-        ({ data, error } = await client.from("operations").insert(localPayload).select().single());
-      }
+      const { data, error } = await insertMissionOperation(localPayload);
       if (error) return { ok: false, message: error.message };
       if (data) missionOperations = [...missionOperations.filter((operation) => String(operation.id) !== String(selectedOperation.id)), data];
       return { ok: true, data };
@@ -381,11 +390,7 @@ async function applyMissionOperationPlan(mission, plan) {
   if (!plan.title) return { ok: false, message: "Enter an operation name." };
   if (plan.endDate && plan.endDate < plan.date) return { ok: false, message: "The operation end date must be on or after its first date." };
   const operationPayload = missionOperationPayload(mission, plan);
-  let { data, error } = await client.from("operations").insert(operationPayload).select().single();
-  if (error && /allow_unlinked|column|schema cache/i.test(String(error.message || ""))) {
-    delete operationPayload.allow_unlinked;
-    ({ data, error } = await client.from("operations").insert(operationPayload).select().single());
-  }
+  const { data, error } = await insertMissionOperation(operationPayload);
   if (error) return { ok: false, message: error.message };
   if (data) missionOperations = [data, ...missionOperations];
   return { ok: true, data };
@@ -450,7 +455,7 @@ function buildMissionEditor() {
   syncOperationPlanFields(form, "edit-mission");
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const mission = missions.find((item) => item.id === dialog.dataset.missionId);
+    const mission = missions.find((item) => String(item.id) === String(dialog.dataset.missionId));
     const payload = { ...readMission(form, "edit-mission", false, mission), ...readOutcomeFields(form, "edit-mission", mission) };
     if (!mission || !payload.title) return;
     const { data, error } = await client.from("missions").update(payload).eq("id", mission.id).select().single();
@@ -458,9 +463,16 @@ function buildMissionEditor() {
     const updatedMission = normalize(data);
     const operationResult = await applyMissionOperationPlan(updatedMission, readOperationPlan(form, "edit-mission"));
     missions = missions.map((item) => item.id === data.id ? updatedMission : item);
-    dialog.close(); renderMissions(); renderCommandMissions(); publishMissionChange(); syncRecoveryVisibility();
+    dialog.close();
+    if (operationResult.ok && operationResult.data) {
+      // Re-read both tables after linking so a stale operations-hub event
+      // cannot immediately hide the newly attached operation.
+      await loadData();
+      announceMissionOperationChange();
+    } else {
+      renderMissions(); renderCommandMissions(); publishMissionChange(); syncRecoveryVisibility();
+    }
     if (!operationResult.ok) alert(`Mission updated, but its operation was not linked: ${operationResult.message}`);
-    else if (operationResult.data) announceMissionOperationChange();
   });
   return dialog;
 }
