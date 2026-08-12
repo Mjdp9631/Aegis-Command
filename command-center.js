@@ -37,6 +37,12 @@ function renderMissionLedgerFallback(missions) {
   target.dataset.missionFallbackWired = "true";
   target.addEventListener("click", (event) => {
     if (target.dataset.missionRenderer !== "fallback") return;
+    const card = event.target.closest("[data-mission-ledger-card]");
+    if (card) {
+      event.preventDefault();
+      window.AEGIS_OPEN_MISSION_EDITOR?.(card.dataset.missionId);
+      return;
+    }
     const button = event.target.closest("[data-mission-view]");
     if (!button) return;
     target.querySelectorAll("[data-mission-view]").forEach((item) => item.classList.toggle("active", item === button));

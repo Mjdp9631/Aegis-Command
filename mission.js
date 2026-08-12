@@ -132,12 +132,16 @@ function renderCommandMissionBoard(nextMissions = missions, operations = []) {
   if (!target) return;
   target.id = "command-missions";
   const active = sortMissions(nextMissions.filter((mission) => mission.progress < 100));
-  target.className = "mission-list mission-list-scroll";
-  target.innerHTML = active.length ? active.map((mission) => {
-    const linked = operations.filter((operation) => (operation.mission_link_mode !== "family" && String(operation.mission_id || "") === String(mission.id))
-      || (Array.isArray(operation.linked_mission_ids) && operation.linked_mission_ids.some((id) => String(id) === String(mission.id))));
-    return `<button type="button" class="command-mission mission-open" data-mission-id="${escape(mission.id)}"><div class="mission-icon ${iconClass(mission.category)}">${icon(mission.category)}</div><div><strong>${escape(mission.title)}</strong><small>${escape(mission.category)} - ${escape(mission.priority)}</small></div><span>${escape(missionLabel(mission))}</span></button>`;
-  }).join("") : '<article><div><strong>No active missions</strong><small>Open the next objective from Mission Control.</small></div></article>';
+  target.className = "mission-list command-mission-board";
+  target.innerHTML = `<div class="command-mission-list" data-command-mission-list></div>`;
+  const activeList = target.querySelector("[data-command-mission-list]");
+  activeList.innerHTML = active.length ? active.map((mission) => commandMissionCard(mission, operations)).join("") : '<article class="command-mission-empty"><strong>No active missions.</strong><small>Open the next objective from Mission Control.</small></article>';
+  activeList.querySelectorAll("[data-open-mission]").forEach((card) => card.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const mission = missions.find((item) => String(item.id) === String(card.dataset.missionId)) || nextMissions.find((item) => String(item.id) === String(card.dataset.missionId));
+    if (mission) openEditorFromMissionCard(mission);
+  }));
 }
 
 function renderMissions() {
@@ -160,7 +164,7 @@ function renderMissions() {
     event.stopPropagation();
     event.stopImmediatePropagation();
     const mission = missions.find((item) => String(item.id) === String(card.dataset.missionId));
-    openMissionDetails(mission);
+    openEditorFromMissionCard(mission);
   }, true));
   target.querySelectorAll("[data-mission-view]").forEach((button) => button.addEventListener("click", () => { target.querySelectorAll("[data-mission-view]").forEach((item) => item.classList.toggle("active", item === button)); draw(button.dataset.missionView === "complete" ? complete : active); }));
 }
@@ -315,9 +319,31 @@ function openMissionDetails(mission) {
   }, 0);
 }
 
+function openEditorFromMissionCard(mission) {
+  if (!mission) return;
+  if (!session) return alert("Sign in before editing a mission.");
+  if (!missionEditor || !missionEditor.isConnected) missionEditor = buildMissionEditor();
+  const launch = () => {
+    try {
+      if (missionEditor.open) missionEditor.close();
+      openEditor(missionEditor, mission);
+    } catch (error) {
+      console.warn("Mission editor could not open from ledger", error);
+    }
+  };
+  if (missionDetails?.open) {
+    missionDetails.close();
+    setTimeout(launch, 0);
+  } else launch();
+}
+
 window.AEGIS_OPEN_MISSION_DETAILS = (id) => {
   const mission = missions.find((item) => String(item.id) === String(id));
   openMissionDetails(mission);
+};
+window.AEGIS_OPEN_MISSION_EDITOR = (id) => {
+  const mission = missions.find((item) => String(item.id) === String(id));
+  openEditorFromMissionCard(mission);
 };
 
 window.AEGIS_RENDER_COMMAND_MISSIONS = renderCommandMissionBoard;
@@ -848,7 +874,7 @@ function bindDialogs() {
     const card = event.target.closest(".mission-open");
     if (!card) return;
     const mission = missions.find((item) => String(item.id) === String(card.dataset.missionId));
-    if (card.dataset.missionLedgerCard === "true") openMissionDetails(mission);
+    if (card.dataset.missionLedgerCard === "true") openEditorFromMissionCard(mission);
     else openMission(card.dataset.missionId);
   });
   document.addEventListener("click", (event) => {
@@ -909,7 +935,7 @@ document.addEventListener("click", (event) => {
   if (!card) return;
   event.preventDefault();
   event.stopImmediatePropagation();
-  window.AEGIS_OPEN_MISSION_DETAILS?.(card.dataset.missionId);
+  window.AEGIS_OPEN_MISSION_EDITOR?.(card.dataset.missionId);
 }, true);
 
 window.addEventListener("aegis:open-mission", (event) => {
