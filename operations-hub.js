@@ -1807,6 +1807,45 @@ async function syncDailyReadingOperation() {
   }
 }
 
+async function ensureFinalBookChapterOperation() {
+  if (!client || !currentUser || !currentBook?.title) return;
+  const bookKey = currentBook.title.toLowerCase();
+  const mission = missions.find((candidate) => {
+    if (candidate.completed || String(candidate.metric_key || "").toLowerCase() !== "chapters_read") return false;
+    const text = `${candidate.title || ""} ${candidate.completion_definition || ""}`.toLowerCase();
+    return text.includes(bookKey) && Number(candidate.target_count || 0) > 0;
+  });
+  if (!mission) return;
+  const target = Math.max(1, Number(mission.target_count || 1));
+  const completed = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
+  if (target - completed !== 1) return;
+  const title = `Read one chapter — ${currentBook.title} — Chapter ${target}`;
+  const exists = operations.some((operation) => String(operation.mission_id || "") === String(mission.id)
+    && String(operation.title || "").trim().toLowerCase() === title.toLowerCase());
+  if (exists) return;
+  const operation = {
+    user_id: currentUser.id,
+    title,
+    category: "Self Mastery",
+    brief: `Read the final chapter of "${currentBook.title}", then capture one useful idea, quote, or action in Self Mastery.`,
+    status: "Queued",
+    completed: false,
+    is_daily: false,
+    operation_date: operatingDayKey(),
+    scheduled_date: operatingDayKey(),
+    mission_id: mission.id,
+    metric_key: "chapters_read",
+  };
+  const { data, error } = await client.from("operations").insert(operation).select().single();
+  if (error) {
+    console.warn("Could not create final book chapter operation", error.message);
+    return;
+  }
+  operations.push(data || operation);
+  saveCachedOperations();
+  announceOperationsLoaded();
+}
+
 async function syncOperationMissionLinks() {
   const pending = [];
   operations.forEach((operation) => {
@@ -2280,6 +2319,7 @@ async function boot() {
     operations = await seedIfEmpty();
     await syncOperationMissionLinks();
     await syncDailyReadingOperation();
+    await ensureFinalBookChapterOperation();
     await loadOccurrences();
     await ensureRecurringOccurrences();
     await markExpiredOperationsMissed();
@@ -2354,6 +2394,7 @@ window.addEventListener("aegis:mastery-changed", async () => {
   if (!currentUser) return;
   await loadCurrentBook();
   await syncDailyReadingOperation();
+  await ensureFinalBookChapterOperation();
   renderQueue();
 });
 window.addEventListener("aegis:operations-changed", async (event) => {

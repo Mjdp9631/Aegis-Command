@@ -111,7 +111,10 @@ function buildMissionDetails() {
     const mission = missions.find((item) => String(item.id) === String(dialog.dataset.missionId));
     if (!mission || !missionEditor) return;
     dialog.close();
-    openEditor(missionEditor, mission);
+    // A browser cannot open a second modal dialog during the same event turn
+    // that closes the first one. Defer the editor by one frame so Edit Mission
+    // reliably opens instead of failing silently with InvalidStateError.
+    requestAnimationFrame(() => openEditor(missionEditor, mission));
   });
   return dialog;
 }
