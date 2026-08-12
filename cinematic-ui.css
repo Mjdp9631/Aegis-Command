@@ -1315,6 +1315,7 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   grid-template-rows: auto minmax(0, 1fr) !important;
   min-height: 0 !important;
 }
+#command .mission-panel > #command-missions.command-mission-board,
 #command .mission-panel > #command-missions.mission-list-scroll {
   display: grid !important;
   align-content: start;
@@ -1328,8 +1329,17 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   scrollbar-width: thin;
   scrollbar-color: rgba(89,180,255,.55) transparent;
 }
+#command .mission-panel > #command-missions.command-mission-board > .command-mission-list {
+  min-height: 0;
+}
+#command .mission-panel > #command-missions.command-mission-board > .command-mission-list > .command-mission-card {
+  flex: 0 0 auto;
+}
+#command .mission-panel > #command-missions.command-mission-board::-webkit-scrollbar,
 #command .mission-panel > #command-missions.mission-list-scroll::-webkit-scrollbar { width: 5px; }
+#command .mission-panel > #command-missions.command-mission-board::-webkit-scrollbar-track,
 #command .mission-panel > #command-missions.mission-list-scroll::-webkit-scrollbar-track { background: transparent; }
+#command .mission-panel > #command-missions.command-mission-board::-webkit-scrollbar-thumb,
 #command .mission-panel > #command-missions.mission-list-scroll::-webkit-scrollbar-thumb { background: rgba(89,180,255,.55); border-radius: 99px; }
 #command .command-mission-card {
   display: grid !important;

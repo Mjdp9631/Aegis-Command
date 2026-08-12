@@ -257,8 +257,9 @@
             const card = row => `<button type="button" class="mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${esc(row.id)}"><span class="eyebrow amber">${esc(row.priority || "Schedule")}</span><h3>${esc(row.title)}</h3><p>${esc(row.category || "Self Mastery")} mission · ${esc(label(row))}</p><div class="meter"><i style="width:${row.progress}%"></i></div><small>${esc(row.completion_definition || "Define the evidence that proves this mission is complete.")}</small></button>`;
             const ledger = document.getElementById("mission-cards");
             if (ledger) ledger.innerHTML = `<div class="mission-view-tabs"><button type="button" class="mission-view-tab active" data-mission-view="active">ACTIVE · ${active.length}</button><button type="button" class="mission-view-tab" data-mission-view="complete">COMPLETED · ${complete.length}</button></div><div class="mission-card-list" data-mission-list>${active.map(card).join("") || '<article class="mission-card"><h3>No missions in this view.</h3></article>'}</div>`;
-            const command = document.getElementById("command-missions");
-            if (command) command.innerHTML = active.map(row => `<button type="button" class="command-mission mission-open" data-mission-id="${esc(row.id)}" data-open-mission="${esc(row.id)}"><div class="mission-icon"></div><div><strong>${esc(row.title)}</strong><small>${esc(row.category || "Self Mastery")} - ${esc(row.priority || "Schedule")}</small></div><span>${esc(label(row))}</span></button>`).join("") || '<article><div><strong>No active missions</strong><small>Open the next objective from Mission Control.</small></div></article>';
+            // Command Center is owned exclusively by mission.js. This boot
+            // fallback must never paint #command-missions or it can briefly
+            // stack a second layout over the canonical cards.
             window.AEGIS_MISSIONS = normalized;
           };
           window.addEventListener("aegis:missions-loaded", event => paint(event.detail?.missions));
@@ -300,7 +301,7 @@
     </script>
     <script type="module" src="auth-flow.js"></script>
     <script type="module" src="cross-browser-sync.js?v=realtime-v2"></script>
-    <script type="module" src="mission.js?v=mission-ledger-boot-v6"></script>
+    <script type="module" src="mission.js?v=mission-ledger-boot-v8"></script>
     <script type="module" src="phase-protocol.js?v=phase-protocol-v7"></script>
     <script type="module" src="detective.js?v=account-profit-deposits-v2"></script>
     <script type="module" src="brain-review.js?v=correction-feedback-v1"></script>
