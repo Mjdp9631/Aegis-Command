@@ -751,6 +751,21 @@ function readingBookLabel() {
   return currentBook?.title ? `"${currentBook.title}"` : "your current book";
 }
 
+function activeBookMission() {
+  if (!currentBook?.title) return null;
+  const bookKey = String(currentBook.title).toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (bookKey.length < 5) return null;
+  const candidates = missions.filter((mission) => {
+    if (mission.completed) return false;
+    const text = `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase();
+    return metricsMatch(mission.metric_key, "chapters_read") || /read|book|chapter/.test(text);
+  });
+  return candidates.find((mission) => {
+    const missionKey = `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    return missionKey.includes(bookKey);
+  }) || (candidates.length === 1 ? candidates[0] : null);
+}
+
 function isCompleteToday(operation) {
   if (normalizedStatus(operation) !== "Complete") return false;
   const completedOn = dateOnly(operation.completed_on || operation.local_completed_on);
@@ -826,9 +841,7 @@ function resolveMission(operation, includeCompleted = false) {
     // Never fall back to another book or to a completed mission here.
     if (!currentBook?.title) return null;
     const bookTitle = currentBook.title.toLowerCase();
-    const bookMission = missions.find((mission) => !mission.completed
-      && `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().includes(bookTitle));
-    return bookMission || null;
+    return activeBookMission();
   }
   const operationCategoryKey = operationCategory(operation).toLowerCase();
   // Life Admin is intentionally independent work: appointments, errands, and
@@ -1481,7 +1494,12 @@ async function reconcileMeasuredMissionCounts() {
     if (normalizedStatus(operation) !== "Complete") return;
     if (/evening\s+mission\s+debrief/i.test(String(operation.title || ""))) return;
     reconcileOperationIdentity(operation);
-    const linkedMissionId = operation.mission_id || resolveMission(operation, true)?.id;
+    // Reading is the one standing operation whose mission follows the active
+    // book. Do not let a stale legacy mission_id keep a chapter attached to a
+    // previous book.
+    const linkedMissionId = isReadingOperation(operation)
+      ? activeBookMission()?.id
+      : operation.mission_id || resolveMission(operation, true)?.id;
     if (!linkedMissionId) return;
     // Occurrence rows are already unique by their durable occurrence id.
     // Legacy/one-time rows need a semantic key instead of their database id,
@@ -1807,13 +1825,21 @@ async function loadMissions() {
 async function loadCurrentBook() {
   currentBook = null;
   if (!client || !currentUser) return;
-  const { data, error } = await client.from("mastery_entries")
+  let { data, error } = await client.from("mastery_entries")
     .select("id, title, created_at")
     .eq("user_id", currentUser.id)
-    .eq("category", "Book")
+    .ilike("category", "book")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (error) {
+    ({ data, error } = await client.from("mastery_entries")
+      .select("id, title, created_at")
+      .eq("user_id", currentUser.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle());
+  }
   if (error) {
     console.warn("Could not load current book", error.message);
     return;

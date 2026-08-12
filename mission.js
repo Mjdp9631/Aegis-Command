@@ -266,7 +266,7 @@ function buildMissionEditor() {
   const dialog = document.createElement("dialog");
   dialog.id = "mission-editor-dialog";
   dialog.innerHTML = `<form id="mission-edit-form" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">x</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Define the evidence.</h2>${fieldMarkup("edit-mission", false)}<button class="primary" type="submit">Save mission</button></form>`;
-  dialog.querySelector("#edit-mission-form button[type=submit]").insertAdjacentHTML("beforebegin", outcomeMarkup("edit-mission"));
+  dialog.querySelector("#mission-edit-form button[type=submit]").insertAdjacentHTML("beforebegin", outcomeMarkup("edit-mission"));
   document.body.appendChild(dialog);
   const form = $("#mission-edit-form");
   form.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
