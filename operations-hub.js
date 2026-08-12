@@ -152,6 +152,15 @@ const operationCategory = (operation, mission = null) => {
   if (missionCategory) return missionCategory;
   return canonicalOperationCategory(operation?.category) || operationCategoryForTitle(operation?.title) || "Self Mastery";
 };
+const operationFamilyKey = (operation) => {
+  if (operation?.operation_family_key) return String(operation.operation_family_key);
+  const title = String(operation?.title || "").toLowerCase().trim()
+    .replace(/\b20\d{2}[-/]\d{2}[-/]\d{2}\b/g, "")
+    .replace(/\b(?:session|sessions|chapter|chapters)\s*#?\s*\d+\b/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "operation";
+  const category = operationCategory(operation).toLowerCase();
+  return `${title}-${category.replace(/[^a-z0-9]+/g, "-")}`.replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+};
 const metricAliases = {
   pt_session: ["pt_session", "recovery.pt_session", "recovery.report"],
   chapters_read: ["chapters_read", "mastery.book", "mind.book"],
@@ -310,7 +319,7 @@ const starterOperations = () => {
     ["Complete evening mission debrief", "Self Mastery"],
   ].map(([title, category]) => title === "Pre-market analysis"
     ? preMarketOperationForToday()
-    : ({ title, category, completed: false, scheduled_date: operatingDayKey(), scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, status: "Queued" }))
+    : ({ title, category, completed: false, scheduled_date: operatingDayKey(), scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, schedule_mode: "daily", status: "Queued" }))
     .concat(gymOperationForToday());
 };
 
@@ -329,6 +338,7 @@ const gymOperationForToday = () => {
     status: "Queued",
     completed: false,
     is_daily: true,
+    schedule_mode: "daily",
     operation_date: operatingDayKey(),
     scheduled_date: operatingDayKey(),
     brief: isRest
@@ -1397,6 +1407,7 @@ async function persist(operation) {
     is_daily: Boolean(operation.is_daily),
     mission_id: operation.mission_id || null,
     metric_key: operation.metric_key || null,
+  operation_family_key: operationFamilyKey(operation),
     allow_unlinked: Boolean(operation.allow_unlinked),
   };
   // Daily and calendar-created operations begin as local objects. The old
@@ -1415,6 +1426,7 @@ async function persist(operation) {
     delete legacyPayload.started_on;
     delete legacyPayload.last_rollover_on;
     delete legacyPayload.rollover_count;
+    delete legacyPayload.operation_family_key;
     const legacyRequest = isNew
       ? client.from("operations").insert(legacyPayload).select().single()
       : client.from("operations").update(legacyPayload).eq("id", operation.id).eq("user_id", currentUser.id).select().single();
@@ -1802,6 +1814,7 @@ async function ensureTodayOperations(records = []) {
   const hasTodayPlan = (planned) => records.some((operation) => {
     const sameTitle = String(operation.title || "").trim().toLowerCase() === planned.title.toLowerCase();
     if (!sameTitle) return false;
+    if (planned.is_daily && (operation.is_daily || scheduleMode(operation) === "daily")) return true;
     const operationDay = dateOnly(operation.operation_date);
     const scheduledDay = dateOnly(operation.scheduled_date);
     // Only a row explicitly assigned to today can satisfy today's plan.  The
@@ -1817,7 +1830,7 @@ async function ensureTodayOperations(records = []) {
   if (!client || !currentUser) return appendOperationsWithoutTouchingExisting(records, additions.map((item, index) => ({ ...item, id: `local-${activeDay}-${index}-${item.title}` })));
   const prepared = additions.map((item) => {
     const { priority, ...operationFields } = item;
-    return { ...operationFields, user_id: currentUser.id, mission_id: item.mission_id || null, metric_key: item.metric_key || null };
+    return { ...operationFields, user_id: currentUser.id, mission_id: item.mission_id || null, metric_key: item.metric_key || null, operation_family_key: operationFamilyKey(item) };
   });
   const { data, error } = await client.from("operations").insert(prepared).select();
   if (error) {
@@ -1843,20 +1856,28 @@ async function loadMissions() {
 
 async function loadOperationMissionLinks() {
   if (!client || !currentUser || !Array.isArray(operations) || !operations.length) return;
-  const { data, error } = await client.from("operation_mission_links")
-    .select("operation_id,mission_id")
+  let { data, error } = await client.from("operation_family_mission_links")
+    .select("operation_family_key,mission_id")
     .eq("user_id", currentUser.id);
-  if (error) return;
+  const familyLinksAvailable = !error;
+  if (error) {
+    ({ data, error } = await client.from("operation_mission_links")
+      .select("operation_id,mission_id")
+      .eq("user_id", currentUser.id));
+    if (error) return;
+  }
   const links = new Map();
   (data || []).forEach((link) => {
-    const key = String(link.operation_id);
+    const key = familyLinksAvailable ? String(link.operation_family_key) : String(link.operation_id);
     const ids = links.get(key) || [];
     if (!ids.some((id) => String(id) === String(link.mission_id))) ids.push(link.mission_id);
     links.set(key, ids);
   });
   operations = operations.map((operation) => ({
     ...operation,
-    linked_mission_ids: links.get(String(operation.id)) || (operation.mission_id ? [operation.mission_id] : []),
+    linked_mission_ids: links.get(familyLinksAvailable ? operationFamilyKey(operation) : String(operation.id)) || (familyLinksAvailable ? [] : (operation.mission_id ? [operation.mission_id] : [])),
+    operation_family_key: operationFamilyKey(operation),
+    mission_link_mode: familyLinksAvailable ? "family" : "operation",
   }));
   saveCachedOperations();
 }
