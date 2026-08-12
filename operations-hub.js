@@ -812,15 +812,15 @@ function resolveMission(operation, includeCompleted = false) {
   // title such as Think and Grow Rich.
   const readingDay = dateOnly(operation?.operation_date || operation?.scheduled_date);
   const isCurrentReadingOperation = isReadingOperation(operation) && (!readingDay || readingDay === operatingDayKey());
-  if (isCurrentReadingOperation && currentBook?.title) {
+  if (isCurrentReadingOperation) {
+    // There is exactly one reading operation: the daily operation. It follows
+    // the active book only while that book still has chapters remaining.
+    // Never fall back to another book or to a completed mission here.
+    if (!currentBook?.title) return null;
     const bookTitle = currentBook.title.toLowerCase();
-    const bookMission = missions.find((mission) => (includeCompleted || !mission.completed)
+    const bookMission = missions.find((mission) => !mission.completed
       && `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().includes(bookTitle));
-    if (bookMission) return bookMission;
-    const chapterMission = missions
-      .filter((mission) => (includeCompleted || !mission.completed) && metricsMatch(mission.metric_key, "chapters_read"))
-      .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
-    if (chapterMission) return chapterMission;
+    return bookMission || null;
   }
   if (operation.mission_id) {
     const explicit = missions.find((mission) => String(mission.id) === String(operation.mission_id));
@@ -878,7 +878,16 @@ function attachMissionLink(operation) {
   const metric = inferredMetricForOperation(operation) || mission?.metric_key || null;
   if (category && operation.category !== category) operation.category = category;
   if (metric && operation.metric_key !== metric) operation.metric_key = metric;
-  if (!mission) return;
+  if (!mission) {
+    // After the final chapter, keep the standing daily operation available for
+    // the next book but do not leave it attached to a completed book mission.
+    if (isReadingOperation(operation) && (!dateOnly(operation.operation_date || operation.scheduled_date)
+      || dateOnly(operation.operation_date || operation.scheduled_date) === operatingDayKey())) {
+      operation.mission_id = null;
+      operation.metric_key = "chapters_read";
+    }
+    return;
+  }
   operation.mission_id = mission.id;
   operation.metric_key = operation.metric_key || mission.metric_key || null;
 }
@@ -1597,6 +1606,7 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
     await rollOverOngoingOperations();
     await reconcileRecurringCompletion();
     await reconcileMeasuredMissionCounts();
+    await syncDailyReadingOperation();
     subscribeToOperationSync();
     saveCachedOperations();
   }
@@ -1680,6 +1690,7 @@ async function cycleStatus(key, forcedStatus = null) {
     await rollOverOngoingOperations();
     await reconcileRecurringCompletion();
     await reconcileMeasuredMissionCounts();
+    await syncDailyReadingOperation();
     subscribeToOperationSync();
     saveCachedOperations();
   }
@@ -1805,45 +1816,6 @@ async function syncDailyReadingOperation() {
       .eq("user_id", currentUser.id);
     if (error) console.warn("Could not sync current book to reading operation", error.message);
   }
-}
-
-async function ensureFinalBookChapterOperation() {
-  if (!client || !currentUser || !currentBook?.title) return;
-  const bookKey = currentBook.title.toLowerCase();
-  const mission = missions.find((candidate) => {
-    if (candidate.completed || String(candidate.metric_key || "").toLowerCase() !== "chapters_read") return false;
-    const text = `${candidate.title || ""} ${candidate.completion_definition || ""}`.toLowerCase();
-    return text.includes(bookKey) && Number(candidate.target_count || 0) > 0;
-  });
-  if (!mission) return;
-  const target = Math.max(1, Number(mission.target_count || 1));
-  const completed = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
-  if (target - completed !== 1) return;
-  const title = `Read one chapter — ${currentBook.title} — Chapter ${target}`;
-  const exists = operations.some((operation) => String(operation.mission_id || "") === String(mission.id)
-    && String(operation.title || "").trim().toLowerCase() === title.toLowerCase());
-  if (exists) return;
-  const operation = {
-    user_id: currentUser.id,
-    title,
-    category: "Self Mastery",
-    brief: `Read the final chapter of "${currentBook.title}", then capture one useful idea, quote, or action in Self Mastery.`,
-    status: "Queued",
-    completed: false,
-    is_daily: false,
-    operation_date: operatingDayKey(),
-    scheduled_date: operatingDayKey(),
-    mission_id: mission.id,
-    metric_key: "chapters_read",
-  };
-  const { data, error } = await client.from("operations").insert(operation).select().single();
-  if (error) {
-    console.warn("Could not create final book chapter operation", error.message);
-    return;
-  }
-  operations.push(data || operation);
-  saveCachedOperations();
-  announceOperationsLoaded();
 }
 
 async function syncOperationMissionLinks() {
@@ -2319,12 +2291,12 @@ async function boot() {
     operations = await seedIfEmpty();
     await syncOperationMissionLinks();
     await syncDailyReadingOperation();
-    await ensureFinalBookChapterOperation();
     await loadOccurrences();
     await ensureRecurringOccurrences();
     await markExpiredOperationsMissed();
     await reconcileRecurringCompletion();
     await reconcileMeasuredMissionCounts();
+    await syncDailyReadingOperation();
     subscribeToOperationSync();
   } else {
     operations = await ensureTodayOperations(local.length ? local : starterOperations());
@@ -2394,7 +2366,6 @@ window.addEventListener("aegis:mastery-changed", async () => {
   if (!currentUser) return;
   await loadCurrentBook();
   await syncDailyReadingOperation();
-  await ensureFinalBookChapterOperation();
   renderQueue();
 });
 window.addEventListener("aegis:operations-changed", async (event) => {

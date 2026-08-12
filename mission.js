@@ -20,7 +20,10 @@ function operationMatchesMission(operation, mission) {
   if (/chapter|read|book/.test(operationText)) {
     const operationDay = String(operation.operation_date || operation.scheduled_date || "").slice(0, 10);
     const currentReading = !operationDay || operationDay === easternDateKey();
-    if (currentReading && currentBookMissionId) return String(mission.id) === String(currentBookMissionId);
+    // The current daily reading operation follows only the active book. Once
+    // that book is complete, currentBookMissionId is empty and the operation
+    // intentionally has no mission attachment until a new book is added.
+    if (currentReading) return Boolean(currentBookMissionId) && String(mission.id) === String(currentBookMissionId);
     return String(operation.mission_id || "") === String(mission.id)
       && /chapter|read|book/.test(missionText);
   }
@@ -290,10 +293,12 @@ async function loadData() {
   const bookMission = (data || []).find((mission) => bookKey.length >= 5
     && `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().replace(/[^a-z0-9]+/g, "").includes(bookKey)
     && !mission.completed);
-  const fallbackBookMission = (data || [])
+  const hasBookSpecificMission = (data || []).some((mission) => bookKey.length >= 5
+    && `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().replace(/[^a-z0-9]+/g, "").includes(bookKey));
+  const fallbackBookMission = !currentBookTitle && (data || [])
     .filter((mission) => !mission.completed && String(mission.metric_key || "").toLowerCase() === "chapters_read")
     .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
-  currentBookMissionId = bookMission?.id || fallbackBookMission?.id || "";
+  currentBookMissionId = bookMission?.id || (!hasBookSpecificMission ? fallbackBookMission?.id || "" : "");
   if (!operationError && Array.isArray(operationRows)) missionOperations = operationRows.length ? operationRows : sharedOperationRows;
   else if (sharedOperationRows.length) missionOperations = sharedOperationRows;
   applyMissionRows(data || []);
