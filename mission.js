@@ -132,15 +132,17 @@ function renderCommandMissionBoard(nextMissions = missions, operations = []) {
   if (!target) return;
   target.id = "command-missions";
   const active = sortMissions(nextMissions.filter((mission) => mission.progress < 100));
-  target.className = "mission-list command-mission-board";
-  target.innerHTML = `<div class="command-mission-list" data-command-mission-list></div>`;
-  const activeList = target.querySelector("[data-command-mission-list]");
-  activeList.innerHTML = active.length ? active.map((mission) => commandMissionCard(mission, operations)).join("") : '<article class="command-mission-empty"><strong>No active missions.</strong><small>Open the next objective from Mission Control.</small></article>';
-  activeList.querySelectorAll("[data-open-mission]").forEach((card) => card.addEventListener("click", (event) => {
+  // Command Center intentionally uses the compact mission queue. Mission
+  // Control owns the expanded metric/evidence cards; keeping that markup out
+  // of this panel prevents two competing layouts from stacking over one
+  // another while preserving the same mission rows and progress data.
+  target.className = "mission-list mission-list-scroll";
+  target.innerHTML = active.length ? active.map((mission) => `<button type="button" class="command-mission mission-open" data-mission-id="${escape(mission.id)}" data-open-mission="${escape(mission.id)}"><div class="mission-icon ${iconClass(mission.category)}">${icon(mission.category)}</div><div><strong>${escape(mission.title)}</strong><small>${escape(mission.category)} - ${escape(mission.priority)}</small></div><span>${escape(missionLabel(mission))}</span></button>`).join("") : '<article><div><strong>No active missions</strong><small>Open the next objective from Mission Control.</small></div></article>';
+  target.querySelectorAll("[data-open-mission]").forEach((card) => card.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     const mission = missions.find((item) => String(item.id) === String(card.dataset.missionId)) || nextMissions.find((item) => String(item.id) === String(card.dataset.missionId));
-    if (mission) openEditorFromMissionCard(mission);
+    if (mission) void openEditorFromMissionCard(mission);
   }));
 }
 
