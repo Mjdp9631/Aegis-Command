@@ -190,7 +190,7 @@ function renderMissions() {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
-    const mission = missions.find((item) => String(item.id) === String(card.dataset.missionId));
+    const mission = missionRowsForLookup().find((item) => String(item.id) === String(card.dataset.missionId));
     openMissionDetails(mission);
   }, true));
   target.querySelectorAll("[data-mission-view]").forEach((button) => button.addEventListener("click", () => { target.querySelectorAll("[data-mission-view]").forEach((item) => item.classList.toggle("active", item === button)); draw(button.dataset.missionView === "complete" ? complete : active); }));
