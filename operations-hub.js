@@ -752,18 +752,22 @@ function readingBookLabel() {
 }
 
 function activeBookMission() {
-  if (!currentBook?.title) return null;
-  const bookKey = String(currentBook.title).toLowerCase().replace(/[^a-z0-9]+/g, "");
-  if (bookKey.length < 5) return null;
   const candidates = missions.filter((mission) => {
     if (mission.completed) return false;
     const text = `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase();
     return metricsMatch(mission.metric_key, "chapters_read") || /read|book|chapter/.test(text);
   });
-  return candidates.find((mission) => {
+  // A delayed mastery query must not make the standing reading operation
+  // orphaned. If there is one active reading mission, it is the only safe
+  // destination until the active-book row arrives.
+  if (!currentBook?.title) return candidates.length === 1 ? candidates[0] : null;
+  const bookKey = String(currentBook.title).toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (bookKey.length < 5) return candidates.length === 1 ? candidates[0] : null;
+  const matched = candidates.find((mission) => {
     const missionKey = `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().replace(/[^a-z0-9]+/g, "");
     return missionKey.includes(bookKey);
-  }) || (candidates.length === 1 ? candidates[0] : null);
+  });
+  return matched || (candidates.length === 1 ? candidates[0] : null);
 }
 
 function isCompleteToday(operation) {
@@ -839,9 +843,15 @@ function resolveMission(operation, includeCompleted = false) {
     // There is exactly one reading operation: the daily operation. It follows
     // the active book only while that book still has chapters remaining.
     // Never fall back to another book or to a completed mission here.
-    if (!currentBook?.title) return null;
-    const bookTitle = currentBook.title.toLowerCase();
-    return activeBookMission();
+    const active = activeBookMission();
+    if (active) return active;
+    // Preserve a valid explicit link as a last-resort repair path when the
+    // active-book query is briefly unavailable during auth/data refresh.
+    if (operation.mission_id) {
+      const explicit = missions.find((mission) => String(mission.id) === String(operation.mission_id));
+      if (explicit && !explicit.completed && metricsMatch(explicit.metric_key, "chapters_read")) return explicit;
+    }
+    return null;
   }
   const operationCategoryKey = operationCategory(operation).toLowerCase();
   // Life Admin is intentionally independent work: appointments, errands, and
@@ -1541,6 +1551,36 @@ async function reconcileMeasuredMissionCounts() {
   if (updates.length) window.dispatchEvent(new CustomEvent("aegis:missions-refresh", { detail: { source: "operations-hub-reconcile" } }));
 }
 
+// Older Supabase deployments may have the operations table trigger but not
+// the full progress-event repair path. On a newly completed operation, check
+// the idempotency event first; only repair the mission when that event is
+// absent, so this cannot create duplicate progress on a healthy deployment.
+async function repairMissionProgressFromCompletion(operation) {
+  if (!client || !currentUser || normalizedStatus(operation) !== "Complete") return;
+  const mission = isReadingOperation(operation) ? activeBookMission() : resolveMission(operation, true);
+  if (!mission || String(mission.completion_type || "").toLowerCase() !== "units") return;
+  const eventQuery = client.from("mission_progress_events").select("id").eq("user_id", currentUser.id).limit(1);
+  if (operation._occurrence?.id) eventQuery.eq("occurrence_id", operation._occurrence.id);
+  else if (operation.id && !String(operation.id).startsWith("local-")) eventQuery.eq("operation_id", operation.id);
+  else return;
+  const { data: events, error: eventError } = await eventQuery;
+  if (!eventError && events?.length) return;
+  const target = Math.max(1, Number(mission.target_count || 1));
+  const current = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
+  if (current >= target) return;
+  const next = Math.min(target, current + 1);
+  const { data, error } = await client.from("missions")
+    .update({ completed_count: next, completed: next >= target, progress: Math.round((next / target) * 100) })
+    .eq("id", mission.id)
+    .eq("user_id", currentUser.id)
+    .select()
+    .maybeSingle();
+  if (!error && data) {
+    const index = missions.findIndex((item) => String(item.id) === String(data.id));
+    if (index >= 0) missions[index] = data;
+  }
+}
+
 async function changeGatedStatus(key) {
   const operation = findOperation(key);
   if (!operation || morningGate(operation)?.state !== "expired") return;
@@ -1639,6 +1679,7 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
   if (operation._occurrence) saveCachedOccurrences();
   if (currentUser) {
     await loadMissions();
+    if (next === "Complete" && !wasComplete) await repairMissionProgressFromCompletion(operation);
     operations = await seedIfEmpty();
     await loadOccurrences();
     await ensureRecurringOccurrences();
@@ -1654,7 +1695,6 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
   renderCalendar();
   window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "operations-hub", operations } }));
   window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "operation-status", operation } }));
-  setTimeout(() => { renderQueue(); renderCalendar(); }, 0);
 }
 
 async function cycleStatus(key, forcedStatus = null) {
@@ -1723,6 +1763,7 @@ async function cycleStatus(key, forcedStatus = null) {
   // created duplicate chapter/PT progress after a refresh.
   if (currentUser) {
     await loadMissions();
+    if (next === "Complete" && !wasComplete) await repairMissionProgressFromCompletion(operation);
     operations = await seedIfEmpty();
     await loadOccurrences();
     await ensureRecurringOccurrences();
@@ -1740,7 +1781,6 @@ async function cycleStatus(key, forcedStatus = null) {
   window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "operation-status", operation } }));
   // app.js still receives the public change event for calendars and summaries.
   // It must not get the final paint over this queue.
-  setTimeout(() => { renderQueue(); renderCalendar(); }, 0);
 }
 
 async function seedIfEmpty() {
@@ -2455,7 +2495,7 @@ const startHub = () => {
   if (host && host.dataset.aegisQueueMounted !== "true") {
     host.innerHTML = '<p class="empty-operations">Syncing today\'s operations…</p>';
   }
-  boot().finally(() => [0, 250, 1000, 2500, 5000, 9000, 14000].forEach((delay) => setTimeout(renderQueue, delay)));
+  boot().finally(() => setTimeout(() => { renderQueue(); renderCalendar(); }, 0));
 };
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startHub, { once: true });
 else startHub();
@@ -2463,7 +2503,7 @@ window.addEventListener("aegis:auth-ready", boot);
 // A full refresh and a route transition each recreate parts of the Command
 // Center.  These last-resort paints make the queue independent of render
 // order, while the durable Supabase rows remain the source of truth.
-window.addEventListener("load", () => [0, 300, 1200, 3500].forEach((delay) => setTimeout(renderQueue, delay)));
+window.addEventListener("load", () => setTimeout(() => { renderQueue(); renderCalendar(); }, 0), { once: true });
 window.addEventListener("aegis:missions-refresh", async (event) => {
   if (event.detail?.source === "operations-hub") return;
   await loadMissions();

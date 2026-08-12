@@ -3,8 +3,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const tableEvents = {
-  operations: "operations",
-  operation_occurrences: "operations",
   missions: "missions",
   trade_debriefs: "trades",
   recovery_logs: "recovery",
