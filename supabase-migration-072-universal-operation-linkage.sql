@@ -85,26 +85,30 @@ begin
   if coalesce(new.allow_unlinked, false) or v_category = 'Life Admin' then
     new.mission_id := null;
   elsif v_is_daily_reading then
-    -- The standing reading operation follows the active book mission.
-    select me.title into v_book_title
-    from public.mastery_entries me
-    where me.user_id = new.user_id
-      and lower(coalesce(me.category, '')) = 'book'
-    order by me.created_at desc nulls last, me.id desc
-    limit 1;
-
-    if nullif(trim(v_book_title), '') is not null then
+    -- An explicit mission selected in the editor is authoritative. Only
+    -- infer the active book when this operation was created without a link.
+    if new.mission_id is not null then
       select * into v_mission
       from public.missions m
-      where m.user_id = new.user_id
-        and m.completed is false
-        and public.aegis_operation_metric_matches(m.metric_key, 'chapters_read')
-        and regexp_replace(lower(coalesce(m.title, '') || ' ' || coalesce(m.completion_definition, '')), '[^a-z0-9]+', '', 'g')
-          like '%' || regexp_replace(lower(v_book_title), '[^a-z0-9]+', '', 'g') || '%'
-      order by m.created_at desc nulls last, m.id desc
+      where m.id = new.mission_id
+        and m.user_id = new.user_id
+        and m.completed is false;
+      if not found then
+        new.mission_id := null;
+        v_mission := null;
+      end if;
+    end if;
+
+    if v_mission.id is null then
+      select me.title into v_book_title
+      from public.mastery_entries me
+      where me.user_id = new.user_id
+        and lower(coalesce(me.category, '')) = 'book'
+      order by me.created_at desc nulls last, me.id desc
       limit 1;
     end if;
-    if v_mission.id is null then
+
+    if v_mission.id is null and nullif(trim(v_book_title), '') is not null then
       select * into v_mission
       from public.missions m
       where m.user_id = new.user_id
@@ -199,10 +203,6 @@ drop trigger if exists aegis_normalize_operation_link on public.operations;
 create trigger aegis_normalize_operation_link
 before insert or update of title, category, mission_id, metric_key, completed, allow_unlinked on public.operations
 for each row execute function public.aegis_normalize_operation_link();
-
--- Repair every existing row through the same rule without changing status or
--- schedule. Life Admin rows remain intentionally independent.
-update public.operations set title = title where true;
 
 -- The explicit id predicate makes the intentional full-row repair visible to
 -- Supabase's safety checker. It replays the universal rule without changing

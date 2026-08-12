@@ -439,8 +439,7 @@ function operationDisplayIdentity(operation) {
   const title = String(operation?.title || "").trim().toLowerCase().replace(/\s+/g, " ");
   const date = dateOnly(operation?.scheduled_date) || dateOnly(operation?.operation_date) || "standing";
   const time = String(operation?.scheduled_time || "").slice(0, 5);
-  const mission = String(operation?.mission_id || operation?._series?.mission_id || "");
-  return [title, date, time, mission].join("|");
+  return [title, date, time].join("|");
 }
 
 function reconcileOperationIdentity(operation) {
@@ -1305,9 +1304,13 @@ function findOperation(key) {
 function showOperationDetail(key) {
   const operation = findOperation(key);
   if (!operation) return;
-  const mission = resolveMission(operation);
+  const linked = Array.isArray(operation.linked_mission_ids)
+    ? missions.filter((mission) => operation.linked_mission_ids.some((id) => String(id) === String(mission.id)))
+    : [];
+  const mission = linked[0] || resolveMission(operation);
   const checklist = checklistFor(operation).map((item, index) => `${index + 1}. ${item}`).join("\n");
-  const advances = mission ? `\n\nADVANCES: ${mission.title}${mission.completion_type === "units" ? ` (${Number(mission.completed_count || 0)}/${Number(mission.target_count || 0)} ${mission.unit_label || "units"})` : ""}` : "";
+  const missionList = linked.length ? linked : mission ? [mission] : [];
+  const advances = missionList.length ? `\n\nADVANCES:\n${missionList.map((item) => `• ${item.title}${item.completion_type === "units" ? ` (${Number(item.completed_count || 0)}/${Number(item.target_count || 0)} ${item.unit_label || "units"})` : ""}`).join("\n")}` : "";
   window.alert(`${operation.title}${advances}\n\nDEFINITION OF DONE\n${checklist}`);
 }
 
@@ -1515,21 +1518,23 @@ async function reconcileMeasuredMissionCounts() {
     // Reading is the one standing operation whose mission follows the active
     // book. Do not let a stale legacy mission_id keep a chapter attached to a
     // previous book.
-    const linkedMissionId = isReadingOperation(operation)
-      ? activeBookMission()?.id
-      : operation.mission_id || resolveMission(operation, true)?.id;
-    if (!linkedMissionId) return;
+    const linkedMissionIds = operationMissionIds(operation).length
+      ? operationMissionIds(operation)
+      : [isReadingOperation(operation) ? activeBookMission()?.id : resolveMission(operation, true)?.id].filter(Boolean);
+    if (!linkedMissionIds.length) return;
     // Occurrence rows are already unique by their durable occurrence id.
     // Legacy/one-time rows need a semantic key instead of their database id,
     // otherwise duplicate rows from the old scheduler inflate every measured
     // mission (PT, chapters, gym, reviews, and future unit-based missions).
     const occurrenceDate = dateOnly(operation._occurrence?.occurrence_date || operation.completed_on || operation.operation_date || operation.scheduled_date);
-    const key = operation._occurrence?.id
-      ? `occurrence:${operation._occurrence.id}`
-      : `operation:${String(linkedMissionId)}|${String(operation.title || "").trim().toLowerCase()}|${occurrenceDate}|${String(operation.scheduled_time || "").slice(0, 5)}`;
-    const missionKey = String(linkedMissionId);
-    if (!completedByMission.has(missionKey)) completedByMission.set(missionKey, new Set());
-    completedByMission.get(missionKey).add(key);
+    linkedMissionIds.forEach((linkedMissionId) => {
+      const key = operation._occurrence?.id
+        ? `occurrence:${operation._occurrence.id}`
+        : `operation:${String(operation.id || operation.title)}|${occurrenceDate}|${String(operation.scheduled_time || "").slice(0, 5)}`;
+      const missionKey = String(linkedMissionId);
+      if (!completedByMission.has(missionKey)) completedByMission.set(missionKey, new Set());
+      completedByMission.get(missionKey).add(key);
+    });
   });
   const updates = [];
   missions.forEach((mission) => {
@@ -1868,6 +1873,32 @@ async function loadMissions() {
   window.dispatchEvent(new CustomEvent("aegis:missions-loaded", {
     detail: { missions, source: "operations-hub" },
   }));
+}
+
+async function loadOperationMissionLinks() {
+  if (!client || !currentUser || !Array.isArray(operations) || !operations.length) return;
+  const { data, error } = await client.from("operation_mission_links")
+    .select("operation_id,mission_id")
+    .eq("user_id", currentUser.id);
+  if (error) return;
+  const links = new Map();
+  (data || []).forEach((link) => {
+    const key = String(link.operation_id);
+    const ids = links.get(key) || [];
+    if (!ids.some((id) => String(id) === String(link.mission_id))) ids.push(link.mission_id);
+    links.set(key, ids);
+  });
+  operations = operations.map((operation) => ({
+    ...operation,
+    linked_mission_ids: links.get(String(operation.id)) || (operation.mission_id ? [operation.mission_id] : []),
+  }));
+  saveCachedOperations();
+}
+
+function operationMissionIds(operation) {
+  return Array.isArray(operation?.linked_mission_ids) && operation.linked_mission_ids.length
+    ? operation.linked_mission_ids
+    : operation?.mission_id ? [operation.mission_id] : [];
 }
 
 async function loadCurrentBook() {
@@ -2250,8 +2281,8 @@ function scheduledCountForMission(missionId) {
   const seen = new Set();
   dedupeOperationInstances(operationInstances()).forEach((operation) => {
     const series = operation._series || operation;
-    const linkedMissionId = operation.mission_id || resolveMission(operation)?.id;
-    if (String(linkedMissionId || "") !== String(missionId)) return;
+    const linkedMissionIds = operationMissionIds(operation).length ? operationMissionIds(operation) : [resolveMission(operation)?.id].filter(Boolean);
+    if (!linkedMissionIds.some((id) => String(id) === String(missionId))) return;
     const mode = scheduleMode(series);
     if (mode !== "one_time") {
       const date = dateOnly(operation.scheduled_date || operation._occurrence?.occurrence_date);
@@ -2260,7 +2291,7 @@ function scheduledCountForMission(missionId) {
       return;
     }
     const scheduledDate = dateOnly(operation.scheduled_date);
-    if (scheduledDate) seen.add(`${String(linkedMissionId)}|${operationDisplayIdentity(operation)}`);
+    if (scheduledDate) seen.add(`${String(missionId)}|${operationDisplayIdentity(operation)}`);
   });
   return seen.size;
 }
@@ -2456,7 +2487,9 @@ async function boot() {
   }
   if (currentUser) {
     operations = await seedIfEmpty();
+    await loadOperationMissionLinks();
     await syncOperationMissionLinks();
+    await loadOperationMissionLinks();
     await syncDailyReadingOperation();
     await loadOccurrences();
     await ensureRecurringOccurrences();
@@ -2540,6 +2573,7 @@ window.addEventListener("aegis:operations-changed", async (event) => {
   operations = await seedIfEmpty();
   await loadMissions();
   await syncOperationMissionLinks();
+  await loadOperationMissionLinks();
   saveCachedOperations();
   renderQueue();
   renderCalendar();

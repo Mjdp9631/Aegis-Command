@@ -17,6 +17,13 @@ function missionLabel(mission) { return isMeasured(mission) ? `${Math.min(Number
 function operationMatchesMission(operation, mission) {
   const operationText = `${operation.title || ""} ${operation.metric_key || ""}`.toLowerCase();
   const missionText = `${mission.title || ""} ${mission.completion_definition || ""} ${mission.metric_key || ""}`.toLowerCase();
+
+  // A durable mission_id is authoritative. Special handling for the standing
+  // reading operation must never hide an operation that was explicitly linked
+  // to this mission.
+  if (String(operation.mission_id || "") === String(mission.id)
+    || (Array.isArray(operation.linked_mission_ids) && operation.linked_mission_ids.some((id) => String(id) === String(mission.id)))) return true;
+
   if (/chapter|read|book/.test(operationText)) {
     const operationDay = String(operation.operation_date || operation.scheduled_date || "").slice(0, 10);
     const currentReading = Boolean(operation.is_daily) || !operationDay || operationDay === easternDateKey()
@@ -30,10 +37,8 @@ function operationMatchesMission(operation, mission) {
       const isActiveBookMission = activeBookKey.length >= 5 && missionKey.includes(activeBookKey) && !mission.completed;
       return isActiveBookMission || (Boolean(currentBookMissionId) && String(mission.id) === String(currentBookMissionId));
     }
-    return String(operation.mission_id || "") === String(mission.id)
-      && /chapter|read|book/.test(missionText);
+    return false;
   }
-  if (String(operation.mission_id || "") === String(mission.id)) return true;
   if (/pt|physical therapy|orthopedic|acl|rehab/.test(operationText) && /pt|physical therapy|orthopedic|acl|rehab|recovery/.test(missionText)) return true;
   if (/gym|workout|strength/.test(operationText) && /gym|workout|strength|training/.test(missionText)) return true;
   if (/journal|mastery\.entry/.test(operationText) && /journal|mastery\.entry|self mastery/.test(missionText)) return true;
@@ -60,7 +65,8 @@ function sortMissions(items) {
 }
 
 function commandMissionCard(mission, operations = []) {
-  const linked = operations.filter((operation) => String(operation.mission_id || "") === String(mission.id));
+  const linked = operations.filter((operation) => String(operation.mission_id || "") === String(mission.id)
+    || (Array.isArray(operation.linked_mission_ids) && operation.linked_mission_ids.some((id) => String(id) === String(mission.id))));
   const completedOperations = linked.filter((operation) => Boolean(operation.completed)).length;
   const measured = isMeasured(mission);
   const progressValue = mission.progress;
@@ -108,7 +114,7 @@ function renderMissions() {
 }
 
 function renderCommandMissions() {
-  renderCommandMissionBoard();
+  renderCommandMissionBoard(missions, missionOperations);
 }
 
 function buildMissionDetails() {
@@ -236,16 +242,16 @@ function readMission(root, prefix, includeCategory, existing = null) {
 }
 
 function operationPlanMarkup(prefix) {
-  return `<fieldset class="mission-operation-plan"><legend>Operation linkage</legend><p class="mission-operation-help">Every operation linked here can advance this mission. Life Admin operations remain informational and do not advance progress.</p><label>Operation action <select id="${prefix}-operation-mode"><option value="none">No operation yet</option><option value="create">Create operation</option><option value="existing">Add existing operation</option></select></label><div id="${prefix}-create-operation" class="mission-operation-fields" hidden><label>Operation <input id="${prefix}-operation-title" placeholder="What moves this mission forward?" /></label><label>Brief <textarea id="${prefix}-operation-brief" rows="2" placeholder="What counts as one completed operation?"></textarea></label><div class="two-col"><label>First date <input id="${prefix}-operation-date" type="date" /></label><label>Time <span class="field-optional">optional</span><input id="${prefix}-operation-time" type="time" /></label></div><label>Cadence <select id="${prefix}-operation-cadence"><option value="one_time">One-time</option><option value="daily">Repeat daily</option><option value="weekly">Repeat weekly</option></select></label><label id="${prefix}-operation-end-wrap">End date <span class="field-optional">optional for repeats</span><input id="${prefix}-operation-end-date" type="date" /></label></div><div id="${prefix}-existing-operation" class="mission-operation-fields" hidden><label>Unscheduled operation<select id="${prefix}-operation-existing"><option value="">Choose an unscheduled operation</option></select></label><small id="${prefix}-operation-existing-note" class="mission-operation-note"></small></div></fieldset>`;
+  return `<fieldset class="mission-operation-plan"><legend>Operation linkage</legend><p class="mission-operation-help">Every operation linked here can advance this mission. An operation may advance multiple missions. Life Admin operations remain informational and do not advance progress.</p><label>Operation action <select id="${prefix}-operation-mode"><option value="none">No operation yet</option><option value="create">Create operation</option><option value="existing">Add existing operation</option></select></label><div id="${prefix}-create-operation" class="mission-operation-fields" hidden><label>Operation <input id="${prefix}-operation-title" placeholder="What moves this mission forward?" /></label><label>Brief <textarea id="${prefix}-operation-brief" rows="2" placeholder="What counts as one completed operation?"></textarea></label><div class="two-col"><label>First date <input id="${prefix}-operation-date" type="date" /></label><label>Time <span class="field-optional">optional</span><input id="${prefix}-operation-time" type="time" /></label></div><label>Cadence <select id="${prefix}-operation-cadence"><option value="one_time">One-time</option><option value="daily">Repeat daily</option><option value="weekly">Repeat weekly</option></select></label><label id="${prefix}-operation-end-wrap">End date <span class="field-optional">optional for repeats</span><input id="${prefix}-operation-end-date" type="date" /></label></div><div id="${prefix}-existing-operation" class="mission-operation-fields" hidden><label>Existing operations<select id="${prefix}-operation-existing" multiple size="5"><option value="">Choose one or more operations</option></select></label><small id="${prefix}-operation-existing-note" class="mission-operation-note"></small></div></fieldset>`;
 }
 
 function operationPlanRows() {
-  const rows = Array.isArray(window.AEGIS_OPERATIONS) && window.AEGIS_OPERATIONS.length ? window.AEGIS_OPERATIONS : missionOperations;
+  const rows = [...missionOperations, ...(Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [])];
   const seen = new Set();
   return rows.filter((operation) => {
-    if (!operation || operation._occurrence || operation.completed || String(operation.status || "").toLowerCase() === "complete") return false;
-    if (operation.mission_id || operation.allow_unlinked) return false;
-    const key = String(operation.id || operation.title || "");
+    if (!operation || operation._occurrence) return false;
+    if (operation.allow_unlinked || missionCategory(operation.category) === "Life Admin") return false;
+    const key = String(operation.id || `${operation.title || ""}|${operation.scheduled_date || operation.operation_date || ""}`);
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -269,14 +275,32 @@ async function insertMissionOperation(payload) {
   return result;
 }
 
+async function attachExistingOperation(operation, mission) {
+  const linkPayload = { user_id: session.user.id, operation_id: operation.id, mission_id: mission.id, is_explicit: true };
+  let result = await client.from("operation_mission_links").upsert(linkPayload, { onConflict: "operation_id,mission_id" }).select().maybeSingle();
+  if (!result.error) return { data: operation, error: null, manyToMany: true };
+  if (!/relation|table|schema cache|column|operation_mission_links/i.test(String(result.error.message || ""))) return result;
+
+  // Migration 073 is optional for older deployments. Preserve the old path
+  // until the many-to-many table exists, without blocking mission saves.
+  const fallback = { mission_id: mission.id, allow_unlinked: false };
+  if (mission.metric_key) fallback.metric_key = mission.metric_key;
+  result = await client.from("operations").update(fallback).eq("id", operation.id).eq("user_id", session.user.id).select().single();
+  if (result.error && /allow_unlinked|column|schema cache/i.test(String(result.error.message || ""))) {
+    delete fallback.allow_unlinked;
+    result = await client.from("operations").update(fallback).eq("id", operation.id).eq("user_id", session.user.id).select().single();
+  }
+  return result;
+}
+
 function populateOperationPlanChoices(form, prefix, mission = null) {
   const select = form?.querySelector(`#${prefix}-operation-existing`);
   if (!select) return;
   const currentMissionId = String(mission?.id || "");
   const rows = operationPlanRows();
-  select.innerHTML = `<option value="">Choose an existing operation</option>${rows.map((operation) => `<option value="${escape(operation.id)}">${escape(operation.title)}${operation.scheduled_date ? ` · ${escape(operation.scheduled_date)}` : " · unscheduled"}${operation.category ? ` · ${escape(operation.category)}` : ""}</option>`).join("")}`;
+  select.innerHTML = rows.length ? rows.map((operation) => `<option value="${escape(operation.id)}">${escape(operation.title)}${operation.scheduled_date ? ` · ${escape(operation.scheduled_date)}` : " · unscheduled"}${operation.category ? ` · ${escape(operation.category)}` : ""}${operation.mission_id || operation.linked_mission_ids?.length ? " · already linked" : ""}</option>`).join("") : `<option value="">No existing operations available</option>`;
   const note = form.querySelector(`#${prefix}-operation-existing-note`);
-  if (note) note.textContent = rows.length ? `${rows.length} existing operation${rows.length === 1 ? "" : "s"} available. Selecting one will attach it to this mission${currentMissionId ? " and replace any previous mission link" : ""}.` : "No existing operations are available yet.";
+  if (note) note.textContent = rows.length ? `${rows.length} existing operation${rows.length === 1 ? "" : "s"} available. Select one or more; each advances this mission by one measurement when completed. Existing links are preserved.` : "No existing operations are available yet.";
 }
 
 function refreshOperationPlanChoices() {
@@ -305,7 +329,7 @@ function syncOperationPlanFields(form, prefix) {
 
 function readOperationPlan(form, prefix) {
   const mode = form?.querySelector(`#${prefix}-operation-mode`)?.value || "none";
-  if (mode === "existing") return { mode, existingId: form.querySelector(`#${prefix}-operation-existing`)?.value || "" };
+  if (mode === "existing") return { mode, existingIds: [...(form.querySelector(`#${prefix}-operation-existing`)?.selectedOptions || [])].map((option) => option.value).filter(Boolean) };
   if (mode !== "create") return { mode };
   const cadence = form.querySelector(`#${prefix}-operation-cadence`)?.value || "one_time";
   const date = form.querySelector(`#${prefix}-operation-date`)?.value || easternDateKey();
@@ -345,15 +369,18 @@ function missionOperationPayload(mission, plan) {
 async function applyMissionOperationPlan(mission, plan) {
   if (!mission || !plan || plan.mode === "none") return { ok: true };
   if (plan.mode === "existing") {
-    if (!plan.existingId) return { ok: false, message: "Choose an unscheduled operation to attach." };
-    const selectedOperation = operationPlanRows().find((operation) => String(operation.id) === String(plan.existingId));
-    if (!selectedOperation) return { ok: false, message: "That operation is no longer available. Refresh and choose it again." };
+    const existingIds = Array.isArray(plan.existingIds) ? plan.existingIds : plan.existingId ? [plan.existingId] : [];
+    if (!existingIds.length) return { ok: false, message: "Choose one or more operations to attach." };
+    const selectedOperations = existingIds.map((id) => operationPlanRows().find((operation) => String(operation.id) === String(id))).filter(Boolean);
+    if (!selectedOperations.length) return { ok: false, message: "Those operations are no longer available. Refresh and choose them again." };
+    let latestData = null;
+    for (const selectedOperation of selectedOperations) {
 
     // Local operation IDs are browser-cache placeholders, not UUIDs. Persist
     // the cached operation first, then use the returned UUID for the mission
     // link. Sending the local ID directly to operations.mission_id causes a
     // PostgreSQL invalid-input-syntax error.
-    if (isLocalOperationId(selectedOperation.id)) {
+      if (isLocalOperationId(selectedOperation.id)) {
       const localPayload = {
         title: selectedOperation.title || mission.title,
         category: missionCategory(selectedOperation.category || mission.category),
@@ -370,22 +397,23 @@ async function applyMissionOperationPlan(mission, plan) {
         metric_key: mission.metric_key || selectedOperation.metric_key || "operation.complete",
         allow_unlinked: false,
       };
-      const { data, error } = await insertMissionOperation(localPayload);
-      if (error) return { ok: false, message: error.message };
-      if (data) missionOperations = [...missionOperations.filter((operation) => String(operation.id) !== String(selectedOperation.id)), data];
-      return { ok: true, data };
-    }
+        const { data, error } = await insertMissionOperation(localPayload);
+        if (error) return { ok: false, message: error.message };
+        if (data) {
+          latestData = data;
+          missionOperations = [...missionOperations.filter((operation) => String(operation.id) !== String(selectedOperation.id)), data];
+        }
+        continue;
+      }
 
-    const linkPayload = { mission_id: mission.id, allow_unlinked: false };
-    if (mission.metric_key) linkPayload.metric_key = mission.metric_key;
-    let { data, error } = await client.from("operations").update(linkPayload).eq("id", plan.existingId).eq("user_id", session.user.id).select().single();
-    if (error && /allow_unlinked|column|schema cache/i.test(String(error.message || ""))) {
-      delete linkPayload.allow_unlinked;
-      ({ data, error } = await client.from("operations").update(linkPayload).eq("id", plan.existingId).eq("user_id", session.user.id).select().single());
+      let { data, error } = await attachExistingOperation(selectedOperation, mission);
+      if (error) return { ok: false, message: error.message };
+      if (data) {
+        latestData = data;
+        missionOperations = [...missionOperations.filter((operation) => String(operation.id) !== String(data.id)), data];
+      }
     }
-    if (error) return { ok: false, message: error.message };
-    if (data) missionOperations = [...missionOperations.filter((operation) => String(operation.id) !== String(data.id)), data];
-    return { ok: true, data };
+    return { ok: true, data: latestData };
   }
   if (!plan.title) return { ok: false, message: "Enter an operation name." };
   if (plan.endDate && plan.endDate < plan.date) return { ok: false, message: "The operation end date must be on or after its first date." };
@@ -526,6 +554,26 @@ async function loadData() {
     // operations table may not yet have every newer schedule column.
     ({ data: operationRows, error: operationError } = await client.from("operations").select("id,title,mission_id,status,completed,scheduled_date,operation_date,completed_on,category,is_daily,metric_key,brief").eq("user_id", session.user.id));
   }
+  let operationLinkRows = [];
+  let operationLinkError = null;
+  if (!operationError) {
+    const linkResult = await client.from("operation_mission_links")
+      .select("operation_id,mission_id")
+      .eq("user_id", session.user.id);
+    operationLinkError = linkResult.error;
+    if (!linkResult.error) operationLinkRows = linkResult.data || [];
+  }
+  const linkedMissionIds = new Map();
+  operationLinkRows.forEach((link) => {
+    const key = String(link.operation_id);
+    const ids = linkedMissionIds.get(key) || [];
+    if (!ids.some((id) => String(id) === String(link.mission_id))) ids.push(link.mission_id);
+    linkedMissionIds.set(key, ids);
+  });
+  if (Array.isArray(operationRows)) operationRows = operationRows.map((operation) => ({
+    ...operation,
+    linked_mission_ids: linkedMissionIds.get(String(operation.id)) || (operation.mission_id ? [operation.mission_id] : []),
+  }));
   const sharedOperationRows = Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [];
   const { data: bookRow } = await client.from("mastery_entries")
     .select("title")
@@ -548,7 +596,7 @@ async function loadData() {
     .filter((mission) => !mission.completed && String(mission.metric_key || "").toLowerCase() === "chapters_read")
     .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
   currentBookMissionId = bookMission?.id || (!hasBookSpecificMission ? (fallbackBookMission?.id || latestChapterMission?.id || "") : "");
-  if (!operationError && Array.isArray(operationRows)) missionOperations = operationRows.length ? operationRows : sharedOperationRows;
+  if (!operationError && Array.isArray(operationRows)) missionOperations = [...operationRows, ...sharedOperationRows.filter((shared) => !operationRows.some((operation) => String(operation.id) === String(shared.id)))];
   else if (sharedOperationRows.length) missionOperations = sharedOperationRows;
   applyMissionRows(data || []);
   const { data: logs } = await client.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1);
@@ -664,6 +712,7 @@ window.addEventListener("aegis:operations-changed", (event) => {
   if (!Array.isArray(rows)) return;
   missionOperations = rows.filter((operation) => !operation?._occurrence);
   renderMissions();
+  renderCommandMissions();
   refreshOperationPlanChoices();
 });
 
@@ -672,6 +721,7 @@ window.addEventListener("aegis:operations-loaded", (event) => {
   if (!Array.isArray(rows)) return;
   missionOperations = rows.filter((operation) => !operation?._occurrence);
   renderMissions();
+  renderCommandMissions();
   refreshOperationPlanChoices();
 });
 
