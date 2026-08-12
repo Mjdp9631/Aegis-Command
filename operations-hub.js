@@ -403,7 +403,10 @@ function recurringDateKeys(operation, maxDays = 370) {
 function operationInstances() {
   const instances = [];
   operations.forEach((operation) => {
-    if (scheduleMode(operation) === "one_time" || !operation.id || String(operation.id).startsWith("local-")) {
+    // A newly-created repeating operation is local until Supabase returns its
+    // id. Do not collapse it into a one-time item during that short window;
+    // its schedule rule is already enough to render every planned date.
+    if (scheduleMode(operation) === "one_time" || !operation.id) {
       instances.push(ongoingDisplayOperation(completedDisplayOperation(operation)));
       return;
     }
@@ -1991,6 +1994,13 @@ function ensureScheduleDialog() {
     // migration is missing or the connection drops, reopening the calendar
     // must still show the plan and give the next sync a chance to repair it.
     saveCachedOperations();
+    // Paint immediately from the selected schedule rule. This keeps a newly
+    // created repeat visible even while the insert/occurrence materialization
+    // request is still in flight.
+    selectedDay = date;
+    cursor = dateForKey(date) || cursor;
+    renderQueue();
+    renderCalendar();
     const saved = await persist(operation);
     if (!saved) {
       saveCachedOperations();
@@ -2001,7 +2011,10 @@ function ensureScheduleDialog() {
     await loadOccurrences();
     await ensureRecurringOccurrences();
     saveCachedOperations();
-    if (date) selectedDay = date;
+    if (date) {
+      selectedDay = date;
+      cursor = dateForKey(date) || cursor;
+    }
     renderQueue();
     renderCalendar();
     delete dialog.dataset.createdOperationId;
