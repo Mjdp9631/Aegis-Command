@@ -121,6 +121,68 @@
   #command .readiness-dial .character-radar { flex-basis: 112px; width: 112px; }
   #command .readiness-dial .readiness-readout strong { font-size: 22px; }
 }
+
+/* Keep live queue and mission copy from occupying the same line. Text is
+   allowed to determine row height while the existing glass layout remains. */
+#command .operations-panel .operation-table-row.operation-table-v2 {
+  min-height: 56px !important;
+  height: auto !important;
+  align-items: start !important;
+  padding: 9px 0 !important;
+  line-height: 1.2;
+}
+#command .operations-panel .operation-table-row.operation-table-v2 > * { min-width: 0; }
+#command .operations-panel .operation-table-head.operation-table-v2,
+#command .operations-panel .operation-table-row.operation-table-v2 {
+  grid-template-columns: 104px minmax(0, 1fr) 108px 90px 72px !important;
+  column-gap: 8px !important;
+}
+#command .operations-panel .hub-operation-title {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 4px;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+#command .operations-panel .hub-operation-title .morning-window-note {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.15;
+}
+#command .operations-panel .operation-schedule-control,
+#command .operations-panel .operation-category,
+#command .operations-panel .operation-priority {
+  align-self: start;
+  min-width: 0;
+}
+#command .operations-panel .operation-category,
+#command .operations-panel .operation-priority {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#command .mission-panel .command-mission-card { overflow: visible !important; }
+#command .mission-panel .command-mission-copy strong {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+#command .mission-panel .command-mission-copy small,
+#command .mission-panel .command-mission-progress,
+#command .mission-panel .command-mission-evidence {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+#command .mission-panel .command-mission-actions { position: relative; z-index: 1; }
 #detective.active .trade-panel td {
   color: rgba(231, 243, 255, .94);
   font-size: 16px;
