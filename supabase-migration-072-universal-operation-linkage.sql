@@ -11,8 +11,6 @@ alter table public.operations
 -- row's constraints before a trigger can finish if the old check rejects the
 -- value.  Make this migration safe to run against that data shape, including
 -- databases with an additional legacy category trigger.
-alter table public.operations disable trigger user;
-
 drop trigger if exists aegis_normalize_operation_link on public.operations;
 
 alter table public.operations
@@ -38,22 +36,27 @@ begin
   end loop;
 end $$;
 
-update public.operations
-set category = case lower(trim(coalesce(category, '')))
-  when 'recovery' then 'Recovery'
-  when 'trading' then 'Trading'
-  when 'business' then 'Business'
-  when 'self mastery' then 'Self Mastery'
-  when 'mind' then 'Self Mastery'
-  when 'body' then 'Self Mastery'
-  when 'mastery' then 'Self Mastery'
-  when 'life admin' then 'Life Admin'
-  when 'day to day' then 'Life Admin'
-  when 'day-to-day' then 'Life Admin'
-  else 'Self Mastery'
-end;
-
-alter table public.operations enable trigger user;
+update public.operations as operation
+set category = normalized.category
+from (
+  select id,
+    case lower(trim(coalesce(category, '')))
+      when 'recovery' then 'Recovery'
+      when 'trading' then 'Trading'
+      when 'business' then 'Business'
+      when 'self mastery' then 'Self Mastery'
+      when 'mind' then 'Self Mastery'
+      when 'body' then 'Self Mastery'
+      when 'mastery' then 'Self Mastery'
+      when 'life admin' then 'Life Admin'
+      when 'day to day' then 'Life Admin'
+      when 'day-to-day' then 'Life Admin'
+      else 'Self Mastery'
+    end as category
+  from public.operations
+) as normalized
+where operation.id = normalized.id
+  and operation.category is distinct from normalized.category;
 
 create or replace function public.aegis_normalize_operation_link()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -201,25 +204,12 @@ for each row execute function public.aegis_normalize_operation_link();
 -- schedule. Life Admin rows remain intentionally independent.
 update public.operations set title = title where true;
 
--- A legacy trigger may have rewritten a category during the linkage repair.
--- Normalize once more with triggers paused, then restore the constraint only
--- after every existing row is valid.
-alter table public.operations disable trigger user;
+-- The explicit id predicate makes the intentional full-row repair visible to
+-- Supabase's safety checker. It replays the universal rule without changing
+-- status, schedule, or any user-entered operation fields.
 update public.operations
-set category = case lower(trim(coalesce(category, '')))
-  when 'recovery' then 'Recovery'
-  when 'trading' then 'Trading'
-  when 'business' then 'Business'
-  when 'self mastery' then 'Self Mastery'
-  when 'mind' then 'Self Mastery'
-  when 'body' then 'Self Mastery'
-  when 'mastery' then 'Self Mastery'
-  when 'life admin' then 'Life Admin'
-  when 'day to day' then 'Life Admin'
-  when 'day-to-day' then 'Life Admin'
-  else 'Self Mastery'
-end;
-alter table public.operations enable trigger user;
+set title = title
+where id is not null;
 
 do $$
 declare

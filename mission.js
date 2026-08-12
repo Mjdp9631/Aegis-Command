@@ -252,6 +252,10 @@ function operationPlanRows() {
   });
 }
 
+function isLocalOperationId(id) {
+  return String(id || "").startsWith("local-");
+}
+
 function populateOperationPlanChoices(form, prefix, mission = null) {
   const select = form?.querySelector(`#${prefix}-operation-existing`);
   if (!select) return;
@@ -329,6 +333,40 @@ async function applyMissionOperationPlan(mission, plan) {
   if (!mission || !plan || plan.mode === "none") return { ok: true };
   if (plan.mode === "existing") {
     if (!plan.existingId) return { ok: false, message: "Choose an unscheduled operation to attach." };
+    const selectedOperation = operationPlanRows().find((operation) => String(operation.id) === String(plan.existingId));
+    if (!selectedOperation) return { ok: false, message: "That operation is no longer available. Refresh and choose it again." };
+
+    // Local operation IDs are browser-cache placeholders, not UUIDs. Persist
+    // the cached operation first, then use the returned UUID for the mission
+    // link. Sending the local ID directly to operations.mission_id causes a
+    // PostgreSQL invalid-input-syntax error.
+    if (isLocalOperationId(selectedOperation.id)) {
+      const localPayload = {
+        title: selectedOperation.title || mission.title,
+        category: missionCategory(selectedOperation.category || mission.category),
+        brief: selectedOperation.brief || mission.completion_definition || `Complete one ${mission.unit_label || "operation"} for this mission.`,
+        status: selectedOperation.status || (selectedOperation.completed ? "Complete" : "Queued"),
+        completed: Boolean(selectedOperation.completed),
+        scheduled_date: selectedOperation.scheduled_date || selectedOperation.operation_date || null,
+        scheduled_time: selectedOperation.scheduled_time || null,
+        scheduled_end_date: selectedOperation.scheduled_end_date || null,
+        schedule_mode: selectedOperation.schedule_mode || "one_time",
+        operation_date: selectedOperation.operation_date || selectedOperation.scheduled_date || null,
+        is_daily: Boolean(selectedOperation.is_daily),
+        mission_id: mission.id,
+        metric_key: mission.metric_key || selectedOperation.metric_key || "operation.complete",
+        allow_unlinked: false,
+      };
+      let { data, error } = await client.from("operations").insert(localPayload).select().single();
+      if (error && /allow_unlinked|column|schema cache/i.test(String(error.message || ""))) {
+        delete localPayload.allow_unlinked;
+        ({ data, error } = await client.from("operations").insert(localPayload).select().single());
+      }
+      if (error) return { ok: false, message: error.message };
+      if (data) missionOperations = [...missionOperations.filter((operation) => String(operation.id) !== String(selectedOperation.id)), data];
+      return { ok: true, data };
+    }
+
     const linkPayload = { mission_id: mission.id, allow_unlinked: false };
     if (mission.metric_key) linkPayload.metric_key = mission.metric_key;
     let { data, error } = await client.from("operations").update(linkPayload).eq("id", plan.existingId).eq("user_id", session.user.id).select().single();
