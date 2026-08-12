@@ -91,23 +91,29 @@ if (typeof window.AEGIS_OPEN_MISSION_EDITOR !== "function") {
 
 function render(missions, operations = []) {
   const normalizedMissions = missions.map((mission) => ({ ...mission, category: normalizeCategory(mission.category), progress: progress(mission) }));
+  // A transient empty response can arrive while the authenticated mission
+  // feed is still hydrating. Never let that response erase cards that are
+  // already present in the shared ledger.
+  const sharedMissions = Array.isArray(window.AEGIS_MISSIONS) ? window.AEGIS_MISSIONS : [];
+  const authoritativeMissions = normalizedMissions.length ? normalizedMissions : sharedMissions;
+  if (!authoritativeMissions.length) return;
   // Share the authoritative mission rows with Mission Control. This avoids a
   // race where the Command Center fetch completes before mission.js receives
   // its auth callback.
-  window.AEGIS_MISSIONS = normalizedMissions;
+  window.AEGIS_MISSIONS = authoritativeMissions;
   window.dispatchEvent(new CustomEvent("aegis:missions-loaded", {
-    detail: { missions: normalizedMissions, source: "command-center" },
+    detail: { missions: authoritativeMissions, source: "command-center" },
   }));
   // Mission Control owns #mission-cards. Command Center only publishes the
   // shared feed and renders its own #command-missions surface; it must never
   // repaint the Mission tab with a competing legacy layout.
-  if (typeof window.AEGIS_RENDER_COMMAND_MISSIONS === "function") window.AEGIS_RENDER_COMMAND_MISSIONS(normalizedMissions, operations);
+  if (typeof window.AEGIS_RENDER_COMMAND_MISSIONS === "function") window.AEGIS_RENDER_COMMAND_MISSIONS(authoritativeMissions, operations);
   const target = $("#command-missions") || document.querySelector("#command .mission-panel .mission-list");
   if (target) {
     target.id = "command-missions";
   }
-  updateMetric("RECOVERY", normalizedMissions.find((mission) => mission.category === "Recovery"));
-  updateMetric("TRADING PROCESS", normalizedMissions.find((mission) => mission.category === "Trading"));
+  updateMetric("RECOVERY", authoritativeMissions.find((mission) => mission.category === "Recovery"));
+  updateMetric("TRADING PROCESS", authoritativeMissions.find((mission) => mission.category === "Trading"));
 }
 
 // mission.js is an ordered module, but network imports can still make its
@@ -116,7 +122,8 @@ function render(missions, operations = []) {
 // static compact placeholders from index.html in place.
 window.addEventListener("aegis:mission-renderer-ready", () => {
   if (typeof window.AEGIS_RENDER_COMMAND_MISSIONS !== "function") return;
-  window.AEGIS_RENDER_COMMAND_MISSIONS(window.AEGIS_MISSIONS || [], window.AEGIS_OPERATIONS || []);
+  const rows = Array.isArray(window.AEGIS_MISSIONS) ? window.AEGIS_MISSIONS : [];
+  if (rows.length) window.AEGIS_RENDER_COMMAND_MISSIONS(rows, window.AEGIS_OPERATIONS || []);
 });
 
 async function load() {
