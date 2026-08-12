@@ -324,12 +324,18 @@ async function openEditorFromMissionCard(mission) {
   // Command Center can receive the shared mission feed a moment before this
   // module receives Supabase's auth callback. Resolve the current session at
   // click time so a valid signed-in click never becomes a silent no-op.
+  if (!session) session = window.AEGIS_SESSION || null;
   if (!session && client) {
     const result = await client.auth.getSession();
     session = result.data?.session || null;
   }
   if (!session) return alert("Sign in before editing a mission.");
-  if (!missionEditor || !missionEditor.isConnected) missionEditor = buildMissionEditor();
+  try {
+    if (!missionEditor || !missionEditor.isConnected) missionEditor = buildMissionEditor();
+  } catch (error) {
+    console.error("Mission editor could not be built", error);
+    return alert("The mission editor could not load. Please refresh once and try again.");
+  }
   const launch = () => {
     try {
       if (missionEditor.open) missionEditor.close();

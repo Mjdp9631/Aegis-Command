@@ -81,36 +81,7 @@ async function loadCloud(){
 // Emergency presentation only. mission.js is the canonical mission renderer;
 // this guarded path exists because a failed optional module import must not
 // leave the static prototype rows or the loading shell visible.
-function renderMissions(){
-  if (window.AEGIS_MISSION_RENDERER_READY || typeof window.AEGIS_RENDER_COMMAND_MISSIONS === "function") return;
-  const target = $("#mission-cards");
-  const command = $("#command-missions");
-  const rows = Array.isArray(missions) ? missions.map(mission => ({
-    ...mission,
-    progress: mission.completion_type === "units" && Number(mission.target_count) > 0
-      ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100)
-      : mission.completed ? 100 : Number(mission.progress) || 0,
-  })) : [];
-  const active = rows.filter(mission => mission.progress < 100);
-  const complete = rows.filter(mission => mission.progress >= 100);
-  const label = mission => mission.completion_type === "units" && Number(mission.target_count) > 0
-    ? `${Math.min(Number(mission.completed_count) || 0, Number(mission.target_count))} / ${mission.target_count} ${mission.unit_label || "units"}`
-    : mission.completed ? "Complete" : "Not complete";
-  const card = mission => `<button type="button" class="mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${escape(mission.id)}"><span class="eyebrow amber">${escape(mission.priority || "Schedule")}</span><h3>${escape(mission.title)}</h3><p>${escape(mission.category || "Self Mastery")} mission · ${escape(label(mission))}</p><div class="meter"><i style="width:${mission.progress}%"></i></div><small>${escape(mission.completion_definition || "Define the evidence that proves this mission is complete.")}</small></button>`;
-  if (target) {
-    target.dataset.missionRenderer = "app-fallback";
-    target.innerHTML = `<div class="mission-view-tabs"><button type="button" class="mission-view-tab active" data-mission-view="active">ACTIVE · ${active.length}</button><button type="button" class="mission-view-tab" data-mission-view="complete">COMPLETED · ${complete.length}</button></div><div class="mission-card-list" data-mission-list>${active.length ? active.map(card).join("") : '<article class="mission-card"><h3>No missions in this view.</h3></article>'}</div>`;
-    target.querySelectorAll("[data-mission-view]").forEach(button => button.addEventListener("click", () => {
-      target.querySelectorAll("[data-mission-view]").forEach(item => item.classList.toggle("active", item === button));
-      target.querySelector("[data-mission-list]").innerHTML = (button.dataset.missionView === "complete" ? complete : active).map(card).join("") || '<article class="mission-card"><h3>No missions in this view.</h3></article>';
-    }));
-  }
-  if (command) {
-    command.className = "mission-list command-mission-board";
-    command.innerHTML = `<div class="command-mission-list">${active.length ? active.map(mission => `<article class="command-mission-card mission-open" data-mission-id="${escape(mission.id)}" data-open-mission="${escape(mission.id)}" tabindex="0"><div class="command-mission-heading"><div class="mission-icon"></div><div class="command-mission-copy"><strong>${escape(mission.title)}</strong><small>${escape(mission.category || "Self Mastery")} · ${escape(mission.priority || "Schedule")}</small></div><span class="command-mission-percent">${mission.progress}%</span></div><div class="meter command-mission-meter"><i style="width:${mission.progress}%"></i></div><p class="command-mission-progress">${escape(label(mission))}</p><p class="command-mission-evidence"><b>Completion evidence:</b> ${escape(mission.completion_definition || "Define the evidence that proves this mission is complete.")}</p><div class="command-mission-actions"><button type="button" class="command-mission-details">View details →</button></div></article>`).join("") : '<article class="command-mission-empty"><strong>No active missions.</strong><small>Open the next objective from Mission Control.</small></article>'}</div>`;
-  }
-  window.AEGIS_MISSION_FALLBACK_ACTIVE = true;
-}
+function renderMissions(){}
 function renderRecovery(log){const state=$("#recovery-state"),summary=$("#recovery-summary");if(!state||!summary)return;if(!log){state.textContent="—";summary.innerHTML='<div><span>No recovery reports logged yet.</span><b>Awaiting data</b></div>';return}state.textContent=log.rehab_completed?"DONE":"LOGGED";summary.innerHTML=`<div><span>Pain level</span><b>${log.pain}/10</b></div><div><span>Swelling</span><b>${log.swelling}/10</b></div><div><span>Prescribed rehab</span><b>${log.rehab_completed?"Complete":"Pending"}</b></div>`}
 async function loadMissionData(){const {data:missionData,error:missionError}=await sb.from("missions").select("*").order("created_at",{ascending:false});if(missionError){console.error(missionError);return}if(missionData.length)missions=missionData;else{const seed=[{title:"Restore ACL capacity",category:"Recovery",priority:"Do now",progress:72},{title:"Execute trading process",category:"Trading",priority:"Do now",progress:86},{title:"Build Clarified Chaos FX foundation",category:"Business",priority:"Schedule",progress:41}];const {data,error}=await sb.from("missions").insert(seed).select();if(error)return console.error(error);missions=data}window.dispatchEvent(new CustomEvent("aegis:missions-loaded",{detail:{missions,source:"legacy-auth-feed"}}));populateOperationMissions();renderMissions();const {data:logs}=await sb.from("recovery_logs").select("*").order("logged_on",{ascending:false}).limit(1);renderRecovery(logs?.[0])}
 function setAuth(){const signedIn=Boolean(session),authButton=$("#auth-button"),signoutButton=$(".sidebar-signout");authButton.textContent=signedIn?(session.user.email?.[0]?.toUpperCase()||"M"):"↪";authButton.setAttribute("aria-label",signedIn?"Sign out":"Sign in");if(signoutButton)signoutButton.innerHTML=signedIn?'SIGN OUT <span>↪</span>':'SIGN IN <span>↪</span>';$(".status-pill").lastChild.textContent=signedIn?" SECURE ACCESS":" SIGN IN REQUIRED"}

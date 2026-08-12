@@ -263,18 +263,44 @@
           };
           window.addEventListener("aegis:missions-loaded", event => paint(event.detail?.missions));
           document.addEventListener("click", event => {
+            const tab = event.target.closest?.("#mission-cards [data-mission-view]");
+            if (tab && !window.AEGIS_MISSION_RENDERER_READY) {
+              event.preventDefault();
+              event.stopImmediatePropagation();
+              const rows = Array.isArray(window.AEGIS_MISSIONS) ? window.AEGIS_MISSIONS : [];
+              const complete = tab.dataset.missionView === "complete";
+              const list = document.querySelector("#mission-cards [data-mission-list]");
+              document.querySelectorAll("#mission-cards [data-mission-view]").forEach(item => item.classList.toggle("active", item === tab));
+              if (list) list.innerHTML = rows.filter(row => (Number(row.progress) >= 100 || row.completed) === complete).map(row => {
+                const value = row.completion_type === "units" && Number(row.target_count) > 0 ? Math.round((Math.min(Number(row.completed_count) || 0, Number(row.target_count)) / Number(row.target_count)) * 100) : row.completed ? 100 : Number(row.progress) || 0;
+                return `<button type="button" class="mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${esc(row.id)}"><span class="eyebrow amber">${esc(row.priority || "Schedule")}</span><h3>${esc(row.title)}</h3><p>${esc(row.category || "Self Mastery")} mission</p><div class="meter"><i style="width:${value}%"></i></div><small>${esc(row.completion_definition || "Define the evidence that proves this mission is complete.")}</small></button>`;
+              }).join("") || '<article class="mission-card"><h3>No missions in this view.</h3></article>';
+              return;
+            }
             const card = event.target.closest?.("[data-mission-ledger-card], #command-missions [data-open-mission]");
-            if (!card || window.AEGIS_MISSION_RENDERER_READY) return;
+            if (!card) return;
             event.preventDefault();
-            window.AEGIS_OPEN_MISSION_EDITOR?.(card.dataset.missionId);
-            window.dispatchEvent(new CustomEvent("aegis:open-mission", { detail: { id: card.dataset.missionId } }));
+            event.stopImmediatePropagation();
+            const id = card.dataset.missionId;
+            if (typeof window.AEGIS_OPEN_MISSION_EDITOR === "function") {
+              Promise.resolve(window.AEGIS_OPEN_MISSION_EDITOR(id)).catch(error => console.warn("Mission editor could not open", error));
+            } else {
+              window.dispatchEvent(new CustomEvent("aegis:open-mission", { detail: { id } }));
+              let attempts = 0;
+              const retry = () => {
+                if (typeof window.AEGIS_OPEN_MISSION_EDITOR === "function") return void window.AEGIS_OPEN_MISSION_EDITOR(id);
+                if (++attempts < 15) return void setTimeout(retry, 100);
+                console.warn("Mission editor did not become available", id);
+              };
+              setTimeout(retry, 0);
+            }
           }, true);
         })();
       })();
     </script>
     <script type="module" src="auth-flow.js"></script>
     <script type="module" src="cross-browser-sync.js?v=realtime-v2"></script>
-    <script type="module" src="mission.js?v=mission-ledger-boot-v5"></script>
+    <script type="module" src="mission.js?v=mission-ledger-boot-v6"></script>
     <script type="module" src="phase-protocol.js?v=phase-protocol-v7"></script>
     <script type="module" src="detective.js?v=account-profit-deposits-v2"></script>
     <script type="module" src="brain-review.js?v=correction-feedback-v1"></script>
@@ -282,7 +308,7 @@
     <script type="module" src="notion-importer.js"></script>
     <script type="module" src="enterprise.js?v=manual-evidence-dates-v2"></script>
     <script type="module" src="character.js?v=radar-palette-v7"></script>
-    <script type="module" src="command-center.js?v=mission-feed-handoff-v5"></script>
+    <script type="module" src="command-center.js?v=mission-feed-handoff-v6"></script>
     <script type="module" src="command-summary.js?v=shared-operation-state-v2"></script>
     <script type="module" src="command-dashboard.js?v=shared-operation-state-v3"></script>
     <script type="module" src="system-review.js?v=manual-evidence-dates-v2"></script>
