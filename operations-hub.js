@@ -1859,14 +1859,34 @@ async function syncOperationMissionLinks() {
 
 function ensureScheduleDialog() {
   let dialog = $("#operation-schedule-dialog");
+  // This dialog is created dynamically. A navigation can leave an older copy
+  // in the document, which means the current Add operation button opens a
+  // form whose close/save listener belongs to an older module version. Rebuild
+  // that stale copy once so one-time and repeating schedules share the same
+  // current save path.
+  if (dialog && dialog.dataset.aegisScheduleDialogVersion !== "v2") {
+    if (dialog.open) dialog.close();
+    dialog.remove();
+    dialog = null;
+  }
   if (dialog) return dialog;
   dialog = document.createElement("dialog");
   dialog.id = "operation-schedule-dialog";
   dialog.className = "dialog-card operation-schedule-card";
+  dialog.dataset.aegisScheduleDialogVersion = "v2";
   dialog.innerHTML = `<form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h2>Plan this operation.</h2><p class="schedule-copy">Scheduling is optional. A scheduled operation stays on the calendar until you complete it.</p><div class="schedule-input-grid"><label>Date<input id="operation-schedule-date" type="date" required></label><label>Time <span class="field-optional">optional</span><input id="operation-schedule-time" type="time"></label></div><label>Schedule type<select id="operation-schedule-mode"><option value="one_time">One-time</option><option value="weekly">Repeat weekly</option></select></label><div class="dialog-actions"><button value="clear" type="submit" class="text-button">Remove from calendar</button><button value="cancel" type="submit" class="text-button">Cancel</button><button value="schedule" type="submit" class="primary">Add to calendar</button></div></form>`;
   dialog.querySelector("form")?.insertAdjacentHTML("afterbegin", '<label id="operation-schedule-choice-wrap" hidden>Unscheduled operation<select id="operation-schedule-operation"></select></label>');
   dialog.querySelector("#operation-schedule-choice-wrap")?.insertAdjacentHTML("afterend", '<div id="operation-schedule-create-fields" hidden><label>New operation<input id="operation-schedule-new-title" placeholder="What needs to happen?" /></label><label>Department<select id="operation-schedule-new-category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Self Mastery</option><option>Life Admin</option></select></label></div>');
   document.body.append(dialog);
+  const scheduleForm = dialog.querySelector("form");
+  // Submit explicitly, then close once. This makes the save path reliable in
+  // browsers where a dynamically-created method="dialog" form does not emit
+  // the expected close event consistently.
+  scheduleForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    dialog.returnValue = event.submitter?.value || "cancel";
+    dialog.close();
+  });
   const scheduleDate = dialog.querySelector("#operation-schedule-date");
   scheduleDate?.removeAttribute("required");
   const scheduleMode = dialog.querySelector("#operation-schedule-mode");
@@ -2062,6 +2082,7 @@ function openDaySchedulePicker(date) {
   const mode = dialog.querySelector("#operation-schedule-mode");
   if (mode) mode.value = "one_time";
   mode?.dispatchEvent(new Event("change"));
+  dialog.returnValue = "cancel";
   if (dialog.open) dialog.close();
   setTimeout(() => {
     try { if (!dialog.open) dialog.showModal(); }
@@ -2088,6 +2109,7 @@ function openScheduleDialog(operation) {
   const end = $("#operation-schedule-end-date");
   if (end) end.value = dateOnly(operation.scheduled_end_date) || "";
   mode?.dispatchEvent(new Event("change"));
+  dialog.returnValue = "cancel";
   if (!dialog.open) dialog.showModal();
 }
 
