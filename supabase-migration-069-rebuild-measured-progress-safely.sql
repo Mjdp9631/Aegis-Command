@@ -8,7 +8,7 @@ declare
   observed integer;
 begin
   for m in
-    select id, user_id, target_count, completed_count
+    select id, user_id, metric_key, target_count, completed_count
     from public.missions
     where completion_type = 'units'
       and target_count is not null
