@@ -1659,9 +1659,16 @@ async function ensureTodayOperations(records = []) {
 
 async function loadMissions() {
   if (!client || !currentUser) return;
-  const { data, error } = await client.from("missions").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: true });
+  let { data, error } = await client.from("missions").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: true });
+  // Keep older deployments readable if created_at was not present when the
+  // mission rows were created. The user-scoped query remains authoritative.
+  if (error) ({ data, error } = await client.from("missions").select("*").eq("user_id", currentUser.id));
   if (error) return console.warn("Could not load linked missions", error.message);
   missions = data || [];
+  window.AEGIS_MISSIONS = missions;
+  window.dispatchEvent(new CustomEvent("aegis:missions-loaded", {
+    detail: { missions, source: "operations-hub" },
+  }));
 }
 
 async function loadCurrentBook() {

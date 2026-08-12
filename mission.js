@@ -15,6 +15,14 @@ function missionProgress(mission) { return isMeasured(mission) ? Math.round((Mat
 function missionLabel(mission) { return isMeasured(mission) ? `${Math.min(Number(mission.completed_count) || 0, Number(mission.target_count))} / ${mission.target_count} ${mission.unit_label || "units"}` : mission.completed ? "Complete" : "Not complete"; }
 function missionCategory(value) { const category = String(value || "").trim().toLowerCase(); return category === "mind" || category === "body" || category === "mastery" ? "Self Mastery" : category === "life admin" || category === "day to day" ? "Life Admin" : value || "Self Mastery"; }
 function normalize(mission) { return { ...mission, category: missionCategory(mission.category), progress: missionProgress(mission) }; }
+function applyMissionRows(rows) {
+  // During startup one module can briefly receive an empty response while the
+  // authenticated operations module already has the durable rows. Never let
+  // that transient response erase a valid mission ledger.
+  if (!rows.length && missions.length) return;
+  missions = rows.map(normalize);
+  renderMissions(); renderCommandMissions(); publishMissionChange(); syncRecoveryVisibility();
+}
 function icon(category) { return category === "Recovery" ? "＋" : category === "Trading" ? "◈" : category === "Business" ? "▦" : "◇"; }
 function iconClass(category) { return category === "Recovery" ? "recovery-icon" : category === "Trading" ? "trade-icon" : "business-icon"; }
 const missionPriorityOrder = { "Do now": 0, Schedule: 1, Delegate: 2, Eliminate: 3 };
@@ -189,8 +197,7 @@ async function loadData() {
     if (target) target.querySelector("[data-mission-list]")?.replaceChildren(Object.assign(document.createElement("article"), { className: "mission-card", innerHTML: `<h3>Mission sync unavailable.</h3><small>${escape(error.message || "Supabase could not return mission records.")}</small>` }));
     return;
   }
-  missions = (data || []).map(normalize);
-  renderMissions(); renderCommandMissions(); publishMissionChange(); syncRecoveryVisibility();
+  applyMissionRows(data || []);
   const { data: logs } = await client.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1);
   renderRecovery(logs?.[0]);
 }
@@ -239,6 +246,12 @@ window.addEventListener("aegis:open-mission", (event) => {
 
 window.addEventListener("aegis:missions-changed", (event) => {
   if (event.detail?.remote) setTimeout(loadData, 120);
+});
+
+window.addEventListener("aegis:missions-loaded", (event) => {
+  const rows = event.detail?.missions;
+  if (!Array.isArray(rows)) return;
+  applyMissionRows(rows);
 });
 
 window.addEventListener("aegis:phase-mission-template", (event) => {
