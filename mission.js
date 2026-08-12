@@ -116,39 +116,41 @@ function buildMissionDetails() {
   dialog.id = "mission-details-dialog";
   dialog.innerHTML = `<form method="dialog" class="dialog-card mission-details-card"><button class="dialog-close" type="submit" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">MISSION OPERATIONS</p><h2 id="mission-details-title">Mission</h2><p id="mission-details-progress" class="body-copy"></p><div id="mission-details-definition" class="mission-details-definition"></div><div><p class="eyebrow">ATTACHED OPERATIONS</p><div id="mission-details-operations" class="mission-details-operations"></div></div><button class="primary" id="mission-details-edit" type="button">Edit mission</button></form>`;
   document.body.appendChild(dialog);
-  dialog.querySelector("#mission-details-edit").addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const mission = missions.find((item) => String(item.id) === String(dialog.dataset.missionId));
-    if (!mission || !missionEditor) return;
-    const launchEditor = () => {
-      if (!missionEditor.open) openEditor(missionEditor, mission);
-    };
-    // Wait for the details dialog's close event before opening the editor. This
-    // avoids the browser rejecting a second modal during the same event turn.
-    if (dialog.open) {
-      dialog.addEventListener("close", () => setTimeout(launchEditor, 0), { once: true });
-      dialog.close();
-    } else launchEditor();
-  });
   return dialog;
 }
 
-// Keep the edit action reliable even if another page module delegates clicks
-// from the mission dialog's form.
-document.addEventListener("click", (event) => {
-  const button = event.target.closest?.("#mission-details-edit");
-  if (!button || !missionDetails) return;
+function openMissionEditorFromDetails(event) {
+  const button = event?.target?.closest?.("#mission-details-edit");
+  if (!button || !missionDetails || !missionEditor) return false;
   event.preventDefault();
   event.stopImmediatePropagation();
   const mission = missions.find((item) => String(item.id) === String(missionDetails.dataset.missionId));
-  if (!mission || !missionEditor) return;
-  const launch = () => { if (!missionEditor.open) openEditor(missionEditor, mission); };
+  if (!mission) return true;
+  const launch = () => {
+    try {
+      if (!missionEditor.open) openEditor(missionEditor, mission);
+    } catch (error) {
+      console.warn("Mission editor could not open", error);
+      setTimeout(() => { if (!missionEditor.open) openEditor(missionEditor, mission); }, 50);
+    }
+  };
+  // Close first, then open on the next task. A browser can reject two modal
+  // dialogs being changed during the same event turn.
   if (missionDetails.open) {
-    missionDetails.addEventListener("close", () => setTimeout(launch, 0), { once: true });
     missionDetails.close();
+    setTimeout(launch, 0);
   } else launch();
-}, true);
+  return true;
+}
+
+// One capture-level handler owns this action. This prevents the dialog's
+// method="dialog" form and other page modules from swallowing the click.
+if (!window.AEGIS_MISSION_EDIT_HANDLER) {
+  window.AEGIS_MISSION_EDIT_HANDLER = true;
+  document.addEventListener("click", (event) => {
+    openMissionEditorFromDetails(event);
+  }, true);
+}
 
 function ensureMissionDetailsDialog() {
   if (!missionDetails || !missionDetails.isConnected) missionDetails = buildMissionDetails();

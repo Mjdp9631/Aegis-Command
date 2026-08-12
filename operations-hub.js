@@ -608,22 +608,27 @@ async function refreshDurableOperationState() {
       client.from("operations").select("*").eq("user_id", currentUser.id).order("scheduled_date", { ascending: true }).order("created_at", { ascending: true }),
       client.from("operation_occurrences").select("*").eq("user_id", currentUser.id),
     ]);
-    if (operationResult.error || occurrenceResult.error) return;
+    if (operationResult.error) return;
     const remoteOperations = Array.isArray(operationResult.data) ? operationResult.data : null;
-    const remoteOccurrences = Array.isArray(occurrenceResult.data) ? occurrenceResult.data : null;
-    if (!remoteOperations || !remoteOccurrences) return;
+    const remoteOccurrences = occurrenceResult.error
+      ? cachedOccurrences()
+      : (Array.isArray(occurrenceResult.data) ? occurrenceResult.data : []);
+    if (!remoteOperations) return;
     // Realtime can deliver an event while the auth/session snapshot is still
     // settling. Never turn a populated queue into an empty one because of
     // that transient response; the next realtime event or boot will retry.
     if (!remoteOperations.length && operations.length) return;
-    if (!remoteOccurrences.length && operationOccurrences.length) return;
     // A realtime/focus refresh returns only durable rows.  The initial boot
     // also repairs the current day's standing operations (morning, journal,
     // reading, gym, and evening debrief).  Replacing the repaired queue with
     // the raw snapshot made those rows flash in, then disappear seconds later.
     // Reconcile the snapshot through the same path as boot so every refresh
     // has the same complete queue shape.
-    operations = await ensureTodayOperations(await reconcileCachedOperationEdits(remoteOperations));
+    const reconciled = await reconcileCachedOperationEdits(remoteOperations);
+    // Operation schedules are durable independently of occurrence rows. Keep
+    // cached future schedules in the merge while a recurring-occurrence query
+    // is temporarily empty or still catching up.
+    operations = await ensureTodayOperations(mergeSavedStatus(reconciled));
     operationOccurrences = remoteOccurrences;
     await syncOperationMissionLinks();
     await markExpiredOperationsMissed();
@@ -959,7 +964,8 @@ function mergeSavedStatus(remote = []) {
     const start = dateOnly(operation?.scheduled_date);
     if (!start) return scheduleMode(operation) !== "one_time";
     const end = dateOnly(operation?.scheduled_end_date);
-    if (end && end < operatingDayKey()) return false;
+    // Keep historical one-time rows for the permanent calendar as well. The
+    // calendar is the record of what happened, not only a future planner.
     // Keep dated history available to the calendar when the local cache is
     // merged with a fresh cloud response.
     return true;
@@ -2161,7 +2167,24 @@ function ensurePermanentMissionCalendar() {
   dialog.remove();
   $("#open-operations-calendar")?.remove();
   wireCalendarPanels();
-  $("#mission-add-operation")?.addEventListener("click", () => openDaySchedulePicker(selectedDay || operatingDayKey()));
+}
+
+// The permanent calendar panel can be moved/rebuilt during navigation. Keep
+// the action on document once so the button never loses its behavior.
+if (!window.AEGIS_CALENDAR_ADD_HANDLER) {
+  window.AEGIS_CALENDAR_ADD_HANDLER = true;
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest?.("#mission-add-operation");
+    if (!button) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    try {
+      openDaySchedulePicker(selectedDay || operatingDayKey());
+    } catch (error) {
+      console.warn("Calendar operation picker could not open", error);
+      setTimeout(() => openDaySchedulePicker(selectedDay || operatingDayKey()), 0);
+    }
+  }, true);
 }
 
 function renderCalendar() {
