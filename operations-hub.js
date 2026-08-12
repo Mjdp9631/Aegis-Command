@@ -806,6 +806,22 @@ function checklistFor(operation) {
 }
 
 function resolveMission(operation, includeCompleted = false) {
+  // Reading is a standing operation for the book currently being read. Do
+  // this before honoring a legacy mission_id so changing books moves the
+  // operation to the new book mission instead of remaining attached to an old
+  // title such as Think and Grow Rich.
+  const readingDay = dateOnly(operation?.operation_date || operation?.scheduled_date);
+  const isCurrentReadingOperation = isReadingOperation(operation) && (!readingDay || readingDay === operatingDayKey());
+  if (isCurrentReadingOperation && currentBook?.title) {
+    const bookTitle = currentBook.title.toLowerCase();
+    const bookMission = missions.find((mission) => (includeCompleted || !mission.completed)
+      && `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().includes(bookTitle));
+    if (bookMission) return bookMission;
+    const chapterMission = missions
+      .filter((mission) => (includeCompleted || !mission.completed) && metricsMatch(mission.metric_key, "chapters_read"))
+      .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
+    if (chapterMission) return chapterMission;
+  }
   if (operation.mission_id) {
     const explicit = missions.find((mission) => String(mission.id) === String(operation.mission_id));
     if (explicit) {
@@ -817,12 +833,7 @@ function resolveMission(operation, includeCompleted = false) {
       if (categoryCompatible && metricCompatible) return explicit;
     }
   }
-  if (isReadingOperation(operation) && currentBook?.title) {
-    const bookTitle = currentBook.title.toLowerCase();
-    const bookMission = missions.find((mission) => (includeCompleted || !mission.completed)
-      && `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().includes(bookTitle));
-    if (bookMission) return bookMission;
-  }
+  if (isCurrentReadingOperation && currentBook?.title) return null;
   const operationMetric = inferredMetricForOperation(operation);
   if (operationMetric) {
     const metricMatch = missions.find((mission) => (includeCompleted || !mission.completed) && metricsMatch(mission.metric_key, operationMetric));
@@ -1789,7 +1800,7 @@ async function syncDailyReadingOperation() {
   saveCachedOperations();
   if (client && currentUser && operation.id && !String(operation.id).startsWith("local-")) {
     const { error } = await client.from("operations")
-      .update({ brief: operation.brief, mission_id: operation.mission_id || null, metric_key: operation.metric_key })
+      .update({ brief: operation.brief, category: operation.category || "Self Mastery", mission_id: operation.mission_id || null, metric_key: operation.metric_key })
       .eq("id", operation.id)
       .eq("user_id", currentUser.id);
     if (error) console.warn("Could not sync current book to reading operation", error.message);

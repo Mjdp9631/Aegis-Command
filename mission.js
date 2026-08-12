@@ -6,7 +6,7 @@ const $ = (selector) => document.querySelector(selector);
 const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 const priorities = '<option value="Do now">DO NOW - important + urgent</option><option value="Schedule">SCHEDULE - important + not urgent</option><option value="Delegate">DELEGATE - urgent + not important</option><option value="Eliminate">ELIMINATE - not urgent + not important</option>';
-let client = null, session = null, missions = [], missionOperations = [];
+let client = null, session = null, missions = [], missionOperations = [], currentBookTitle = "", currentBookMissionId = "";
 let missionEditor = null;
 let missionDetails = null;
 let missionLoadTimer = null;
@@ -15,10 +15,16 @@ function isMeasured(mission) { return mission.completion_type === "units" && Num
 function missionProgress(mission) { return isMeasured(mission) ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission.completed ? 100 : 0; }
 function missionLabel(mission) { return isMeasured(mission) ? `${Math.min(Number(mission.completed_count) || 0, Number(mission.target_count))} / ${mission.target_count} ${mission.unit_label || "units"}` : mission.completed ? "Complete" : "Not complete"; }
 function operationMatchesMission(operation, mission) {
-  if (String(operation.mission_id || "") === String(mission.id)) return true;
   const operationText = `${operation.title || ""} ${operation.metric_key || ""}`.toLowerCase();
   const missionText = `${mission.title || ""} ${mission.completion_definition || ""} ${mission.metric_key || ""}`.toLowerCase();
-  if (/chapter|read|book/.test(operationText) && /chapter|read|book|think and grow rich/.test(missionText)) return true;
+  if (/chapter|read|book/.test(operationText)) {
+    const operationDay = String(operation.operation_date || operation.scheduled_date || "").slice(0, 10);
+    const currentReading = !operationDay || operationDay === easternDateKey();
+    if (currentReading && currentBookMissionId) return String(mission.id) === String(currentBookMissionId);
+    return String(operation.mission_id || "") === String(mission.id)
+      && /chapter|read|book/.test(missionText);
+  }
+  if (String(operation.mission_id || "") === String(mission.id)) return true;
   if (/pt|physical therapy|orthopedic|acl|rehab/.test(operationText) && /pt|physical therapy|orthopedic|acl|rehab|recovery/.test(missionText)) return true;
   if (/gym|workout|strength/.test(operationText) && /gym|workout|strength|training/.test(missionText)) return true;
   if (/journal|mastery\.entry/.test(operationText) && /journal|mastery\.entry|self mastery/.test(missionText)) return true;
@@ -258,6 +264,22 @@ async function loadData() {
     ({ data: operationRows, error: operationError } = await client.from("operations").select("id,title,mission_id,status,completed,scheduled_date,operation_date,completed_on,category").eq("user_id", session.user.id));
   }
   const sharedOperationRows = Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [];
+  const { data: bookRow } = await client.from("mastery_entries")
+    .select("title")
+    .eq("user_id", session.user.id)
+    .eq("category", "Book")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  currentBookTitle = bookRow?.title || "";
+  const bookKey = currentBookTitle.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const bookMission = (data || []).find((mission) => bookKey.length >= 5
+    && `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().replace(/[^a-z0-9]+/g, "").includes(bookKey)
+    && !mission.completed);
+  const fallbackBookMission = (data || [])
+    .filter((mission) => !mission.completed && String(mission.metric_key || "").toLowerCase() === "chapters_read")
+    .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
+  currentBookMissionId = bookMission?.id || fallbackBookMission?.id || "";
   if (!operationError && Array.isArray(operationRows)) missionOperations = operationRows.length ? operationRows : sharedOperationRows;
   else if (sharedOperationRows.length) missionOperations = sharedOperationRows;
   applyMissionRows(data || []);
