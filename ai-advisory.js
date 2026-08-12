@@ -478,6 +478,7 @@ async function queueTomorrowFocus(advisory, operatingDate, userId) {
     schedule_mode: "one_time",
     is_daily: false,
     mission_id: null,
+    allow_unlinked: false,
     metric_key: null,
   }).select().single();
   if (error) { console.warn("Could not queue tomorrow's focus operation", error.message); return null; }

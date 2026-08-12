@@ -767,7 +767,9 @@ function activeBookMission() {
     const missionKey = `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().replace(/[^a-z0-9]+/g, "");
     return missionKey.includes(bookKey);
   });
-  return matched || (candidates.length === 1 ? candidates[0] : null);
+  return matched || (candidates.length === 1 ? candidates[0] : candidates
+    .filter((mission) => String(mission.metric_key || "").toLowerCase() === "chapters_read")
+    .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0] || null);
 }
 
 function isCompleteToday(operation) {
@@ -913,6 +915,10 @@ function resolveMission(operation, includeCompleted = false) {
 // command center, calendar, and mission page trying to maintain separate
 // counters in the browser.
 function attachMissionLink(operation) {
+  if (operation?.allow_unlinked || operationCategory(operation).toLowerCase() === "life admin") {
+    operation.mission_id = null;
+    return;
+  }
   const mission = resolveMission(operation, true);
   const category = operationCategory(operation, mission);
   const metric = inferredMetricForOperation(operation) || mission?.metric_key || null;
@@ -1408,6 +1414,7 @@ async function persist(operation) {
     is_daily: Boolean(operation.is_daily),
     mission_id: operation.mission_id || null,
     metric_key: operation.metric_key || null,
+    allow_unlinked: Boolean(operation.allow_unlinked),
   };
   // Daily and calendar-created operations begin as local objects. The old
   // update-only path silently discarded those rows, which made the queue look
@@ -1420,6 +1427,7 @@ async function persist(operation) {
   let { data, error } = await request;
   if (error && /column|schema cache|rollover|status_override/i.test(String(error.message || ""))) {
     const legacyPayload = { ...payload };
+    delete legacyPayload.allow_unlinked;
     delete legacyPayload.status_override;
     delete legacyPayload.started_on;
     delete legacyPayload.last_rollover_on;
@@ -1899,7 +1907,7 @@ async function syncDailyReadingOperation() {
   saveCachedOperations();
   if (client && currentUser && operation.id && !String(operation.id).startsWith("local-")) {
     const { error } = await client.from("operations")
-      .update({ brief: operation.brief, category: operation.category || "Self Mastery", mission_id: operation.mission_id || null, metric_key: operation.metric_key })
+      .update({ brief: operation.brief, category: operation.category || "Self Mastery", mission_id: operation.mission_id || null, metric_key: operation.metric_key, allow_unlinked: Boolean(operation.allow_unlinked) })
       .eq("id", operation.id)
       .eq("user_id", currentUser.id);
     if (error) console.warn("Could not sync current book to reading operation", error.message);
@@ -1913,14 +1921,19 @@ async function syncOperationMissionLinks() {
     attachMissionLink(operation);
     const after = `${operation.mission_id || ""}|${operation.metric_key || ""}|${operation.category || ""}`;
     if (before === after || !operation.id || String(operation.id).startsWith("local-")) return;
-    pending.push({ operation, payload: { mission_id: operation.mission_id || null, metric_key: operation.metric_key || null, category: operation.category || "Self Mastery" } });
+    pending.push({ operation, payload: { mission_id: operation.mission_id || null, metric_key: operation.metric_key || null, category: operation.category || "Self Mastery", allow_unlinked: Boolean(operation.allow_unlinked) } });
   });
   if (!pending.length) return;
   saveCachedOperations();
   if (!client || !currentUser) return;
-  await Promise.all(pending.map(({ operation, payload }) =>
-    client.from("operations").update(payload).eq("id", operation.id).eq("user_id", currentUser.id)
-  ));
+  await Promise.all(pending.map(async ({ operation, payload }) => {
+    const result = await client.from("operations").update(payload).eq("id", operation.id).eq("user_id", currentUser.id);
+    if (result.error && /allow_unlinked|column|schema cache/i.test(String(result.error.message || ""))) {
+      const legacyPayload = { ...payload };
+      delete legacyPayload.allow_unlinked;
+      await client.from("operations").update(legacyPayload).eq("id", operation.id).eq("user_id", currentUser.id);
+    }
+  }));
 }
 
 function ensureScheduleDialog() {
@@ -1942,7 +1955,7 @@ function ensureScheduleDialog() {
   dialog.dataset.aegisScheduleDialogVersion = "v2";
   dialog.innerHTML = `<form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h2>Plan this operation.</h2><p class="schedule-copy">Scheduling is optional. A scheduled operation stays on the calendar until you complete it.</p><div class="schedule-input-grid"><label>Date<input id="operation-schedule-date" type="date" required></label><label>Time <span class="field-optional">optional</span><input id="operation-schedule-time" type="time"></label></div><label>Schedule type<select id="operation-schedule-mode"><option value="one_time">One-time</option><option value="weekly">Repeat weekly</option></select></label><div class="dialog-actions"><button value="clear" type="submit" class="text-button">Remove from calendar</button><button value="cancel" type="submit" class="text-button">Cancel</button><button value="schedule" type="submit" class="primary">Add to calendar</button></div></form>`;
   dialog.querySelector("form")?.insertAdjacentHTML("afterbegin", '<label id="operation-schedule-choice-wrap" hidden>Unscheduled operation<select id="operation-schedule-operation"></select></label>');
-  dialog.querySelector("#operation-schedule-choice-wrap")?.insertAdjacentHTML("afterend", '<div id="operation-schedule-create-fields" hidden><label>New operation<input id="operation-schedule-new-title" placeholder="What needs to happen?" /></label><label>Department<select id="operation-schedule-new-category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Self Mastery</option><option>Life Admin</option></select></label></div>');
+  dialog.querySelector("#operation-schedule-choice-wrap")?.insertAdjacentHTML("afterend", '<div id="operation-schedule-create-fields" hidden><label>New operation<input id="operation-schedule-new-title" placeholder="What needs to happen?" /></label><label>Department<select id="operation-schedule-new-category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Self Mastery</option><option>Life Admin</option></select></label><label class="check-label"><input id="operation-schedule-allow-unlinked" type="checkbox" /> Keep outside mission progress</label></div>');
   document.body.append(dialog);
   const scheduleForm = dialog.querySelector("form");
   // Submit explicitly, then close once. This makes the save path reliable in
@@ -2036,6 +2049,7 @@ function ensureScheduleDialog() {
         scheduled_end_date: null,
         schedule_mode: "one_time",
         operation_date: null,
+        allow_unlinked: Boolean(dialog.querySelector("#operation-schedule-allow-unlinked")?.checked),
       };
       attachMissionLink(operation);
       operations.push(operation);
@@ -2047,6 +2061,10 @@ function ensureScheduleDialog() {
       removePickerCreatedOperation(dialog);
       return;
     }
+    // Scheduling is also a write boundary. Resolve the shared mission link
+    // here so an operation cannot become durable while still orphaned merely
+    // because it was scheduled instead of created from Mission Control.
+    attachMissionLink(operation);
     const date = dialog.returnValue === "clear" ? "" : $("#operation-schedule-date")?.value;
     const time = dialog.returnValue === "clear" ? "" : $("#operation-schedule-time")?.value;
     const selectedMode = dialog.returnValue === "clear" ? "one_time" : ($("#operation-schedule-mode")?.value || "one_time");
@@ -2143,6 +2161,8 @@ function openDaySchedulePicker(date) {
   if (createFields) createFields.hidden = true;
   const newTitle = dialog.querySelector("#operation-schedule-new-title");
   if (newTitle) newTitle.value = "";
+  const allowUnlinked = dialog.querySelector("#operation-schedule-allow-unlinked");
+  if (allowUnlinked) allowUnlinked.checked = false;
   const dateInput = dialog.querySelector("#operation-schedule-date");
   if (dateInput) dateInput.value = date;
   const mode = dialog.querySelector("#operation-schedule-mode");
@@ -2519,6 +2539,7 @@ window.addEventListener("aegis:operations-changed", async (event) => {
   if (event.detail?.source === "operations-hub" || !currentUser) return;
   operations = await seedIfEmpty();
   await loadMissions();
+  await syncOperationMissionLinks();
   saveCachedOperations();
   renderQueue();
   renderCalendar();

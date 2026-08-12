@@ -244,7 +244,7 @@ function operationPlanRows() {
   const seen = new Set();
   return rows.filter((operation) => {
     if (!operation || operation._occurrence || operation.completed || String(operation.status || "").toLowerCase() === "complete") return false;
-    if (operation.scheduled_date || operation._series || operation.is_daily) return false;
+    if (operation.mission_id || operation.allow_unlinked) return false;
     const key = String(operation.id || operation.title || "");
     if (!key || seen.has(key)) return false;
     seen.add(key);
@@ -256,10 +256,20 @@ function populateOperationPlanChoices(form, prefix, mission = null) {
   const select = form?.querySelector(`#${prefix}-operation-existing`);
   if (!select) return;
   const currentMissionId = String(mission?.id || "");
-  const rows = operationPlanRows().filter((operation) => !operation.mission_id || String(operation.mission_id) === currentMissionId);
-  select.innerHTML = `<option value="">Choose an unscheduled operation</option>${rows.map((operation) => `<option value="${escape(operation.id)}">${escape(operation.title)}${operation.category ? ` · ${escape(operation.category)}` : ""}</option>`).join("")}`;
+  const rows = operationPlanRows();
+  select.innerHTML = `<option value="">Choose an existing operation</option>${rows.map((operation) => `<option value="${escape(operation.id)}">${escape(operation.title)}${operation.scheduled_date ? ` · ${escape(operation.scheduled_date)}` : " · unscheduled"}${operation.category ? ` · ${escape(operation.category)}` : ""}</option>`).join("")}`;
   const note = form.querySelector(`#${prefix}-operation-existing-note`);
-  if (note) note.textContent = rows.length ? `${rows.length} unscheduled operation${rows.length === 1 ? "" : "s"} available.` : "No unscheduled operations are available yet.";
+  if (note) note.textContent = rows.length ? `${rows.length} existing operation${rows.length === 1 ? "" : "s"} available. Selecting one will attach it to this mission${currentMissionId ? " and replace any previous mission link" : ""}.` : "No existing operations are available yet.";
+}
+
+function refreshOperationPlanChoices() {
+  const createForm = $("#mission-create-form");
+  const editForm = $("#mission-edit-form");
+  if (createForm) populateOperationPlanChoices(createForm, "new-mission");
+  if (editForm) {
+    const mission = missions.find((item) => String(item.id) === String(missionEditor?.dataset?.missionId || ""));
+    populateOperationPlanChoices(editForm, "edit-mission", mission);
+  }
 }
 
 function syncOperationPlanFields(form, prefix) {
@@ -311,6 +321,7 @@ function missionOperationPayload(mission, plan) {
     is_daily: false,
     mission_id: mission.id,
     metric_key: mission.metric_key || "operation.complete",
+    allow_unlinked: false,
   };
 }
 
@@ -318,16 +329,25 @@ async function applyMissionOperationPlan(mission, plan) {
   if (!mission || !plan || plan.mode === "none") return { ok: true };
   if (plan.mode === "existing") {
     if (!plan.existingId) return { ok: false, message: "Choose an unscheduled operation to attach." };
-    const linkPayload = { mission_id: mission.id };
+    const linkPayload = { mission_id: mission.id, allow_unlinked: false };
     if (mission.metric_key) linkPayload.metric_key = mission.metric_key;
-    const { data, error } = await client.from("operations").update(linkPayload).eq("id", plan.existingId).eq("user_id", session.user.id).select().single();
+    let { data, error } = await client.from("operations").update(linkPayload).eq("id", plan.existingId).eq("user_id", session.user.id).select().single();
+    if (error && /allow_unlinked|column|schema cache/i.test(String(error.message || ""))) {
+      delete linkPayload.allow_unlinked;
+      ({ data, error } = await client.from("operations").update(linkPayload).eq("id", plan.existingId).eq("user_id", session.user.id).select().single());
+    }
     if (error) return { ok: false, message: error.message };
     if (data) missionOperations = [...missionOperations.filter((operation) => String(operation.id) !== String(data.id)), data];
     return { ok: true, data };
   }
   if (!plan.title) return { ok: false, message: "Enter an operation name." };
   if (plan.endDate && plan.endDate < plan.date) return { ok: false, message: "The operation end date must be on or after its first date." };
-  const { data, error } = await client.from("operations").insert(missionOperationPayload(mission, plan)).select().single();
+  const operationPayload = missionOperationPayload(mission, plan);
+  let { data, error } = await client.from("operations").insert(operationPayload).select().single();
+  if (error && /allow_unlinked|column|schema cache/i.test(String(error.message || ""))) {
+    delete operationPayload.allow_unlinked;
+    ({ data, error } = await client.from("operations").insert(operationPayload).select().single());
+  }
   if (error) return { ok: false, message: error.message };
   if (data) missionOperations = [data, ...missionOperations];
   return { ok: true, data };
@@ -474,7 +494,10 @@ async function loadData() {
   const fallbackBookMission = !currentBookTitle && (data || [])
     .filter((mission) => !mission.completed && String(mission.metric_key || "").toLowerCase() === "chapters_read")
     .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
-  currentBookMissionId = bookMission?.id || (!hasBookSpecificMission ? fallbackBookMission?.id || "" : "");
+  const latestChapterMission = (data || [])
+    .filter((mission) => !mission.completed && String(mission.metric_key || "").toLowerCase() === "chapters_read")
+    .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
+  currentBookMissionId = bookMission?.id || (!hasBookSpecificMission ? (fallbackBookMission?.id || latestChapterMission?.id || "") : "");
   if (!operationError && Array.isArray(operationRows)) missionOperations = operationRows.length ? operationRows : sharedOperationRows;
   else if (sharedOperationRows.length) missionOperations = sharedOperationRows;
   applyMissionRows(data || []);
@@ -591,6 +614,7 @@ window.addEventListener("aegis:operations-changed", (event) => {
   if (!Array.isArray(rows)) return;
   missionOperations = rows.filter((operation) => !operation?._occurrence);
   renderMissions();
+  refreshOperationPlanChoices();
 });
 
 window.addEventListener("aegis:operations-loaded", (event) => {
@@ -598,6 +622,7 @@ window.addEventListener("aegis:operations-loaded", (event) => {
   if (!Array.isArray(rows)) return;
   missionOperations = rows.filter((operation) => !operation?._occurrence);
   renderMissions();
+  refreshOperationPlanChoices();
 });
 
 window.addEventListener("aegis:phase-mission-template", (event) => {

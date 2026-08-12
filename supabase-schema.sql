@@ -5,6 +5,7 @@ create table if not exists public.operations (
   title text not null check (char_length(title) between 1 and 240),
   category text not null check (category in ('Recovery', 'Trading', 'Business', 'Self Mastery', 'Life Admin', 'Body')),
   completed boolean not null default false,
+  allow_unlinked boolean not null default false,
   scheduled_date date not null default current_date,
   created_at timestamptz not null default now()
 );
