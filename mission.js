@@ -95,6 +95,15 @@ function operationStatus(operation) { return operation.completed || String(opera
 function operationDate(operation) { return operation.completed_on || operation.scheduled_date || operation.operation_date || ""; }
 function missionCategory(value) { const category = String(value || "").trim().toLowerCase(); return category === "mind" || category === "body" || category === "mastery" ? "Self Mastery" : category === "life admin" || category === "day to day" ? "Life Admin" : value || "Self Mastery"; }
 function normalize(mission) { return { ...mission, category: missionCategory(mission.category), progress: missionProgress(mission) }; }
+function missionRowsForLookup() {
+  const rows = [...missions];
+  const shared = Array.isArray(window.AEGIS_MISSIONS) ? window.AEGIS_MISSIONS : [];
+  shared.forEach((row) => {
+    if (!row || rows.some((item) => String(item.id) === String(row.id))) return;
+    try { rows.push(normalize(row)); } catch (error) { console.warn("Shared mission row skipped", error); }
+  });
+  return rows;
+}
 function applyMissionRows(rows) {
   // During startup one module can briefly receive an empty response while the
   // authenticated operations module already has the durable rows. Never let
@@ -312,7 +321,7 @@ function openMissionEditorFromDetails(event) {
   missionDetails = detailsDialog;
   wireMissionDetailsDialog(detailsDialog);
   if (!missionEditor || !missionEditor.isConnected) missionEditor = buildMissionEditor();
-  const mission = missions.find((item) => String(item.id) === String(detailsDialog.dataset.missionId));
+  const mission = missionRowsForLookup().find((item) => String(item.id) === String(detailsDialog.dataset.missionId));
   if (!mission) return true;
   const launch = () => {
     try {
@@ -396,11 +405,11 @@ async function openEditorFromMissionCard(mission) {
 }
 
 window.AEGIS_OPEN_MISSION_DETAILS = (id) => {
-  const mission = missions.find((item) => String(item.id) === String(id));
+  const mission = missionRowsForLookup().find((item) => String(item.id) === String(id));
   openMissionDetails(mission);
 };
 window.AEGIS_OPEN_MISSION_EDITOR = (id) => {
-  const rows = missions.length ? missions : (Array.isArray(window.AEGIS_MISSIONS) ? window.AEGIS_MISSIONS : []);
+  const rows = missionRowsForLookup();
   const mission = rows.find((item) => String(item.id) === String(id));
   void openEditorFromMissionCard(mission);
 };
@@ -1002,7 +1011,7 @@ document.addEventListener("click", (event) => {
 window.addEventListener("aegis:open-mission", (event) => {
   const id = event.detail?.id;
   if (!id) return;
-  const rows = missions.length ? missions : (Array.isArray(window.AEGIS_MISSIONS) ? window.AEGIS_MISSIONS : []);
+  const rows = missionRowsForLookup();
   const mission = rows.find((item) => String(item.id) === String(id));
   openMissionDetails(mission);
 });
@@ -1010,7 +1019,7 @@ window.addEventListener("aegis:open-mission", (event) => {
 window.addEventListener("aegis:open-mission-details", (event) => {
   const id = event.detail?.id;
   if (!id) return;
-  const rows = missions.length ? missions : (Array.isArray(window.AEGIS_MISSIONS) ? window.AEGIS_MISSIONS : []);
+  const rows = missionRowsForLookup();
   openMissionDetails(rows.find((item) => String(item.id) === String(id)));
 });
 
