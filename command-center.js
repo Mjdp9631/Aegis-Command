@@ -23,6 +23,29 @@ function updateMetric(title, mission) {
   if (note) note.textContent = mission.completion_definition || "Define completion evidence";
 }
 
+function renderMissionLedgerFallback(missions) {
+  const target = $("#mission-cards");
+  if (!target) return;
+  const loading = /Loading mission ledger/i.test(target.textContent || "");
+  if (!loading && target.dataset.missionRenderer === "mission") return;
+  const active = missions.filter((mission) => progress(mission) < 100);
+  const complete = missions.filter((mission) => progress(mission) >= 100);
+  const card = (mission) => `<button type="button" class="mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${escape(mission.id)}"><span class="eyebrow amber">${escape(mission.priority || "Schedule")}</span><h3>${escape(mission.title)}</h3><p>${escape(mission.category)} mission · ${escape(label(mission))}</p><div class="meter"><i style="width:${progress(mission)}%"></i></div></button>`;
+  target.dataset.missionRenderer = "fallback";
+  target.innerHTML = `<div class="mission-view-tabs"><button type="button" class="mission-view-tab active" data-mission-view="active">ACTIVE · ${active.length}</button><button type="button" class="mission-view-tab" data-mission-view="complete">COMPLETED · ${complete.length}</button></div><div class="mission-card-list" data-mission-list>${active.length ? active.map(card).join("") : '<article class="mission-card"><h3>No missions in this view.</h3></article>'}</div>`;
+  if (target.dataset.missionFallbackWired === "true") return;
+  target.dataset.missionFallbackWired = "true";
+  target.addEventListener("click", (event) => {
+    if (target.dataset.missionRenderer !== "fallback") return;
+    const button = event.target.closest("[data-mission-view]");
+    if (!button) return;
+    target.querySelectorAll("[data-mission-view]").forEach((item) => item.classList.toggle("active", item === button));
+    const completeView = button.dataset.missionView === "complete";
+    const rows = completeView ? complete : active;
+    target.querySelector("[data-mission-list]").innerHTML = rows.length ? rows.map(card).join("") : '<article class="mission-card"><h3>No missions in this view.</h3></article>';
+  });
+}
+
 function render(missions, operations = []) {
   const normalizedMissions = missions.map((mission) => ({ ...mission, category: normalizeCategory(mission.category), progress: progress(mission) }));
   // Share the authoritative mission rows with Mission Control. This avoids a
@@ -32,6 +55,7 @@ function render(missions, operations = []) {
   window.dispatchEvent(new CustomEvent("aegis:missions-loaded", {
     detail: { missions: normalizedMissions, source: "command-center" },
   }));
+  renderMissionLedgerFallback(normalizedMissions);
   if (typeof window.AEGIS_RENDER_COMMAND_MISSIONS === "function") window.AEGIS_RENDER_COMMAND_MISSIONS(normalizedMissions, operations);
   const target = $("#command-missions") || document.querySelector("#command .mission-panel .mission-list");
   if (target) {

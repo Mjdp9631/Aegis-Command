@@ -38,6 +38,26 @@ function hydrateMissionLedgerFromSharedState() {
   return true;
 }
 
+function bindMissionViewTabsFallback() {
+  const target = $("#mission-cards");
+  if (!target || target.dataset.missionTabsWired === "true") return;
+  target.dataset.missionTabsWired = "true";
+  target.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-mission-view]");
+    if (!button || target.dataset.missionRenderer === "mission") return;
+    target.querySelectorAll("[data-mission-view]").forEach((item) => item.classList.toggle("active", item === button));
+    const list = target.querySelector("[data-mission-list]");
+    if (!list) return;
+    if (!missions.length) {
+      list.innerHTML = '<article class="mission-card"><h3>Mission data is still syncing.</h3><small>Refresh after authentication completes.</small></article>';
+      return;
+    }
+    const complete = button.dataset.missionView === "complete";
+    const rows = sortMissions(missions.filter((mission) => (mission.progress >= 100) === complete));
+    list.innerHTML = rows.length ? rows.map((mission) => `<button type="button" class="mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${escape(mission.id)}"><span class="eyebrow amber">${escape(mission.priority)}</span><h3>${escape(mission.title)}</h3><p>${escape(mission.category)} mission · ${escape(missionLabel(mission))}</p></button>`).join("") : '<article class="mission-card"><h3>No missions in this view.</h3></article>';
+  });
+}
+
 function isMeasured(mission) { return mission.completion_type === "units" && Number(mission.target_count) > 0; }
 function missionProgress(mission) { return isMeasured(mission) ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission.completed ? 100 : 0; }
 function missionLabel(mission) { return isMeasured(mission) ? `${Math.min(Number(mission.completed_count) || 0, Number(mission.target_count))} / ${mission.target_count} ${mission.unit_label || "units"}` : mission.completed ? "Complete" : "Not complete"; }
@@ -110,19 +130,24 @@ function commandMissionCard(mission, operations = []) {
 function renderCommandMissionBoard(nextMissions = missions, operations = []) {
   const target = $("#command-missions") || document.querySelector("#command .mission-panel .mission-list");
   if (!target) return;
+  target.id = "command-missions";
   const active = sortMissions(nextMissions.filter((mission) => mission.progress < 100));
-  target.className = "mission-list command-mission-board";
-  target.innerHTML = `<div class="command-mission-list" data-command-mission-list></div>`;
-  const activeList = target.querySelector("[data-command-mission-list]");
-  activeList.innerHTML = active.length ? active.map((mission) => commandMissionCard(mission, operations)).join("") : '<article class="command-mission-empty"><strong>No active missions.</strong><small>Open the next objective from Mission Control.</small></article>';
+  target.className = "mission-list mission-list-scroll";
+  target.innerHTML = active.length ? active.map((mission) => {
+    const linked = operations.filter((operation) => (operation.mission_link_mode !== "family" && String(operation.mission_id || "") === String(mission.id))
+      || (Array.isArray(operation.linked_mission_ids) && operation.linked_mission_ids.some((id) => String(id) === String(mission.id))));
+    return `<button type="button" class="command-mission mission-open" data-mission-id="${escape(mission.id)}"><div class="mission-icon ${iconClass(mission.category)}">${icon(mission.category)}</div><div><strong>${escape(mission.title)}</strong><small>${escape(mission.category)} - ${escape(mission.priority)}</small></div><span>${escape(missionLabel(mission))}</span></button>`;
+  }).join("") : '<article><div><strong>No active missions</strong><small>Open the next objective from Mission Control.</small></div></article>';
 }
 
 function renderMissions() {
   const target = $("#mission-cards");
   if (!target) return;
+  target.dataset.missionRenderer = "mission";
   const active = sortMissions(missions.filter((mission) => mission.progress < 100));
   const complete = sortMissions(missions.filter((mission) => mission.progress >= 100));
   target.innerHTML = `<div class="mission-view-tabs"><button type="button" class="mission-view-tab active" data-mission-view="active">ACTIVE · ${active.length}</button><button type="button" class="mission-view-tab" data-mission-view="complete">COMPLETED · ${complete.length}</button></div><div class="mission-card-list" data-mission-list></div>`;
+  target.dataset.missionRenderer = "mission";
   const list = target.querySelector("[data-mission-list]");
   const draw = (items) => { list.innerHTML = items.length ? items.map((mission) => {
     const linked = operationsForMission(mission);
@@ -947,6 +972,7 @@ document.addEventListener("click", (event) => {
 // Paint the mission ledger before optional dialog wiring. A missing optional
 // control must never leave Active / Completed invisible.
 renderMissions(); renderCommandMissions(); renderRecovery();
+bindMissionViewTabsFallback();
 bindDialogs();
 missionDetails = buildMissionDetails();
 hydrateMissionLedgerFromSharedState();
