@@ -128,6 +128,58 @@ window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
 const statusOrder = ["Queued", "Scheduled", "Ongoing", "Complete", "Missed"];
 const LONG_RUNNING_OPERATION_DAYS = 3;
 const priorityFor = (category) => category === "Recovery" || category === "Trading" ? "High" : "Medium";
+const operationCategories = new Set(["Recovery", "Trading", "Business", "Self Mastery", "Life Admin"]);
+const canonicalOperationCategory = (value) => {
+  const category = String(value || "").trim().toLowerCase();
+  if (category === "mind" || category === "body" || category === "mastery" || category === "self mastery") return "Self Mastery";
+  if (category === "life admin" || category === "day to day" || category === "day-to-day") return "Life Admin";
+  if (category === "recovery" || category === "trading" || category === "business") return category.replace(/^./, (letter) => letter.toUpperCase());
+  return "";
+};
+const operationCategoryForTitle = (title = "") => {
+  const name = String(title).toLowerCase();
+  if (/physical therapy|\bpt\b|orthopedic|acl|rehab|recovery|mobility/.test(name)) return "Recovery";
+  if (/trade|trading|pre-market|pre market|chart|backtest|risk limit|market plan/.test(name)) return "Trading";
+  if (/business|ccfx|content|project|enterprise|publish|deep-work|deep work/.test(name)) return "Business";
+  if (/dentist|doctor appointment|appointment|lunch|errand|grocery|tax|bill|commute/.test(name)) return "Life Admin";
+  if (/read one chapter|read chapter|chapter|conquer the morning|^journal$|mission debrief|meditat|mobility practice/.test(name)) return "Self Mastery";
+  return "";
+};
+const operationCategory = (operation, mission = null) => {
+  const titleCategory = operationCategoryForTitle(operation?.title);
+  if (titleCategory) return titleCategory;
+  const missionCategory = canonicalOperationCategory(mission?.category);
+  if (missionCategory) return missionCategory;
+  return canonicalOperationCategory(operation?.category) || operationCategoryForTitle(operation?.title) || "Self Mastery";
+};
+const metricAliases = {
+  pt_session: ["pt_session", "recovery.pt_session", "recovery.report"],
+  chapters_read: ["chapters_read", "mastery.book", "mind.book"],
+  gym_session: ["gym_session", "body.gym", "mastery.gym"],
+  trading_trade: ["trading.trade", "trading.review", "trade_review"],
+  mastery_entry: ["mastery.entry", "mastery.journal", "mind.entry"],
+  recovery_report: ["recovery.report", "recovery.pt_session"],
+};
+const metricsMatch = (missionMetric, operationMetric) => {
+  const missionKey = String(missionMetric || "").toLowerCase();
+  const operationKey = String(operationMetric || "").toLowerCase();
+  if (!missionKey || !operationKey) return false;
+  if (missionKey === operationKey) return true;
+  return (metricAliases[missionKey] || [missionKey]).includes(operationKey)
+    || (metricAliases[operationKey] || [operationKey]).includes(missionKey);
+};
+const inferredMetricForOperation = (operation) => {
+  const title = String(operation?.title || "").toLowerCase();
+  const explicit = String(operation?.metric_key || "").toLowerCase();
+  if (explicit && !["operation.complete", "operation_completion"].includes(explicit)) return explicit;
+  if (/physical therapy|\bpt\b|orthopedic|acl|rehab/.test(title)) return "pt_session";
+  if (/read one chapter|read chapter|chapter/.test(title)) return "chapters_read";
+  if (/gym|workout|strength training|resistance/.test(title)) return "gym_session";
+  if (/trade|trading|pre-market|chart|backtest/.test(title)) return "trading.trade";
+  if (/^journal$|journal|mind entry|self mastery entry/.test(title)) return "mastery.entry";
+  if (/recovery report|log recovery|pain|swelling/.test(title)) return "recovery.report";
+  return explicit || null;
+};
 const dateOnly = (value) => value ? String(value).slice(0, 10) : "";
 const newYorkWeekday = (date = new Date()) => new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York", weekday: "short",
@@ -384,6 +436,13 @@ function operationDisplayIdentity(operation) {
   return [title, date, time, mission].join("|");
 }
 
+function reconcileOperationIdentity(operation) {
+  const before = `${operation?.category || ""}|${operation?.mission_id || ""}|${operation?.metric_key || ""}`;
+  attachMissionLink(operation);
+  const after = `${operation?.category || ""}|${operation?.mission_id || ""}|${operation?.metric_key || ""}`;
+  return before !== after;
+}
+
 function dedupeOperationInstances(items) {
   const unique = new Map();
   items.forEach((operation) => {
@@ -556,6 +615,7 @@ async function refreshDurableOperationState() {
     if (!remoteOccurrences.length && operationOccurrences.length) return;
     operations = remoteOperations;
     operationOccurrences = remoteOccurrences;
+    await syncOperationMissionLinks();
     await markExpiredOperationsMissed();
     await rollOverOngoingOperations();
     await reconcileRecurringCompletion();
@@ -737,7 +797,14 @@ function checklistFor(operation) {
 function resolveMission(operation, includeCompleted = false) {
   if (operation.mission_id) {
     const explicit = missions.find((mission) => String(mission.id) === String(operation.mission_id));
-    if (explicit) return explicit;
+    if (explicit) {
+      const inferredMetric = inferredMetricForOperation(operation);
+      const titleCategory = operationCategoryForTitle(operation.title);
+      const missionCategory = canonicalOperationCategory(explicit.category);
+      const categoryCompatible = !titleCategory || titleCategory === missionCategory;
+      const metricCompatible = !inferredMetric || !explicit.metric_key || metricsMatch(explicit.metric_key, inferredMetric);
+      if (categoryCompatible && metricCompatible) return explicit;
+    }
   }
   if (isReadingOperation(operation) && currentBook?.title) {
     const bookTitle = currentBook.title.toLowerCase();
@@ -745,8 +812,9 @@ function resolveMission(operation, includeCompleted = false) {
       && `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().includes(bookTitle));
     if (bookMission) return bookMission;
   }
-  if (operation.metric_key) {
-    const metricMatch = missions.find((mission) => (includeCompleted || !mission.completed) && String(mission.metric_key || "") === String(operation.metric_key));
+  const operationMetric = inferredMetricForOperation(operation);
+  if (operationMetric) {
+    const metricMatch = missions.find((mission) => (includeCompleted || !mission.completed) && metricsMatch(mission.metric_key, operationMetric));
     if (metricMatch) return metricMatch;
   }
   const title = String(operation.title || "").toLowerCase();
@@ -762,14 +830,13 @@ function resolveMission(operation, includeCompleted = false) {
   if (/conquer the morning/.test(title)) return byPhrase(["morning discipline", "operating baseline", "daily rhythm"]);
   if (/^journal$|journal/.test(title)) return byPhrase(["journal", "operating debrief rhythm", "self mastery"]);
   if (/pre-market/.test(title)) return byPhrase(["trading preparation rhythm", "execution playbook", "pre-market"]);
-  const category = String(operation.category || "").toLowerCase();
-  const missionCategory = category === "mind" || category === "body" || category === "self mastery" ? "self mastery" : category;
-  const candidates = missions.filter((mission) => (includeCompleted || !mission.completed) && (String(mission.category || "").toLowerCase() === missionCategory || (missionCategory === "self mastery" && ["mind", "body"].includes(String(mission.category || "").toLowerCase()))));
+  const category = operationCategory(operation).toLowerCase();
+  const candidates = missions.filter((mission) => (includeCompleted || !mission.completed) && canonicalOperationCategory(mission.category).toLowerCase() === category);
   if (!candidates.length) return null;
   const measured = candidates.filter((mission) => String(mission.completion_type || "").toLowerCase() === "units" && Number(mission.target_count) > 0);
   const unitMatch = measured.find((mission) => {
     const unit = String(mission.unit_label || "").toLowerCase();
-    return (/acl|rehab|pt|orthopedic/.test(title) && /session|rehab|pt/.test(unit)) || (/read|chapter/.test(title) && /chapter|page/.test(unit));
+    return (/acl|rehab|pt|orthopedic|physical therapy/.test(title) && /session|rehab|pt/.test(unit)) || (/read|chapter/.test(title) && /chapter|page/.test(unit));
   });
   const titleMatch = measured.find((mission) => {
     const text = `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase();
@@ -784,7 +851,11 @@ function resolveMission(operation, includeCompleted = false) {
 // command center, calendar, and mission page trying to maintain separate
 // counters in the browser.
 function attachMissionLink(operation) {
-  const mission = resolveMission(operation);
+  const mission = resolveMission(operation, true);
+  const category = operationCategory(operation, mission);
+  const metric = inferredMetricForOperation(operation) || mission?.metric_key || null;
+  if (category && operation.category !== category) operation.category = category;
+  if (metric && operation.metric_key !== metric) operation.metric_key = metric;
   if (!mission) return;
   operation.mission_id = mission.id;
   operation.metric_key = operation.metric_key || mission.metric_key || null;
@@ -1356,6 +1427,7 @@ async function reconcileMeasuredMissionCounts() {
   operationInstances().forEach((operation) => {
     if (normalizedStatus(operation) !== "Complete") return;
     if (/evening\s+mission\s+debrief/i.test(String(operation.title || ""))) return;
+    reconcileOperationIdentity(operation);
     const linkedMissionId = operation.mission_id || resolveMission(operation, true)?.id;
     if (!linkedMissionId) return;
     // Occurrence rows are already unique by their durable occurrence id.
@@ -1377,8 +1449,10 @@ async function reconcileMeasuredMissionCounts() {
     if (!target) return;
     const observed = Math.min(target, completedByMission.get(String(mission.id))?.size || 0);
     const current = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
-    // Preserve a deliberate/manual count; only repair an observed undercount.
-    if (observed <= current) return;
+    // Completed operation/occurrence evidence is authoritative for measured
+    // missions. Repair both undercounts and stale overcounts so every browser
+    // converges on the same durable evidence set.
+    if (observed === current) return;
     mission.completed_count = observed;
     mission.completed = observed >= target;
     mission.progress = Math.round((observed / target) * 100);
@@ -1710,11 +1784,11 @@ async function syncDailyReadingOperation() {
 async function syncOperationMissionLinks() {
   const pending = [];
   operations.forEach((operation) => {
-    const before = `${operation.mission_id || ""}|${operation.metric_key || ""}`;
+    const before = `${operation.mission_id || ""}|${operation.metric_key || ""}|${operation.category || ""}`;
     attachMissionLink(operation);
-    const after = `${operation.mission_id || ""}|${operation.metric_key || ""}`;
+    const after = `${operation.mission_id || ""}|${operation.metric_key || ""}|${operation.category || ""}`;
     if (before === after || !operation.id || String(operation.id).startsWith("local-")) return;
-    pending.push({ operation, payload: { mission_id: operation.mission_id || null, metric_key: operation.metric_key || null } });
+    pending.push({ operation, payload: { mission_id: operation.mission_id || null, metric_key: operation.metric_key || null, category: operation.category || "Self Mastery" } });
   });
   if (!pending.length) return;
   saveCachedOperations();

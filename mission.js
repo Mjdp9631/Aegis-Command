@@ -232,8 +232,37 @@ function bindDialogs() {
     const dialog = $("#mission-dialog");
     if (dialog && !dialog.open) dialog.showModal();
   });
-  document.querySelectorAll('[data-action="log-recovery"]').forEach((button) => button.addEventListener("click", () => { if (!session) return alert("Sign in before logging recovery."); $("#recovery-logged-on").value = easternDateKey(); $("#recovery-dialog").showModal(); }));
-  $("#save-recovery")?.addEventListener("click", async (event) => { const pain = Number($("#recovery-pain").value), swelling = Number($("#recovery-swelling").value), logged_on = $("#recovery-logged-on").value || easternDateKey(); if (!Number.isInteger(pain) || !Number.isInteger(swelling) || pain < 0 || pain > 10 || swelling < 0 || swelling > 10 || !logged_on) return event.preventDefault(); const { data, error } = await client.from("recovery_logs").insert({ logged_on, pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single(); if (error) { event.preventDefault(); return console.error(error); } renderRecovery(data); $("#recovery-notes").value = ""; publishDataChange("recovery"); });
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest('[data-action="log-recovery"]');
+    if (!button) return;
+    event.preventDefault();
+    // This is delegated so it still works when the Recovery tab is routed or
+    // rebuilt after the module initially loads. Read the current auth state at
+    // click time instead of relying on a stale module-local snapshot.
+    if (!session && client) {
+      const result = await client.auth.getSession();
+      session = result.data?.session || null;
+    }
+    if (!session) return alert("Sign in before logging recovery.");
+    const dialog = $("#recovery-dialog");
+    if (!dialog) return;
+    $("#recovery-logged-on").value = easternDateKey();
+    if (!dialog.open) dialog.showModal();
+  });
+  $("#recovery-dialog form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!session || !client) return alert("Sign in before saving recovery.");
+    const pain = Number($("#recovery-pain").value);
+    const swelling = Number($("#recovery-swelling").value);
+    const logged_on = $("#recovery-logged-on").value || easternDateKey();
+    if (!Number.isInteger(pain) || !Number.isInteger(swelling) || pain < 0 || pain > 10 || swelling < 0 || swelling > 10 || !logged_on) return;
+    const { data, error } = await client.from("recovery_logs").insert({ logged_on, pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single();
+    if (error) return alert(`Recovery could not be saved: ${error.message}`);
+    renderRecovery(data);
+    $("#recovery-notes").value = "";
+    $("#recovery-dialog").close();
+    publishDataChange("recovery");
+  });
 }
 
 window.addEventListener("aegis:open-mission", (event) => {
