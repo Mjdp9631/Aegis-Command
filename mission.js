@@ -10,6 +10,25 @@ let client = null, session = null, missions = [], missionOperations = [], curren
 let missionEditor = null;
 let missionDetails = null;
 let missionLoadTimer = null;
+let missionLoadInFlight = null;
+
+// A stalled optional query must never leave Mission Control on its static
+// loading shell. Supabase query builders are thenable, so Promise.race can
+// safely bound both normal requests and auth/database lock contention.
+function withMissionTimeout(query, label, timeoutMs = 10000) {
+  return Promise.race([
+    query,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs)),
+  ]);
+}
+
+function renderMissionLoadFailure(error) {
+  console.error("Mission ledger sync failed", error);
+  const target = $("#mission-cards");
+  const list = target?.querySelector("[data-mission-list]");
+  if (!list || missions.length) return;
+  list.innerHTML = `<article class="mission-card"><h3>Mission sync is taking longer than expected.</h3><small>${escape(error?.message || "Retrying the authenticated mission feed.")}</small></article>`;
+}
 
 function isMeasured(mission) { return mission.completion_type === "units" && Number(mission.target_count) > 0; }
 function missionProgress(mission) { return isMeasured(mission) ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission.completed ? 100 : 0; }
@@ -641,95 +660,145 @@ function openEditor(dialog, mission) {
 
 async function loadData() {
   if (!session || !client) return;
-  let { data, error } = await client.from("missions").select("*").order("created_at", { ascending: false });
-  // A legacy missions table may not expose the ordering column even though
-  // the rows themselves are readable. Keep the data path resilient to that
-  // older schema while preserving the normal newest-first ordering.
-  if (error) ({ data, error } = await client.from("missions").select("*"));
-  if (error) {
-    console.error("Could not load missions", error);
-    const target = $("#mission-cards");
-    if (target) target.querySelector("[data-mission-list]")?.replaceChildren(Object.assign(document.createElement("article"), { className: "mission-card", innerHTML: `<h3>Mission sync unavailable.</h3><small>${escape(error.message || "Supabase could not return mission records.")}</small>` }));
-    return;
-  }
-  let { data: operationRows, error: operationError } = await client.from("operations")
-    .select("*")
-    .eq("user_id", session.user.id);
-  if (operationError) {
-    // Keep attachment discovery readable across older deployments whose
-    // operations table may not yet have every newer schedule column.
-    ({ data: operationRows, error: operationError } = await client.from("operations").select("id,title,mission_id,status,completed,scheduled_date,operation_date,completed_on,category,is_daily,metric_key,brief").eq("user_id", session.user.id));
-  }
-  let operationLinkRows = [];
-  let operationLinkError = null;
-  let familyLinksAvailable = false;
-  if (!operationError) {
-    let linkResult = await client.from("operation_family_mission_links")
-      .select("operation_family_key,mission_id")
-      .eq("user_id", session.user.id);
-    familyLinksAvailable = !linkResult.error;
-    if (linkResult.error) {
-      linkResult = await client.from("operation_mission_links")
-        .select("operation_id,mission_id")
-        .eq("user_id", session.user.id);
+  if (missionLoadInFlight) return missionLoadInFlight;
+  missionLoadInFlight = (async () => {
+    try {
+      let { data, error } = await withMissionTimeout(
+        client.from("missions").select("*").order("created_at", { ascending: false }),
+        "Mission query",
+      );
+      // A legacy missions table may not expose the ordering column even though
+      // the rows themselves are readable. Keep the data path resilient to that
+      // older schema while preserving the normal newest-first ordering.
+      if (error) ({ data, error } = await withMissionTimeout(client.from("missions").select("*"), "Mission fallback query"));
+      if (error) {
+        console.error("Could not load missions", error);
+        renderMissionLoadFailure(error);
+        return;
+      }
+
+      // Paint the authoritative mission rows before optional operation-link,
+      // book, and recovery queries. The ledger should never depend on those
+      // secondary feeds completing first.
+      applyMissionRows(data || []);
+
+      let operationRows = [];
+      let operationError = null;
+      let operationResult = await withMissionTimeout(
+        client.from("operations").select("*").eq("user_id", session.user.id),
+        "Operation query",
+      );
+      operationRows = operationResult.data;
+      operationError = operationResult.error;
+      if (operationError) {
+        // Keep attachment discovery readable across older deployments whose
+        // operations table may not yet have every newer schedule column.
+        operationResult = await withMissionTimeout(
+          client.from("operations").select("id,title,mission_id,status,completed,scheduled_date,operation_date,completed_on,category,is_daily,metric_key,brief").eq("user_id", session.user.id),
+          "Operation fallback query",
+        );
+        operationRows = operationResult.data;
+        operationError = operationResult.error;
+      }
+
+      let operationLinkRows = [];
+      let familyLinksAvailable = false;
+      if (!operationError) {
+        try {
+          let linkResult = await withMissionTimeout(
+            client.from("operation_family_mission_links").select("operation_family_key,mission_id").eq("user_id", session.user.id),
+            "Operation family-link query",
+          );
+          familyLinksAvailable = !linkResult.error;
+          if (linkResult.error) {
+            linkResult = await withMissionTimeout(
+              client.from("operation_mission_links").select("operation_id,mission_id").eq("user_id", session.user.id),
+              "Operation link fallback query",
+            );
+          }
+          if (!linkResult.error) operationLinkRows = (linkResult.data || []).map((link) => ({
+            ...link,
+            operation_id: familyLinksAvailable ? null : link.operation_id,
+            operation_family_key: familyLinksAvailable ? link.operation_family_key : null,
+          }));
+        } catch (linkError) {
+          // The family-link migration is optional during rollout. Existing
+          // operation rows still render, and the editor can retry linking.
+          console.warn("Mission operation links unavailable", linkError.message);
+        }
+      }
+      const linkedMissionIds = new Map();
+      operationLinkRows.forEach((link) => {
+        const key = link.operation_family_key ? `family:${link.operation_family_key}` : `operation:${link.operation_id}`;
+        const ids = linkedMissionIds.get(key) || [];
+        if (!ids.some((id) => String(id) === String(link.mission_id))) ids.push(link.mission_id);
+        linkedMissionIds.set(key, ids);
+      });
+      if (Array.isArray(operationRows)) operationRows = operationRows.map((operation) => ({
+        ...operation,
+        operation_family_key: operationFamilyKey(operation),
+        mission_link_mode: familyLinksAvailable ? "family" : "operation",
+        linked_mission_ids: linkedMissionIds.get(`family:${operationFamilyKey(operation)}`)
+          || linkedMissionIds.get(`operation:${operation.id}`)
+          || (familyLinksAvailable ? [] : (operation.mission_id ? [operation.mission_id] : [])),
+      }));
+      const sharedOperationRows = Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [];
+      if (!operationError && Array.isArray(operationRows)) missionOperations = [...operationRows, ...sharedOperationRows.filter((shared) => !operationRows.some((operation) => String(operation.id) === String(shared.id)))];
+      else if (sharedOperationRows.length) missionOperations = sharedOperationRows;
+
+      try {
+        const { data: bookRow } = await withMissionTimeout(client.from("mastery_entries")
+          .select("title")
+          .eq("user_id", session.user.id)
+          .ilike("category", "book")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(), "Active-book query");
+        currentBookTitle = bookRow?.title || "";
+      } catch (bookError) {
+        console.warn("Active-book query unavailable", bookError.message);
+        currentBookTitle = "";
+      }
+      const bookKey = currentBookTitle.toLowerCase().replace(/[^a-z0-9]+/g, "");
+      const bookMission = (data || []).find((mission) => bookKey.length >= 5
+        && `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().replace(/[^a-z0-9]+/g, "").includes(bookKey)
+        && !mission.completed);
+      const hasBookSpecificMission = (data || []).some((mission) => bookKey.length >= 5
+        && `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().replace(/[^a-z0-9]+/g, "").includes(bookKey));
+      const fallbackBookMission = !currentBookTitle && (data || [])
+        .filter((mission) => !mission.completed && String(mission.metric_key || "").toLowerCase() === "chapters_read")
+        .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
+      const latestChapterMission = (data || [])
+        .filter((mission) => !mission.completed && String(mission.metric_key || "").toLowerCase() === "chapters_read")
+        .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
+      currentBookMissionId = bookMission?.id || (!hasBookSpecificMission ? (fallbackBookMission?.id || latestChapterMission?.id || "") : "");
+      applyMissionRows(data || []);
+
+      try {
+        const { data: logs } = await withMissionTimeout(client.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1), "Recovery query");
+        renderRecovery(logs?.[0]);
+      } catch (recoveryError) {
+        console.warn("Recovery query unavailable", recoveryError.message);
+      }
+    } catch (error) {
+      renderMissionLoadFailure(error);
+    } finally {
+      missionLoadInFlight = null;
     }
-    operationLinkError = linkResult.error;
-    if (!linkResult.error) operationLinkRows = (linkResult.data || []).map((link) => ({
-      ...link,
-      operation_id: familyLinksAvailable ? null : link.operation_id,
-      operation_family_key: familyLinksAvailable ? link.operation_family_key : null,
-    }));
-  }
-  const linkedMissionIds = new Map();
-    operationLinkRows.forEach((link) => {
-    const key = link.operation_family_key ? `family:${link.operation_family_key}` : `operation:${link.operation_id}`;
-    const ids = linkedMissionIds.get(key) || [];
-    if (!ids.some((id) => String(id) === String(link.mission_id))) ids.push(link.mission_id);
-    linkedMissionIds.set(key, ids);
-  });
-  if (Array.isArray(operationRows)) operationRows = operationRows.map((operation) => ({
-    ...operation,
-    operation_family_key: operationFamilyKey(operation),
-    mission_link_mode: familyLinksAvailable ? "family" : "operation",
-    linked_mission_ids: linkedMissionIds.get(`family:${operationFamilyKey(operation)}`)
-      || linkedMissionIds.get(`operation:${operation.id}`)
-      || (familyLinksAvailable ? [] : (operation.mission_id ? [operation.mission_id] : [])),
-  }));
-  const sharedOperationRows = Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [];
-  const { data: bookRow } = await client.from("mastery_entries")
-    .select("title")
-    .eq("user_id", session.user.id)
-    .ilike("category", "book")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  currentBookTitle = bookRow?.title || "";
-  const bookKey = currentBookTitle.toLowerCase().replace(/[^a-z0-9]+/g, "");
-  const bookMission = (data || []).find((mission) => bookKey.length >= 5
-    && `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().replace(/[^a-z0-9]+/g, "").includes(bookKey)
-    && !mission.completed);
-  const hasBookSpecificMission = (data || []).some((mission) => bookKey.length >= 5
-    && `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().replace(/[^a-z0-9]+/g, "").includes(bookKey));
-  const fallbackBookMission = !currentBookTitle && (data || [])
-    .filter((mission) => !mission.completed && String(mission.metric_key || "").toLowerCase() === "chapters_read")
-    .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
-  const latestChapterMission = (data || [])
-    .filter((mission) => !mission.completed && String(mission.metric_key || "").toLowerCase() === "chapters_read")
-    .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
-  currentBookMissionId = bookMission?.id || (!hasBookSpecificMission ? (fallbackBookMission?.id || latestChapterMission?.id || "") : "");
-  if (!operationError && Array.isArray(operationRows)) missionOperations = [...operationRows, ...sharedOperationRows.filter((shared) => !operationRows.some((operation) => String(operation.id) === String(shared.id)))];
-  else if (sharedOperationRows.length) missionOperations = sharedOperationRows;
-  applyMissionRows(data || []);
-  const { data: logs } = await client.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1);
-  renderRecovery(logs?.[0]);
+  })();
+  return missionLoadInFlight;
 }
 
 async function refreshMissionSession() {
   if (!client) return;
-  const { data, error } = await client.auth.getSession();
-  if (error || !data?.session) return;
-  session = data.session;
-  await loadData();
+  try {
+    const { data, error } = await withMissionTimeout(client.auth.getSession(), "Auth session query");
+    if (error || !data?.session) return;
+    session = data.session;
+    await loadData();
+  } catch (error) {
+    renderMissionLoadFailure(error);
+  }
 }
 
 function bindDialogs() {
@@ -875,7 +944,6 @@ missionDetails = buildMissionDetails();
 
 if (cloudReady) {
   client = createClient(config.supabaseUrl, config.supabaseAnonKey);
-  await refreshMissionSession();
   client.auth.onAuthStateChange((_event, nextSession) => {
     if (_event === "SIGNED_OUT") {
       session = null;
@@ -895,6 +963,10 @@ if (cloudReady) {
     clearTimeout(missionLoadTimer);
     missionLoadTimer = setTimeout(() => { void loadData(); }, 0);
   });
+  // Do not top-level-await auth here. The mission module must finish
+  // registering its event listeners so the operations module can hydrate the
+  // ledger even when Supabase auth or an optional query is slow.
+  void refreshMissionSession();
 }
 
 // Operations can supply measured evidence (for example one completed PT
