@@ -9,8 +9,16 @@ alter table public.operations
 -- Older deployments allowed legacy categories such as Mind and Body.  The
 -- universal trigger below normalizes those values, but PostgreSQL checks a
 -- row's constraints before a trigger can finish if the old check rejects the
--- value.  Make this migration safe to run against that data shape.
+-- value.  Make this migration safe to run against that data shape, including
+-- databases with an additional legacy category trigger.
+alter table public.operations disable trigger user;
+
 drop trigger if exists aegis_normalize_operation_link on public.operations;
+
+alter table public.operations
+  drop constraint if exists operations_category_check;
+alter table public.operations
+  drop constraint if exists operations_category_check_v2;
 
 do $$
 declare
@@ -45,9 +53,7 @@ set category = case lower(trim(coalesce(category, '')))
   else 'Self Mastery'
 end;
 
-alter table public.operations
-  add constraint operations_category_check
-  check (category in ('Recovery', 'Trading', 'Business', 'Self Mastery', 'Life Admin'));
+alter table public.operations enable trigger user;
 
 create or replace function public.aegis_normalize_operation_link()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -172,6 +178,15 @@ begin
       v_category := initcap(lower(coalesce(v_mission.category, v_category)));
     end if;
   end if;
+
+  -- Missions created by older versions can still carry Mind/Body labels.
+  -- Never copy those legacy labels back onto operations after linking.
+  if v_category in ('Mind', 'Body', 'Mastery') or v_category = '' then
+    v_category := 'Self Mastery';
+  end if;
+  if v_category not in ('Recovery', 'Trading', 'Business', 'Self Mastery', 'Life Admin') then
+    v_category := 'Self Mastery';
+  end if;
   new.category := v_category;
   new.metric_key := coalesce(v_metric, new.metric_key);
   return new;
@@ -185,5 +200,47 @@ for each row execute function public.aegis_normalize_operation_link();
 -- Repair every existing row through the same rule without changing status or
 -- schedule. Life Admin rows remain intentionally independent.
 update public.operations set title = title where true;
+
+-- A legacy trigger may have rewritten a category during the linkage repair.
+-- Normalize once more with triggers paused, then restore the constraint only
+-- after every existing row is valid.
+alter table public.operations disable trigger user;
+update public.operations
+set category = case lower(trim(coalesce(category, '')))
+  when 'recovery' then 'Recovery'
+  when 'trading' then 'Trading'
+  when 'business' then 'Business'
+  when 'self mastery' then 'Self Mastery'
+  when 'mind' then 'Self Mastery'
+  when 'body' then 'Self Mastery'
+  when 'mastery' then 'Self Mastery'
+  when 'life admin' then 'Life Admin'
+  when 'day to day' then 'Life Admin'
+  when 'day-to-day' then 'Life Admin'
+  else 'Self Mastery'
+end;
+alter table public.operations enable trigger user;
+
+do $$
+declare
+  constraint_row record;
+begin
+  for constraint_row in
+    select conname
+    from pg_constraint
+    where conrelid = 'public.operations'::regclass
+      and contype = 'c'
+      and pg_get_constraintdef(oid) ilike '%category%'
+  loop
+    execute format(
+      'alter table public.operations drop constraint if exists %I',
+      constraint_row.conname
+    );
+  end loop;
+end $$;
+
+alter table public.operations
+  add constraint operations_category_check
+  check (category in ('Recovery', 'Trading', 'Business', 'Self Mastery', 'Life Admin'));
 
 grant execute on function public.aegis_normalize_operation_link() to authenticated;
