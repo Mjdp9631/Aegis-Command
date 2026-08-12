@@ -132,7 +132,12 @@ function renderCommandMissionBoard(nextMissions = missions, operations = []) {
   if (!target) return;
   // Shared boot events may carry raw Supabase rows. Normalize at the render
   // boundary so progress filtering never treats an undefined value as done.
-  const rows = Array.isArray(nextMissions) ? nextMissions.map(normalize) : [];
+  const rows = Array.isArray(nextMissions) ? nextMissions.reduce((result, row) => {
+    if (!row || typeof row !== "object") return result;
+    try { result.push(normalize(row)); } catch (error) { console.warn("Mission row skipped", error); }
+    return result;
+  }, []) : [];
+  const safeOperations = Array.isArray(operations) ? operations.filter((operation) => operation && typeof operation === "object") : [];
   target.id = "command-missions";
   const active = sortMissions(rows.filter((mission) => mission.progress < 100));
   // Command Center owns one expanded mission surface. The Mission tab has
@@ -140,9 +145,15 @@ function renderCommandMissionBoard(nextMissions = missions, operations = []) {
   target.className = "mission-list command-mission-board";
   target.innerHTML = `<div class="command-mission-list" data-command-mission-list></div>`;
   const activeList = target.querySelector("[data-command-mission-list]");
-  activeList.innerHTML = active.length
-    ? active.map((mission) => commandMissionCard(mission, operations)).join("")
-    : '<article class="command-mission-empty"><strong>No active missions.</strong><small>Open the next objective from Mission Control.</small></article>';
+  if (!activeList) return;
+  const cards = active.map((mission) => {
+    try { return commandMissionCard(mission, safeOperations); }
+    catch (error) {
+      console.warn("Mission card could not render", error);
+      return `<article class="command-mission-card mission-open" data-mission-id="${escape(mission.id)}" data-open-mission="${escape(mission.id)}" tabindex="0"><div class="command-mission-heading"><div class="command-mission-copy"><strong>${escape(mission.title || "Mission")}</strong><small>${escape(mission.category || "Self Mastery")} · ${escape(mission.priority || "Schedule")}</small></div><span class="command-mission-percent">${Number(mission.progress) || 0}%</span></div><div class="meter command-mission-meter"><i style="width:${Number(mission.progress) || 0}%"></i></div><p class="command-mission-progress">${escape(missionLabel(mission))}</p></article>`;
+    }
+  }).join("");
+  activeList.innerHTML = cards || '<article class="command-mission-empty"><strong>No active missions.</strong><small>Open the next objective from Mission Control.</small></article>';
   target.querySelectorAll("[data-open-mission]").forEach((card) => card.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
