@@ -19,11 +19,17 @@ function operationMatchesMission(operation, mission) {
   const missionText = `${mission.title || ""} ${mission.completion_definition || ""} ${mission.metric_key || ""}`.toLowerCase();
   if (/chapter|read|book/.test(operationText)) {
     const operationDay = String(operation.operation_date || operation.scheduled_date || "").slice(0, 10);
-    const currentReading = !operationDay || operationDay === easternDateKey();
+    const currentReading = Boolean(operation.is_daily) || !operationDay || operationDay === easternDateKey()
+      || (/^read one chapter$/i.test(String(operation.title || "").trim()) && !operation.completed);
     // The current daily reading operation follows only the active book. Once
     // that book is complete, currentBookMissionId is empty and the operation
     // intentionally has no mission attachment until a new book is added.
-    if (currentReading) return Boolean(currentBookMissionId) && String(mission.id) === String(currentBookMissionId);
+    if (currentReading) {
+      const activeBookKey = currentBookTitle.toLowerCase().replace(/[^a-z0-9]+/g, "");
+      const missionKey = missionText.replace(/[^a-z0-9]+/g, "");
+      const isActiveBookMission = activeBookKey.length >= 5 && missionKey.includes(activeBookKey) && !mission.completed;
+      return isActiveBookMission || (Boolean(currentBookMissionId) && String(mission.id) === String(currentBookMissionId));
+    }
     return String(operation.mission_id || "") === String(mission.id)
       && /chapter|read|book/.test(missionText);
   }
@@ -110,17 +116,39 @@ function buildMissionDetails() {
   dialog.id = "mission-details-dialog";
   dialog.innerHTML = `<form method="dialog" class="dialog-card mission-details-card"><button class="dialog-close" type="submit" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">MISSION OPERATIONS</p><h2 id="mission-details-title">Mission</h2><p id="mission-details-progress" class="body-copy"></p><div id="mission-details-definition" class="mission-details-definition"></div><div><p class="eyebrow">ATTACHED OPERATIONS</p><div id="mission-details-operations" class="mission-details-operations"></div></div><button class="primary" id="mission-details-edit" type="button">Edit mission</button></form>`;
   document.body.appendChild(dialog);
-  dialog.querySelector("#mission-details-edit").addEventListener("click", () => {
+  dialog.querySelector("#mission-details-edit").addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
     const mission = missions.find((item) => String(item.id) === String(dialog.dataset.missionId));
     if (!mission || !missionEditor) return;
-    dialog.close();
-    // A browser cannot open a second modal dialog during the same event turn
-    // that closes the first one. Defer the editor by one frame so Edit Mission
-    // reliably opens instead of failing silently with InvalidStateError.
-    requestAnimationFrame(() => openEditor(missionEditor, mission));
+    const launchEditor = () => {
+      if (!missionEditor.open) openEditor(missionEditor, mission);
+    };
+    // Wait for the details dialog's close event before opening the editor. This
+    // avoids the browser rejecting a second modal during the same event turn.
+    if (dialog.open) {
+      dialog.addEventListener("close", () => setTimeout(launchEditor, 0), { once: true });
+      dialog.close();
+    } else launchEditor();
   });
   return dialog;
 }
+
+// Keep the edit action reliable even if another page module delegates clicks
+// from the mission dialog's form.
+document.addEventListener("click", (event) => {
+  const button = event.target.closest?.("#mission-details-edit");
+  if (!button || !missionDetails) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  const mission = missions.find((item) => String(item.id) === String(missionDetails.dataset.missionId));
+  if (!mission || !missionEditor) return;
+  const launch = () => { if (!missionEditor.open) openEditor(missionEditor, mission); };
+  if (missionDetails.open) {
+    missionDetails.addEventListener("close", () => setTimeout(launch, 0), { once: true });
+    missionDetails.close();
+  } else launch();
+}, true);
 
 function ensureMissionDetailsDialog() {
   if (!missionDetails || !missionDetails.isConnected) missionDetails = buildMissionDetails();
@@ -278,13 +306,13 @@ async function loadData() {
   if (operationError) {
     // Keep attachment discovery readable across older deployments whose
     // operations table may not yet have every newer schedule column.
-    ({ data: operationRows, error: operationError } = await client.from("operations").select("id,title,mission_id,status,completed,scheduled_date,operation_date,completed_on,category").eq("user_id", session.user.id));
+    ({ data: operationRows, error: operationError } = await client.from("operations").select("id,title,mission_id,status,completed,scheduled_date,operation_date,completed_on,category,is_daily,metric_key,brief").eq("user_id", session.user.id));
   }
   const sharedOperationRows = Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [];
   const { data: bookRow } = await client.from("mastery_entries")
     .select("title")
     .eq("user_id", session.user.id)
-    .eq("category", "Book")
+    .ilike("category", "book")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
