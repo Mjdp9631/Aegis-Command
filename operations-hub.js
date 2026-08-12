@@ -354,6 +354,10 @@ const cachedOccurrences = () => {
   }
 };
 const saveCachedOccurrences = () => localStorage.setItem(occurrenceCacheKey(), JSON.stringify(operationOccurrences));
+function announceOperationsLoaded() {
+  window.AEGIS_OPERATIONS = operations;
+  window.dispatchEvent(new CustomEvent("aegis:operations-loaded", { detail: { operations, source: "operations-hub" } }));
+}
 
 function occurrenceIdentity(row) {
   return `${String(row?.operation_id || "")}|${dateOnly(row?.occurrence_date)}`;
@@ -626,6 +630,7 @@ async function refreshDurableOperationState() {
     await rollOverOngoingOperations();
     await reconcileRecurringCompletion();
     saveCachedOperations();
+    announceOperationsLoaded();
     renderQueue();
     renderCalendar();
   } finally {
@@ -2277,6 +2282,7 @@ async function boot() {
   if (!operations.length) operations = local.length ? local : starterOperations();
     saveCachedOperations();
     operationsReady = true;
+    announceOperationsLoaded();
     renderQueue();
     renderCalendar();
   } catch (error) {
@@ -2284,6 +2290,7 @@ async function boot() {
     operations = cachedOperations();
     if (!operations.length) operations = starterOperations();
     operationsReady = true;
+    announceOperationsLoaded();
     renderQueue();
     renderCalendar();
   } finally {

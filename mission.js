@@ -79,9 +79,16 @@ function renderMissions() {
   const draw = (items) => { list.innerHTML = items.length ? items.map((mission) => {
     const linked = operationsForMission(mission);
     const attached = linked.length ? `${linked.length} attached operation${linked.length === 1 ? "" : "s"}: ${linked.slice(0, 2).map((operation) => escape(operation.title)).join(" · ")}${linked.length > 2 ? " · …" : ""}` : "No operation attached yet";
-    return `<button class="mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${escape(mission.id)}"><span class="eyebrow amber">${escape(mission.priority)}</span><h3>${escape(mission.title)}</h3><p>${escape(mission.category)} mission · ${escape(missionLabel(mission))}</p><div class="meter"><i style="width:${mission.progress}%"></i></div><small class="mission-definition">${mission.completion_definition ? escape(mission.completion_definition) : "Define what completion means"}</small><small class="mission-attachment-summary">${attached}</small></button>`;
+    return `<button type="button" class="mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${escape(mission.id)}"><span class="eyebrow amber">${escape(mission.priority)}</span><h3>${escape(mission.title)}</h3><p>${escape(mission.category)} mission · ${escape(missionLabel(mission))}</p><div class="meter"><i style="width:${mission.progress}%"></i></div><small class="mission-definition">${mission.completion_definition ? escape(mission.completion_definition) : "Define what completion means"}</small><small class="mission-attachment-summary">${attached}</small></button>`;
   }).join("") : '<article class="mission-card"><h3>No missions in this view.</h3></article>'; };
   draw(active);
+  list.querySelectorAll("[data-mission-ledger-card]").forEach((card) => card.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    const mission = missions.find((item) => String(item.id) === String(card.dataset.missionId));
+    openMissionDetails(mission);
+  }, true));
   target.querySelectorAll("[data-mission-view]").forEach((button) => button.addEventListener("click", () => { target.querySelectorAll("[data-mission-view]").forEach((item) => item.classList.toggle("active", item === button)); draw(button.dataset.missionView === "complete" ? complete : active); }));
 }
 
@@ -242,10 +249,17 @@ async function loadData() {
     if (target) target.querySelector("[data-mission-list]")?.replaceChildren(Object.assign(document.createElement("article"), { className: "mission-card", innerHTML: `<h3>Mission sync unavailable.</h3><small>${escape(error.message || "Supabase could not return mission records.")}</small>` }));
     return;
   }
-  const { data: operationRows, error: operationError } = await client.from("operations")
-    .select("id,title,mission_id,status,completed,scheduled_date,operation_date,completed_on,category,schedule_mode,scheduled_time")
+  let { data: operationRows, error: operationError } = await client.from("operations")
+    .select("*")
     .eq("user_id", session.user.id);
-  if (!operationError && Array.isArray(operationRows)) missionOperations = operationRows;
+  if (operationError) {
+    // Keep attachment discovery readable across older deployments whose
+    // operations table may not yet have every newer schedule column.
+    ({ data: operationRows, error: operationError } = await client.from("operations").select("id,title,mission_id,status,completed,scheduled_date,operation_date,completed_on,category").eq("user_id", session.user.id));
+  }
+  const sharedOperationRows = Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [];
+  if (!operationError && Array.isArray(operationRows)) missionOperations = operationRows.length ? operationRows : sharedOperationRows;
+  else if (sharedOperationRows.length) missionOperations = sharedOperationRows;
   applyMissionRows(data || []);
   const { data: logs } = await client.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1);
   renderRecovery(logs?.[0]);
@@ -335,6 +349,13 @@ window.addEventListener("aegis:missions-loaded", (event) => {
 });
 
 window.addEventListener("aegis:operations-changed", (event) => {
+  const rows = event.detail?.operations;
+  if (!Array.isArray(rows)) return;
+  missionOperations = rows.filter((operation) => !operation?._occurrence);
+  renderMissions();
+});
+
+window.addEventListener("aegis:operations-loaded", (event) => {
   const rows = event.detail?.operations;
   if (!Array.isArray(rows)) return;
   missionOperations = rows.filter((operation) => !operation?._occurrence);
