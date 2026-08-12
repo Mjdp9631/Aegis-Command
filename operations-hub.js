@@ -1453,12 +1453,16 @@ async function reconcileMeasuredMissionCounts() {
     if (String(mission.completion_type || "").toLowerCase() !== "units") return;
     const target = Math.max(0, Number(mission.target_count || 0));
     if (!target) return;
-    const observed = Math.min(target, completedByMission.get(String(mission.id))?.size || 0);
+    const evidence = completedByMission.get(String(mission.id));
+    const observed = Math.min(target, evidence?.size || 0);
     const current = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
-    // Completed operation/occurrence evidence is authoritative for measured
-    // missions. Repair both undercounts and stale overcounts so every browser
-    // converges on the same durable evidence set.
-    if (observed === current) return;
+    // A refresh can briefly contain no linked/completed rows while the
+    // operation snapshot is still settling. Never interpret that absence as
+    // evidence that the user lost progress. Automatic reconciliation is
+    // deliberately monotonic; an intentional correction can still be made in
+    // the mission editor, while real completed operations continue advancing
+    // the durable count.
+    if (!evidence || observed <= current) return;
     mission.completed_count = observed;
     mission.completed = observed >= target;
     mission.progress = Math.round((observed / target) * 100);

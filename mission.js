@@ -6,13 +6,27 @@ const $ = (selector) => document.querySelector(selector);
 const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 const priorities = '<option value="Do now">DO NOW - important + urgent</option><option value="Schedule">SCHEDULE - important + not urgent</option><option value="Delegate">DELEGATE - urgent + not important</option><option value="Eliminate">ELIMINATE - not urgent + not important</option>';
-let client = null, session = null, missions = [];
+let client = null, session = null, missions = [], missionOperations = [];
 let missionEditor = null;
+let missionDetails = null;
 let missionLoadTimer = null;
 
 function isMeasured(mission) { return mission.completion_type === "units" && Number(mission.target_count) > 0; }
 function missionProgress(mission) { return isMeasured(mission) ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission.completed ? 100 : 0; }
 function missionLabel(mission) { return isMeasured(mission) ? `${Math.min(Number(mission.completed_count) || 0, Number(mission.target_count))} / ${mission.target_count} ${mission.unit_label || "units"}` : mission.completed ? "Complete" : "Not complete"; }
+function operationMatchesMission(operation, mission) {
+  if (String(operation.mission_id || "") === String(mission.id)) return true;
+  const operationText = `${operation.title || ""} ${operation.metric_key || ""}`.toLowerCase();
+  const missionText = `${mission.title || ""} ${mission.completion_definition || ""} ${mission.metric_key || ""}`.toLowerCase();
+  if (/chapter|read|book/.test(operationText) && /chapter|read|book|think and grow rich/.test(missionText)) return true;
+  if (/pt|physical therapy|orthopedic|acl|rehab/.test(operationText) && /pt|physical therapy|orthopedic|acl|rehab|recovery/.test(missionText)) return true;
+  if (/gym|workout|strength/.test(operationText) && /gym|workout|strength|training/.test(missionText)) return true;
+  if (/journal|mastery\.entry/.test(operationText) && /journal|mastery\.entry|self mastery/.test(missionText)) return true;
+  return false;
+}
+function operationsForMission(mission) { return missionOperations.filter((operation) => operationMatchesMission(operation, mission)); }
+function operationStatus(operation) { return operation.completed || String(operation.status || "").toLowerCase() === "complete" ? "Complete" : operation.status || "Queued"; }
+function operationDate(operation) { return operation.completed_on || operation.scheduled_date || operation.operation_date || ""; }
 function missionCategory(value) { const category = String(value || "").trim().toLowerCase(); return category === "mind" || category === "body" || category === "mastery" ? "Self Mastery" : category === "life admin" || category === "day to day" ? "Life Admin" : value || "Self Mastery"; }
 function normalize(mission) { return { ...mission, category: missionCategory(mission.category), progress: missionProgress(mission) }; }
 function applyMissionRows(rows) {
@@ -62,13 +76,44 @@ function renderMissions() {
   const complete = sortMissions(missions.filter((mission) => mission.progress >= 100));
   target.innerHTML = `<div class="mission-view-tabs"><button type="button" class="mission-view-tab active" data-mission-view="active">ACTIVE · ${active.length}</button><button type="button" class="mission-view-tab" data-mission-view="complete">COMPLETED · ${complete.length}</button></div><div class="mission-card-list" data-mission-list></div>`;
   const list = target.querySelector("[data-mission-list]");
-  const draw = (items) => { list.innerHTML = items.length ? items.map((mission) => `<button class="mission-card mission-open" data-mission-id="${mission.id}"><span class="eyebrow amber">${escape(mission.priority)}</span><h3>${escape(mission.title)}</h3><p>${escape(mission.category)} mission · ${escape(missionLabel(mission))}</p><div class="meter"><i style="width:${mission.progress}%"></i></div><small class="mission-definition">${mission.completion_definition ? escape(mission.completion_definition) : "Define what completion means"}</small></button>`).join("") : '<article class="mission-card"><h3>No missions in this view.</h3></article>'; };
+  const draw = (items) => { list.innerHTML = items.length ? items.map((mission) => {
+    const linked = operationsForMission(mission);
+    const attached = linked.length ? `${linked.length} attached operation${linked.length === 1 ? "" : "s"}: ${linked.slice(0, 2).map((operation) => escape(operation.title)).join(" · ")}${linked.length > 2 ? " · …" : ""}` : "No operation attached yet";
+    return `<button class="mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${escape(mission.id)}"><span class="eyebrow amber">${escape(mission.priority)}</span><h3>${escape(mission.title)}</h3><p>${escape(mission.category)} mission · ${escape(missionLabel(mission))}</p><div class="meter"><i style="width:${mission.progress}%"></i></div><small class="mission-definition">${mission.completion_definition ? escape(mission.completion_definition) : "Define what completion means"}</small><small class="mission-attachment-summary">${attached}</small></button>`;
+  }).join("") : '<article class="mission-card"><h3>No missions in this view.</h3></article>'; };
   draw(active);
   target.querySelectorAll("[data-mission-view]").forEach((button) => button.addEventListener("click", () => { target.querySelectorAll("[data-mission-view]").forEach((item) => item.classList.toggle("active", item === button)); draw(button.dataset.missionView === "complete" ? complete : active); }));
 }
 
 function renderCommandMissions() {
   renderCommandMissionBoard();
+}
+
+function buildMissionDetails() {
+  const dialog = document.createElement("dialog");
+  dialog.id = "mission-details-dialog";
+  dialog.innerHTML = `<form method="dialog" class="dialog-card mission-details-card"><button class="dialog-close" type="submit" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">MISSION OPERATIONS</p><h2 id="mission-details-title">Mission</h2><p id="mission-details-progress" class="body-copy"></p><div id="mission-details-definition" class="mission-details-definition"></div><div><p class="eyebrow">ATTACHED OPERATIONS</p><div id="mission-details-operations" class="mission-details-operations"></div></div><button class="primary" id="mission-details-edit" type="button">Edit mission</button></form>`;
+  document.body.appendChild(dialog);
+  dialog.querySelector("#mission-details-edit").addEventListener("click", () => {
+    const mission = missions.find((item) => String(item.id) === String(dialog.dataset.missionId));
+    if (!mission || !missionEditor) return;
+    dialog.close();
+    openEditor(missionEditor, mission);
+  });
+  return dialog;
+}
+
+function openMissionDetails(mission) {
+  if (!missionDetails || !mission) return;
+  missionDetails.dataset.missionId = mission.id;
+  missionDetails.querySelector("#mission-details-title").textContent = mission.title;
+  missionDetails.querySelector("#mission-details-progress").textContent = `${mission.category} · ${missionLabel(mission)}`;
+  missionDetails.querySelector("#mission-details-definition").textContent = mission.completion_definition || "Define the evidence that proves this mission is complete.";
+  const linked = operationsForMission(mission);
+  missionDetails.querySelector("#mission-details-operations").innerHTML = linked.length
+    ? linked.map((operation) => `<article class="mission-operation-link"><strong>${escape(operation.title)}</strong><span>${escape(operationStatus(operation))}${operationDate(operation) ? ` · ${escape(operationDate(operation))}` : ""}${operation.category ? ` · ${escape(operation.category)}` : ""}</span></article>`).join("")
+    : '<p class="mission-details-empty">No operation is attached yet. Schedule one from this mission or link it when creating an operation.</p>';
+  missionDetails.showModal();
 }
 
 window.AEGIS_RENDER_COMMAND_MISSIONS = renderCommandMissionBoard;
@@ -197,6 +242,10 @@ async function loadData() {
     if (target) target.querySelector("[data-mission-list]")?.replaceChildren(Object.assign(document.createElement("article"), { className: "mission-card", innerHTML: `<h3>Mission sync unavailable.</h3><small>${escape(error.message || "Supabase could not return mission records.")}</small>` }));
     return;
   }
+  const { data: operationRows, error: operationError } = await client.from("operations")
+    .select("id,title,mission_id,status,completed,scheduled_date,operation_date,completed_on,category,schedule_mode,scheduled_time")
+    .eq("user_id", session.user.id);
+  if (!operationError && Array.isArray(operationRows)) missionOperations = operationRows;
   applyMissionRows(data || []);
   const { data: logs } = await client.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1);
   renderRecovery(logs?.[0]);
@@ -223,7 +272,9 @@ function bindDialogs() {
     if (event.target.closest("[data-schedule-mission]")) return;
     const card = event.target.closest(".mission-open");
     if (!card) return;
-    openMission(card.dataset.missionId);
+    const mission = missions.find((item) => String(item.id) === String(card.dataset.missionId));
+    if (card.dataset.missionLedgerCard === "true") openMissionDetails(mission);
+    else openMission(card.dataset.missionId);
   });
   document.addEventListener("click", (event) => {
     const button = event.target.closest('[data-action="add-mission"]');
@@ -283,6 +334,13 @@ window.addEventListener("aegis:missions-loaded", (event) => {
   applyMissionRows(rows);
 });
 
+window.addEventListener("aegis:operations-changed", (event) => {
+  const rows = event.detail?.operations;
+  if (!Array.isArray(rows)) return;
+  missionOperations = rows.filter((operation) => !operation?._occurrence);
+  renderMissions();
+});
+
 window.addEventListener("aegis:phase-mission-template", (event) => {
   const detail = event.detail || {};
   const dialog = $("#mission-dialog");
@@ -308,6 +366,7 @@ document.addEventListener("click", (event) => {
 // control must never leave Active / Completed invisible.
 renderMissions(); renderCommandMissions(); renderRecovery();
 bindDialogs();
+missionDetails = buildMissionDetails();
 
 if (cloudReady) {
   client = createClient(config.supabaseUrl, config.supabaseAnonKey);
