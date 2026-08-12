@@ -319,8 +319,15 @@ function openMissionDetails(mission) {
   }, 0);
 }
 
-function openEditorFromMissionCard(mission) {
+async function openEditorFromMissionCard(mission) {
   if (!mission) return;
+  // Command Center can receive the shared mission feed a moment before this
+  // module receives Supabase's auth callback. Resolve the current session at
+  // click time so a valid signed-in click never becomes a silent no-op.
+  if (!session && client) {
+    const result = await client.auth.getSession();
+    session = result.data?.session || null;
+  }
   if (!session) return alert("Sign in before editing a mission.");
   if (!missionEditor || !missionEditor.isConnected) missionEditor = buildMissionEditor();
   const launch = () => {
@@ -342,11 +349,13 @@ window.AEGIS_OPEN_MISSION_DETAILS = (id) => {
   openMissionDetails(mission);
 };
 window.AEGIS_OPEN_MISSION_EDITOR = (id) => {
-  const mission = missions.find((item) => String(item.id) === String(id));
-  openEditorFromMissionCard(mission);
+  const rows = missions.length ? missions : (Array.isArray(window.AEGIS_MISSIONS) ? window.AEGIS_MISSIONS : []);
+  const mission = rows.find((item) => String(item.id) === String(id));
+  void openEditorFromMissionCard(mission);
 };
 
 window.AEGIS_RENDER_COMMAND_MISSIONS = renderCommandMissionBoard;
+window.dispatchEvent(new CustomEvent("aegis:mission-renderer-ready"));
 
 function publishDataChange(source) { window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source } })); }
 function publishMissionChange() { window.dispatchEvent(new Event("aegis:missions-changed")); publishDataChange("missions"); }
@@ -941,9 +950,9 @@ document.addEventListener("click", (event) => {
 window.addEventListener("aegis:open-mission", (event) => {
   const id = event.detail?.id;
   if (!id || !missionEditor) return;
-  if (!session) return alert("Sign in before opening a mission.");
-  const mission = missions.find((item) => String(item.id) === String(id));
-  if (mission) openEditor(missionEditor, mission);
+  const rows = missions.length ? missions : (Array.isArray(window.AEGIS_MISSIONS) ? window.AEGIS_MISSIONS : []);
+  const mission = rows.find((item) => String(item.id) === String(id));
+  void openEditorFromMissionCard(mission);
 });
 
 window.addEventListener("aegis:missions-changed", (event) => {
