@@ -116,15 +116,17 @@ function render(missions, operations = []) {
   updateMetric("TRADING PROCESS", authoritativeMissions.find((mission) => mission.category === "Trading"));
 }
 
-// mission.js is an ordered module, but network imports can still make its
-// renderer become available after this module's first data fetch. Repaint the
-// Command Center once, using the expanded renderer, instead of leaving the
-// static compact placeholders from index.html in place.
-window.addEventListener("aegis:mission-renderer-ready", () => {
+// Module evaluation and authenticated queries can finish in either order.
+// Repaint after either side becomes ready; the renderer normalizes raw rows.
+function repaintCommandMissions() {
   if (typeof window.AEGIS_RENDER_COMMAND_MISSIONS !== "function") return;
   const rows = Array.isArray(window.AEGIS_MISSIONS) ? window.AEGIS_MISSIONS : [];
   if (rows.length) window.AEGIS_RENDER_COMMAND_MISSIONS(rows, window.AEGIS_OPERATIONS || []);
-});
+}
+window.addEventListener("aegis:mission-renderer-ready", repaintCommandMissions);
+window.addEventListener("aegis:missions-loaded", () => setTimeout(repaintCommandMissions, 0));
+window.addEventListener("aegis:operations-loaded", () => setTimeout(repaintCommandMissions, 0));
+window.addEventListener("load", () => setTimeout(repaintCommandMissions, 0), { once: true });
 
 async function load() {
   if (!supabase) return;

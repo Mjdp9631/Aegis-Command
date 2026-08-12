@@ -130,8 +130,11 @@ function commandMissionCard(mission, operations = []) {
 function renderCommandMissionBoard(nextMissions = missions, operations = []) {
   const target = $("#command-missions") || document.querySelector("#command .mission-panel .mission-list");
   if (!target) return;
+  // Shared boot events may carry raw Supabase rows. Normalize at the render
+  // boundary so progress filtering never treats an undefined value as done.
+  const rows = Array.isArray(nextMissions) ? nextMissions.map(normalize) : [];
   target.id = "command-missions";
-  const active = sortMissions(nextMissions.filter((mission) => mission.progress < 100));
+  const active = sortMissions(rows.filter((mission) => mission.progress < 100));
   // Command Center owns one expanded mission surface. The Mission tab has
   // its own ledger, but this renderer is the only writer for #command-missions.
   target.className = "mission-list command-mission-board";
@@ -143,7 +146,7 @@ function renderCommandMissionBoard(nextMissions = missions, operations = []) {
   target.querySelectorAll("[data-open-mission]").forEach((card) => card.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    const mission = missions.find((item) => String(item.id) === String(card.dataset.missionId)) || nextMissions.find((item) => String(item.id) === String(card.dataset.missionId));
+    const mission = missions.find((item) => String(item.id) === String(card.dataset.missionId)) || rows.find((item) => String(item.id) === String(card.dataset.missionId));
     if (mission) void openEditorFromMissionCard(mission);
   }));
 }
