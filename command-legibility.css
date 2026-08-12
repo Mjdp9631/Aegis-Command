@@ -168,6 +168,20 @@
   white-space: nowrap;
 }
 #command .mission-panel .command-mission-card { overflow: visible !important; }
+#command .mission-panel > #command-missions.command-mission-board > .command-mission-list {
+  align-self: start;
+  width: 100%;
+  height: max-content;
+  min-height: max-content !important;
+  grid-auto-rows: max-content;
+  align-content: start;
+}
+#command .mission-panel > #command-missions.command-mission-board > .command-mission-list > .command-mission-card {
+  min-height: 146px !important;
+  height: auto !important;
+  align-content: start;
+  overflow: hidden !important;
+}
 #command .mission-panel .command-mission-copy strong {
   overflow: visible !important;
   text-overflow: clip !important;
