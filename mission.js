@@ -235,12 +235,121 @@ function readMission(root, prefix, includeCategory, existing = null) {
   return { title: $(`#${prefix}-title`).value.trim(), priority: $(`#${prefix}-priority`).value, ...(includeCategory ? { category: $(`#${prefix}-category`).value } : {}), completion_type: method, completion_definition: $(`#${prefix}-definition`).value.trim() || null, unit_label: method === "units" ? $(`#${prefix}-unit-label`).value.trim() || "units" : null, target_count: method === "units" ? target : null, completed_count: method === "units" ? completedCount : 0, metric_key: method === "units" ? $(`#${prefix}-metric`).value : null, cadence_type: method === "units" ? ($(`#${prefix}-cadence`).value || null) : null, cadence_target: method === "units" && $(`#${prefix}-cadence`).value ? Math.max(1, Number($(`#${prefix}-cadence-target`).value || 1)) : null, completed: method === "binary" ? completed : completedCount >= target, progress };
 }
 
+function operationPlanMarkup(prefix) {
+  return `<fieldset class="mission-operation-plan"><legend>Operation linkage</legend><p class="mission-operation-help">Every operation linked here can advance this mission. Life Admin operations remain informational and do not advance progress.</p><label>Operation action <select id="${prefix}-operation-mode"><option value="none">No operation yet</option><option value="create">Create operation</option><option value="existing">Add existing operation</option></select></label><div id="${prefix}-create-operation" class="mission-operation-fields" hidden><label>Operation <input id="${prefix}-operation-title" placeholder="What moves this mission forward?" /></label><label>Brief <textarea id="${prefix}-operation-brief" rows="2" placeholder="What counts as one completed operation?"></textarea></label><div class="two-col"><label>First date <input id="${prefix}-operation-date" type="date" /></label><label>Time <span class="field-optional">optional</span><input id="${prefix}-operation-time" type="time" /></label></div><label>Cadence <select id="${prefix}-operation-cadence"><option value="one_time">One-time</option><option value="daily">Repeat daily</option><option value="weekly">Repeat weekly</option></select></label><label id="${prefix}-operation-end-wrap">End date <span class="field-optional">optional for repeats</span><input id="${prefix}-operation-end-date" type="date" /></label></div><div id="${prefix}-existing-operation" class="mission-operation-fields" hidden><label>Unscheduled operation<select id="${prefix}-operation-existing"><option value="">Choose an unscheduled operation</option></select></label><small id="${prefix}-operation-existing-note" class="mission-operation-note"></small></div></fieldset>`;
+}
+
+function operationPlanRows() {
+  const rows = Array.isArray(window.AEGIS_OPERATIONS) && window.AEGIS_OPERATIONS.length ? window.AEGIS_OPERATIONS : missionOperations;
+  const seen = new Set();
+  return rows.filter((operation) => {
+    if (!operation || operation._occurrence || operation.completed || String(operation.status || "").toLowerCase() === "complete") return false;
+    if (operation.scheduled_date || operation._series || operation.is_daily) return false;
+    const key = String(operation.id || operation.title || "");
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function populateOperationPlanChoices(form, prefix, mission = null) {
+  const select = form?.querySelector(`#${prefix}-operation-existing`);
+  if (!select) return;
+  const currentMissionId = String(mission?.id || "");
+  const rows = operationPlanRows().filter((operation) => !operation.mission_id || String(operation.mission_id) === currentMissionId);
+  select.innerHTML = `<option value="">Choose an unscheduled operation</option>${rows.map((operation) => `<option value="${escape(operation.id)}">${escape(operation.title)}${operation.category ? ` · ${escape(operation.category)}` : ""}</option>`).join("")}`;
+  const note = form.querySelector(`#${prefix}-operation-existing-note`);
+  if (note) note.textContent = rows.length ? `${rows.length} unscheduled operation${rows.length === 1 ? "" : "s"} available.` : "No unscheduled operations are available yet.";
+}
+
+function syncOperationPlanFields(form, prefix) {
+  const mode = form?.querySelector(`#${prefix}-operation-mode`)?.value || "none";
+  const createFields = form?.querySelector(`#${prefix}-create-operation`);
+  const existingFields = form?.querySelector(`#${prefix}-existing-operation`);
+  if (createFields) createFields.hidden = mode !== "create";
+  if (existingFields) existingFields.hidden = mode !== "existing";
+  const cadence = form?.querySelector(`#${prefix}-operation-cadence`);
+  const endDate = form?.querySelector(`#${prefix}-operation-end-date`);
+  const endWrap = form?.querySelector(`#${prefix}-operation-end-wrap`);
+  const repeat = cadence && cadence.value !== "one_time";
+  if (endDate) endDate.disabled = !repeat;
+  if (endWrap) endWrap.classList.toggle("is-disabled", !repeat);
+}
+
+function readOperationPlan(form, prefix) {
+  const mode = form?.querySelector(`#${prefix}-operation-mode`)?.value || "none";
+  if (mode === "existing") return { mode, existingId: form.querySelector(`#${prefix}-operation-existing`)?.value || "" };
+  if (mode !== "create") return { mode };
+  const cadence = form.querySelector(`#${prefix}-operation-cadence`)?.value || "one_time";
+  const date = form.querySelector(`#${prefix}-operation-date`)?.value || easternDateKey();
+  const endDate = cadence === "one_time" ? "" : form.querySelector(`#${prefix}-operation-end-date`)?.value || "";
+  return {
+    mode,
+    title: form.querySelector(`#${prefix}-operation-title`)?.value.trim() || "",
+    brief: form.querySelector(`#${prefix}-operation-brief`)?.value.trim() || "",
+    date,
+    time: form.querySelector(`#${prefix}-operation-time`)?.value || "",
+    cadence,
+    endDate,
+  };
+}
+
+function missionOperationPayload(mission, plan) {
+  const date = plan.date || easternDateKey();
+  const today = easternDateKey();
+  return {
+    title: plan.title || mission.title,
+    category: missionCategory(mission.category),
+    brief: plan.brief || mission.completion_definition || `Complete one ${mission.unit_label || "operation"} for this mission.`,
+    status: date > today ? "Scheduled" : "Queued",
+    completed: false,
+    scheduled_date: date,
+    scheduled_time: plan.time || null,
+    scheduled_end_date: plan.cadence === "one_time" ? null : plan.endDate || null,
+    schedule_mode: plan.cadence === "weekly" ? "recurring" : plan.cadence,
+    operation_date: date,
+    is_daily: false,
+    mission_id: mission.id,
+    metric_key: mission.metric_key || "operation.complete",
+  };
+}
+
+async function applyMissionOperationPlan(mission, plan) {
+  if (!mission || !plan || plan.mode === "none") return { ok: true };
+  if (plan.mode === "existing") {
+    if (!plan.existingId) return { ok: false, message: "Choose an unscheduled operation to attach." };
+    const linkPayload = { mission_id: mission.id };
+    if (mission.metric_key) linkPayload.metric_key = mission.metric_key;
+    const { data, error } = await client.from("operations").update(linkPayload).eq("id", plan.existingId).eq("user_id", session.user.id).select().single();
+    if (error) return { ok: false, message: error.message };
+    if (data) missionOperations = [...missionOperations.filter((operation) => String(operation.id) !== String(data.id)), data];
+    return { ok: true, data };
+  }
+  if (!plan.title) return { ok: false, message: "Enter an operation name." };
+  if (plan.endDate && plan.endDate < plan.date) return { ok: false, message: "The operation end date must be on or after its first date." };
+  const { data, error } = await client.from("operations").insert(missionOperationPayload(mission, plan)).select().single();
+  if (error) return { ok: false, message: error.message };
+  if (data) missionOperations = [data, ...missionOperations];
+  return { ok: true, data };
+}
+
+function announceMissionOperationChange() {
+  window.AEGIS_OPERATIONS = missionOperations;
+  window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "mission", operations: missionOperations } }));
+  window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "mission-operation-link" } }));
+}
+
 function configureCreateDialog() {
   const dialog = $("#mission-dialog");
-  dialog.innerHTML = `<form id="mission-create-form" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">x</button><p class="eyebrow amber">NEW MISSION</p><h2>Define the finish line.</h2>${fieldMarkup("new-mission", true)}<button class="primary" type="submit">Open mission</button></form>`;
+  dialog.innerHTML = `<form id="mission-create-form" class="dialog-card mission-editor-card"><button class="dialog-close" type="button" aria-label="Close">x</button><p class="eyebrow amber">NEW MISSION</p><h2>Define the finish line.</h2>${fieldMarkup("new-mission", true)}${operationPlanMarkup("new-mission")}<button class="primary" type="submit">Open mission</button></form>`;
   const form = $("#mission-create-form");
   form.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
   $(`#new-mission-method`).addEventListener("change", () => updateTrackingFields(form, "new-mission"));
+  $(`#new-mission-operation-mode`).addEventListener("change", () => { populateOperationPlanChoices(form, "new-mission"); syncOperationPlanFields(form, "new-mission"); });
+  $(`#new-mission-operation-cadence`).addEventListener("change", () => syncOperationPlanFields(form, "new-mission"));
+  $(`#new-mission-operation-date`).value = easternDateKey();
+  populateOperationPlanChoices(form, "new-mission");
+  syncOperationPlanFields(form, "new-mission");
   updateTrackingFields(form, "new-mission");
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -249,7 +358,12 @@ function configureCreateDialog() {
     if (!payload.title) return;
     const { data, error } = await client.from("missions").insert(payload).select().single();
     if (error) return alert(`Mission could not be created: ${error.message}`);
-    missions.unshift(normalize(data)); dialog.close(); renderMissions(); renderCommandMissions(); publishMissionChange();
+    const mission = normalize(data);
+    const operationResult = await applyMissionOperationPlan(mission, readOperationPlan(form, "new-mission"));
+    missions.unshift(mission);
+    dialog.close(); renderMissions(); renderCommandMissions(); publishMissionChange();
+    if (!operationResult.ok) alert(`Mission created, but its operation was not linked: ${operationResult.message}`);
+    else if (operationResult.data) announceMissionOperationChange();
   });
 }
 
@@ -265,12 +379,17 @@ function readOutcomeFields(root, prefix, mission) {
 function buildMissionEditor() {
   const dialog = document.createElement("dialog");
   dialog.id = "mission-editor-dialog";
-  dialog.innerHTML = `<form id="mission-edit-form" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">x</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Define the evidence.</h2>${fieldMarkup("edit-mission", false)}<button class="primary" type="submit">Save mission</button></form>`;
+  dialog.innerHTML = `<form id="mission-edit-form" class="dialog-card mission-editor-card"><button class="dialog-close" type="button" aria-label="Close">x</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Define the evidence.</h2>${fieldMarkup("edit-mission", false)}${operationPlanMarkup("edit-mission")}<button class="primary" type="submit">Save mission</button></form>`;
   dialog.querySelector("#mission-edit-form button[type=submit]").insertAdjacentHTML("beforebegin", outcomeMarkup("edit-mission"));
   document.body.appendChild(dialog);
   const form = $("#mission-edit-form");
   form.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
   $(`#edit-mission-method`).addEventListener("change", () => updateTrackingFields(form, "edit-mission"));
+  $(`#edit-mission-operation-mode`).addEventListener("change", () => { populateOperationPlanChoices(form, "edit-mission"); syncOperationPlanFields(form, "edit-mission"); });
+  $(`#edit-mission-operation-cadence`).addEventListener("change", () => syncOperationPlanFields(form, "edit-mission"));
+  $(`#edit-mission-operation-date`).value = easternDateKey();
+  populateOperationPlanChoices(form, "edit-mission");
+  syncOperationPlanFields(form, "edit-mission");
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const mission = missions.find((item) => item.id === dialog.dataset.missionId);
@@ -278,8 +397,12 @@ function buildMissionEditor() {
     if (!mission || !payload.title) return;
     const { data, error } = await client.from("missions").update(payload).eq("id", mission.id).select().single();
     if (error) return alert(`Mission could not be updated: ${error.message}`);
-    missions = missions.map((item) => item.id === data.id ? normalize(data) : item);
+    const updatedMission = normalize(data);
+    const operationResult = await applyMissionOperationPlan(updatedMission, readOperationPlan(form, "edit-mission"));
+    missions = missions.map((item) => item.id === data.id ? updatedMission : item);
     dialog.close(); renderMissions(); renderCommandMissions(); publishMissionChange(); syncRecoveryVisibility();
+    if (!operationResult.ok) alert(`Mission updated, but its operation was not linked: ${operationResult.message}`);
+    else if (operationResult.data) announceMissionOperationChange();
   });
   return dialog;
 }
@@ -299,6 +422,15 @@ function openEditor(dialog, mission) {
   $(`#edit-mission-outcome-status`).value = mission.outcome_status || (mission.completed ? "completed" : "accepted");
   $(`#edit-mission-outcome-rating`).value = mission.outcome_rating || "";
   $(`#edit-mission-outcome-note`).value = mission.outcome_note || "";
+  $(`#edit-mission-operation-mode`).value = "none";
+  $(`#edit-mission-operation-title`).value = "";
+  $(`#edit-mission-operation-brief`).value = mission.completion_definition || "";
+  $(`#edit-mission-operation-date`).value = easternDateKey();
+  $(`#edit-mission-operation-time`).value = "";
+  $(`#edit-mission-operation-cadence`).value = "one_time";
+  $(`#edit-mission-operation-end-date`).value = "";
+  populateOperationPlanChoices($("#mission-edit-form"), "edit-mission", mission);
+  syncOperationPlanFields($("#mission-edit-form"), "edit-mission");
   updateTrackingFields($("#mission-edit-form"), "edit-mission");
   dialog.showModal();
 }
@@ -380,7 +512,17 @@ function bindDialogs() {
     if (!button) return;
     event.preventDefault();
     const dialog = $("#mission-dialog");
-    if (dialog && !dialog.open) dialog.showModal();
+    if (dialog && !dialog.open) {
+      const form = $("#mission-create-form");
+      if (form) {
+        form.reset();
+        $(`#new-mission-operation-date`).value = easternDateKey();
+        populateOperationPlanChoices(form, "new-mission");
+        syncOperationPlanFields(form, "new-mission");
+        updateTrackingFields(form, "new-mission");
+      }
+      dialog.showModal();
+    }
   });
   document.addEventListener("click", async (event) => {
     const button = event.target.closest('[data-action="log-recovery"]');
