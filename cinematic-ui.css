@@ -1329,6 +1329,12 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   scrollbar-width: thin;
   scrollbar-color: rgba(89,180,255,.55) transparent;
 }
+#command .mission-panel > #command-missions.command-mission-board {
+  height: 100% !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+}
 #command .mission-panel > #command-missions.command-mission-board > .command-mission-list {
   min-height: 0;
 }
