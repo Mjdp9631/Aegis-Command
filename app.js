@@ -31,7 +31,7 @@ const operationTemplates={
 };
 const checklistFor=operation=>String(operation.brief||"").trim().split(/\n+/).map(item=>item.replace(/^[-•\s]+/,"").trim()).filter(Boolean).length?String(operation.brief||"").trim().split(/\n+/).map(item=>item.replace(/^[-•\s]+/,"").trim()).filter(Boolean):(operationTemplates[operation.title]||["Define the evidence that proves this operation is complete.","Complete the work, then update the status honestly."]);
 const dateLabel=date=>date?new Date(`${date}T12:00:00`).toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"}):"Unscheduled";
-function populateOperationMissions(){const select=$("#operation-mission"),category=$("#operation-category")?.value;if(!select||!category)return;const eligible=missions.filter(mission=>mission.category===category&&!mission.completed);select.innerHTML=`<option value="">Unlinked operation</option>${eligible.map(mission=>`<option value="${mission.id}">${escape(mission.title)}</option>`).join("")}`;if(eligible.length)select.value=eligible[0].id}
+function populateOperationMissions(){const select=$("#operation-mission"),category=$("#operation-category")?.value;if(!select||!category)return;const eligible=missions.filter(mission=>mission.category===category&&!mission.completed);const lifeAdmin=category==="Life Admin";select.innerHTML=`<option value="">${lifeAdmin?"No mission — Life Admin":"Auto-attach to active mission"}</option>${eligible.map(mission=>`<option value="${mission.id}">${escape(mission.title)}</option>`).join("")}`;if(eligible.length&&!lifeAdmin)select.value=eligible[0].id}
 function renderOperations(){
   // Operations Hub is the single execution surface. Keeping this legacy
   // renderer dormant prevents an older async refresh from wiping the richer

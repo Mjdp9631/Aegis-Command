@@ -822,39 +822,36 @@ function resolveMission(operation, includeCompleted = false) {
       && `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().includes(bookTitle));
     return bookMission || null;
   }
+  const operationCategoryKey = operationCategory(operation).toLowerCase();
+  // Life Admin is intentionally independent work: appointments, errands, and
+  // similar day-to-day items must never advance a growth mission.
+  if (operationCategoryKey === "life admin") return null;
   if (operation.mission_id) {
     const explicit = missions.find((mission) => String(mission.id) === String(operation.mission_id));
-    if (explicit) {
-      const inferredMetric = inferredMetricForOperation(operation);
-      const titleCategory = operationCategoryForTitle(operation.title);
-      const missionCategory = canonicalOperationCategory(explicit.category);
-      const categoryCompatible = !titleCategory || titleCategory === missionCategory;
-      const metricCompatible = !inferredMetric || !explicit.metric_key || metricsMatch(explicit.metric_key, inferredMetric);
-      if (categoryCompatible && metricCompatible) return explicit;
-    }
+    if (explicit && canonicalOperationCategory(explicit.category) !== "Life Admin"
+      && (!explicit.completed || Boolean(operation.completed))) return explicit;
   }
-  if (isCurrentReadingOperation && currentBook?.title) return null;
   const operationMetric = inferredMetricForOperation(operation);
   if (operationMetric) {
-    const metricMatch = missions.find((mission) => (includeCompleted || !mission.completed) && metricsMatch(mission.metric_key, operationMetric));
+    const metricMatch = missions.find((mission) => canAdvance(mission) && metricsMatch(mission.metric_key, operationMetric));
     if (metricMatch) return metricMatch;
   }
   const title = String(operation.title || "").toLowerCase();
   // These are intentionally exact enough to keep daily evidence attached to
   // the right Phase 0 mission instead of whichever mission happens to share a
   // category.
-  const byPhrase = (phrases) => missions.find((mission) => (includeCompleted || !mission.completed) && phrases.some((phrase) => `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().includes(phrase)));
-  if (/pt session|orthopedic|acl rehab/.test(title)) return byPhrase(["orthopedic recovery", "pt sessions", "return to sports"]);
-  if (/gym|legs|push|pull|upper body|lower body|rest and reset/.test(title)) return byPhrase(["training baseline", "recovery-safe"]);
-  if (/review charts|trade review/.test(title)) return byPhrase(["evidence-based trade reviews", "process review"]);
-  if (/mission debrief|evening debrief/.test(title)) return byPhrase(["operating debrief rhythm", "operating baseline"]);
-  if (/read one chapter|read chapter/.test(title)) return byPhrase(["learning rhythm", "chapters"]);
-  if (/conquer the morning/.test(title)) return byPhrase(["morning discipline", "operating baseline", "daily rhythm"]);
-  if (/^journal$|journal/.test(title)) return byPhrase(["journal", "operating debrief rhythm", "self mastery"]);
-  if (/pre-market/.test(title)) return byPhrase(["trading preparation rhythm", "execution playbook", "pre-market"]);
-  const category = operationCategory(operation).toLowerCase();
-  const candidates = missions.filter((mission) => (includeCompleted || !mission.completed) && canonicalOperationCategory(mission.category).toLowerCase() === category);
-  if (!candidates.length) return null;
+  const canAdvance = (mission) => !mission.completed || Boolean(operation.completed);
+  const byPhrase = (phrases) => missions.find((mission) => canAdvance(mission) && phrases.some((phrase) => `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().includes(phrase)));
+  const phraseMatch = /pt session|orthopedic|acl rehab/.test(title) ? byPhrase(["orthopedic recovery", "pt sessions", "return to sports"])
+    : /gym|legs|push|pull|upper body|lower body|rest and reset/.test(title) ? byPhrase(["training baseline", "recovery-safe"])
+      : /review charts|trade review/.test(title) ? byPhrase(["evidence-based trade reviews", "process review"])
+        : /mission debrief|evening debrief/.test(title) ? byPhrase(["operating debrief rhythm", "operating baseline"])
+          : /read one chapter|read chapter/.test(title) ? byPhrase(["learning rhythm", "chapters"])
+            : /conquer the morning/.test(title) ? byPhrase(["morning discipline", "operating baseline", "daily rhythm"])
+              : /^journal$|journal/.test(title) ? byPhrase(["journal", "operating debrief rhythm", "self mastery"])
+                : /pre-market/.test(title) ? byPhrase(["trading preparation rhythm", "execution playbook", "pre-market"]) : null;
+  if (phraseMatch) return phraseMatch;
+  const candidates = missions.filter((mission) => canAdvance(mission) && canonicalOperationCategory(mission.category).toLowerCase() === operationCategoryKey);
   const measured = candidates.filter((mission) => String(mission.completion_type || "").toLowerCase() === "units" && Number(mission.target_count) > 0);
   const unitMatch = measured.find((mission) => {
     const unit = String(mission.unit_label || "").toLowerCase();
@@ -865,7 +862,16 @@ function resolveMission(operation, includeCompleted = false) {
     return (/playbook|condition|location|cbr|shift|entry|review/.test(title) && /playbook|trading/.test(text)) ||
       (/daily scorecard|chapter|debrief/.test(title) && /scorecard|baseline|daily/.test(text));
   });
-  return unitMatch || titleMatch || measured[0] || candidates[0];
+  const categoryMatch = unitMatch || titleMatch || measured[0] || candidates[0];
+  if (categoryMatch) return categoryMatch;
+  // Every non-Life-Admin operation must still advance a mission. If its
+  // category has no dedicated mission, use the newest active mission as the
+  // durable destination instead of leaving an untracked operation behind.
+  const activeFallback = missions
+    .filter((mission) => !mission.completed)
+    .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
+  if (activeFallback) return activeFallback;
+  return operation.completed ? missions[0] || null : null;
 }
 
 // Every operation has a single, durable mission link before it is saved.  The
@@ -878,6 +884,10 @@ function attachMissionLink(operation) {
   const metric = inferredMetricForOperation(operation) || mission?.metric_key || null;
   if (category && operation.category !== category) operation.category = category;
   if (metric && operation.metric_key !== metric) operation.metric_key = metric;
+  if (category === "Life Admin") {
+    operation.mission_id = null;
+    return;
+  }
   if (!mission) {
     // After the final chapter, keep the standing daily operation available for
     // the next book but do not leave it attached to a completed book mission.
