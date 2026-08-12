@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="detective-visibility.css?v=tab-visibility-v1" />
     <link rel="stylesheet" href="trade-review-input.css?correction-feedback-v1" />
     <link rel="stylesheet" href="advisor.css" />
-    <link rel="stylesheet" href="mission.css?v=operation-family-counters-v1" />
+    <link rel="stylesheet" href="mission.css?v=mission-details-readonly-v2" />
     <link rel="stylesheet" href="filters.css" />
     <link rel="stylesheet" href="importer.css" />
     <link rel="stylesheet" href="enterprise.css?v=financial-foundation-v1" />
@@ -302,15 +302,15 @@
             event.preventDefault();
             event.stopImmediatePropagation();
             const id = card.dataset.missionId;
-            if (typeof window.AEGIS_OPEN_MISSION_EDITOR === "function") {
-              Promise.resolve(window.AEGIS_OPEN_MISSION_EDITOR(id)).catch(error => console.warn("Mission editor could not open", error));
+            if (typeof window.AEGIS_OPEN_MISSION_DETAILS === "function") {
+              Promise.resolve(window.AEGIS_OPEN_MISSION_DETAILS(id)).catch(error => console.warn("Mission details could not open", error));
             } else {
-              window.dispatchEvent(new CustomEvent("aegis:open-mission", { detail: { id } }));
+              window.dispatchEvent(new CustomEvent("aegis:open-mission-details", { detail: { id } }));
               let attempts = 0;
               const retry = () => {
-                if (typeof window.AEGIS_OPEN_MISSION_EDITOR === "function") return void window.AEGIS_OPEN_MISSION_EDITOR(id);
+                if (typeof window.AEGIS_OPEN_MISSION_DETAILS === "function") return void window.AEGIS_OPEN_MISSION_DETAILS(id);
                 if (++attempts < 15) return void setTimeout(retry, 100);
-                console.warn("Mission editor did not become available", id);
+                console.warn("Mission details did not become available", id);
               };
               setTimeout(retry, 0);
             }

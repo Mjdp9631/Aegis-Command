@@ -158,7 +158,7 @@ function renderCommandMissionBoard(nextMissions = missions, operations = []) {
     event.preventDefault();
     event.stopPropagation();
     const mission = missions.find((item) => String(item.id) === String(card.dataset.missionId)) || rows.find((item) => String(item.id) === String(card.dataset.missionId));
-    if (mission) void openEditorFromMissionCard(mission);
+    if (mission) openMissionDetails(mission);
   }));
 }
 
@@ -182,7 +182,7 @@ function renderMissions() {
     event.stopPropagation();
     event.stopImmediatePropagation();
     const mission = missions.find((item) => String(item.id) === String(card.dataset.missionId));
-    openEditorFromMissionCard(mission);
+    openMissionDetails(mission);
   }, true));
   target.querySelectorAll("[data-mission-view]").forEach((button) => button.addEventListener("click", () => { target.querySelectorAll("[data-mission-view]").forEach((item) => item.classList.toggle("active", item === button)); draw(button.dataset.missionView === "complete" ? complete : active); }));
 }
@@ -194,7 +194,7 @@ function renderCommandMissions() {
 function buildMissionDetails() {
   const dialog = document.createElement("dialog");
   dialog.id = "mission-details-dialog";
-  dialog.innerHTML = `<form method="dialog" class="dialog-card mission-details-card"><button class="dialog-close" type="submit" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">MISSION OPERATIONS</p><h2 id="mission-details-title">Mission</h2><p id="mission-details-progress" class="body-copy"></p><div id="mission-details-definition" class="mission-details-definition"></div><div><p class="eyebrow">ATTACHED OPERATIONS</p><div id="mission-details-operations" class="mission-details-operations"></div></div><button class="primary" id="mission-details-edit" type="button">Edit mission</button></form>`;
+  dialog.innerHTML = `<form method="dialog" class="dialog-card mission-details-card"><button class="dialog-close" type="submit" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">MISSION CONTROL / READ ONLY</p><h2 id="mission-details-title">Mission</h2><p id="mission-details-progress" class="body-copy"></p><div class="mission-details-fields"><div><span>Category</span><strong id="mission-details-category"></strong></div><div><span>Priority</span><strong id="mission-details-priority"></strong></div><div><span>Completion method</span><strong id="mission-details-method"></strong></div><div><span>Tracked metric</span><strong id="mission-details-metric"></strong></div><div><span>Target</span><strong id="mission-details-target"></strong></div><div><span>Cadence</span><strong id="mission-details-cadence"></strong></div></div><div><p class="eyebrow">COMPLETION EVIDENCE</p><div id="mission-details-definition" class="mission-details-definition"></div></div><div><p class="eyebrow">LINKED OPERATIONS</p><div id="mission-details-operations" class="mission-details-operations"></div></div><div class="mission-details-actions"><button class="secondary" id="mission-details-link-operation" type="button">+ Add linked operation</button><button class="primary" id="mission-details-edit" type="button">Edit mission</button></div></form>`;
   document.body.appendChild(dialog);
   wireMissionDetailsDialog(dialog);
   return dialog;
@@ -206,6 +206,11 @@ function wireMissionDetailsDialog(dialog) {
     button.dataset.aegisWired = "true";
     button.addEventListener("click", openMissionEditorFromDetails);
   }
+  const linkButton = dialog?.querySelector("#mission-details-link-operation");
+  if (linkButton && linkButton.dataset.aegisWired !== "true") {
+    linkButton.dataset.aegisWired = "true";
+    linkButton.addEventListener("click", openMissionLinkEditor);
+  }
   if (dialog && dialog.dataset.aegisUnlinkWired !== "true") {
     dialog.dataset.aegisUnlinkWired = "true";
     dialog.addEventListener("click", (event) => {
@@ -216,6 +221,22 @@ function wireMissionDetailsDialog(dialog) {
       unlinkMissionOperation(unlink.dataset.unlinkOperation, unlink.dataset.unlinkMission);
     });
   }
+}
+
+function openMissionLinkEditor(event) {
+  event.preventDefault();
+  const detailsDialog = event.target.closest("#mission-details-dialog") || missionDetails;
+  const mission = missions.find((item) => String(item.id) === String(detailsDialog?.dataset?.missionId));
+  if (!mission) return;
+  if (!missionEditor || !missionEditor.isConnected) missionEditor = buildMissionEditor();
+  const launch = () => {
+    openEditor(missionEditor, mission, { linkOperation: true });
+    missionEditor.querySelector("#edit-mission-operation-existing")?.focus();
+  };
+  if (detailsDialog?.open) {
+    detailsDialog.close();
+    setTimeout(launch, 0);
+  } else launch();
 }
 
 async function unlinkMissionOperation(operationId, missionId) {
@@ -325,6 +346,12 @@ function openMissionDetails(mission) {
   dialog.dataset.missionId = mission.id;
   dialog.querySelector("#mission-details-title").textContent = mission.title;
   dialog.querySelector("#mission-details-progress").textContent = `${mission.category} · ${missionLabel(mission)}`;
+  dialog.querySelector("#mission-details-category").textContent = mission.category || "—";
+  dialog.querySelector("#mission-details-priority").textContent = mission.priority || "—";
+  dialog.querySelector("#mission-details-method").textContent = isMeasured(mission) ? "Measured progress" : "One-time completion";
+  dialog.querySelector("#mission-details-metric").textContent = mission.metric_key || "—";
+  dialog.querySelector("#mission-details-target").textContent = isMeasured(mission) ? `${mission.completed_count || 0} / ${mission.target_count} ${mission.unit_label || "units"}` : (mission.completed ? "Complete" : "Not complete");
+  dialog.querySelector("#mission-details-cadence").textContent = mission.cadence_type ? `${mission.cadence_type}${mission.cadence_target ? ` · ${mission.cadence_target}` : ""}` : "No cadence";
   dialog.querySelector("#mission-details-definition").textContent = mission.completion_definition || "Define the evidence that proves this mission is complete.";
   const linked = operationsForMission(mission);
   dialog.querySelector("#mission-details-operations").innerHTML = linked.length
@@ -723,7 +750,7 @@ function buildMissionEditor() {
   return dialog;
 }
 
-function openEditor(dialog, mission) {
+function openEditor(dialog, mission, options = {}) {
   dialog.dataset.missionId = mission.id;
   $(`#edit-mission-title`).value = mission.title;
   $(`#edit-mission-priority`).value = mission.priority;
@@ -738,7 +765,7 @@ function openEditor(dialog, mission) {
   $(`#edit-mission-outcome-status`).value = mission.outcome_status || (mission.completed ? "completed" : "accepted");
   $(`#edit-mission-outcome-rating`).value = mission.outcome_rating || "";
   $(`#edit-mission-outcome-note`).value = mission.outcome_note || "";
-  $(`#edit-mission-operation-mode`).value = "none";
+  $(`#edit-mission-operation-mode`).value = options.linkOperation ? "existing" : "none";
   $(`#edit-mission-operation-title`).value = "";
   $(`#edit-mission-operation-brief`).value = mission.completion_definition || "";
   $(`#edit-mission-operation-date`).value = easternDateKey();
@@ -908,7 +935,7 @@ function bindDialogs() {
     const card = event.target.closest(".mission-open");
     if (!card) return;
     const mission = missions.find((item) => String(item.id) === String(card.dataset.missionId));
-    if (card.dataset.missionLedgerCard === "true") openEditorFromMissionCard(mission);
+    if (card.dataset.missionLedgerCard === "true") openMissionDetails(mission);
     else openMission(card.dataset.missionId);
   });
   document.addEventListener("click", (event) => {
@@ -969,15 +996,22 @@ document.addEventListener("click", (event) => {
   if (!card) return;
   event.preventDefault();
   event.stopImmediatePropagation();
-  window.AEGIS_OPEN_MISSION_EDITOR?.(card.dataset.missionId);
+  window.AEGIS_OPEN_MISSION_DETAILS?.(card.dataset.missionId);
 }, true);
 
 window.addEventListener("aegis:open-mission", (event) => {
   const id = event.detail?.id;
-  if (!id || !missionEditor) return;
+  if (!id) return;
   const rows = missions.length ? missions : (Array.isArray(window.AEGIS_MISSIONS) ? window.AEGIS_MISSIONS : []);
   const mission = rows.find((item) => String(item.id) === String(id));
-  void openEditorFromMissionCard(mission);
+  openMissionDetails(mission);
+});
+
+window.addEventListener("aegis:open-mission-details", (event) => {
+  const id = event.detail?.id;
+  if (!id) return;
+  const rows = missions.length ? missions : (Array.isArray(window.AEGIS_MISSIONS) ? window.AEGIS_MISSIONS : []);
+  openMissionDetails(rows.find((item) => String(item.id) === String(id)));
 });
 
 window.addEventListener("aegis:missions-changed", (event) => {
