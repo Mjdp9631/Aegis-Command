@@ -116,18 +116,29 @@ function buildMissionDetails() {
   return dialog;
 }
 
+function ensureMissionDetailsDialog() {
+  if (!missionDetails || !missionDetails.isConnected) missionDetails = buildMissionDetails();
+  return missionDetails;
+}
+
 function openMissionDetails(mission) {
-  if (!missionDetails || !mission) return;
-  missionDetails.dataset.missionId = mission.id;
-  missionDetails.querySelector("#mission-details-title").textContent = mission.title;
-  missionDetails.querySelector("#mission-details-progress").textContent = `${mission.category} · ${missionLabel(mission)}`;
-  missionDetails.querySelector("#mission-details-definition").textContent = mission.completion_definition || "Define the evidence that proves this mission is complete.";
+  if (!mission) return;
+  const dialog = ensureMissionDetailsDialog();
+  dialog.dataset.missionId = mission.id;
+  dialog.querySelector("#mission-details-title").textContent = mission.title;
+  dialog.querySelector("#mission-details-progress").textContent = `${mission.category} · ${missionLabel(mission)}`;
+  dialog.querySelector("#mission-details-definition").textContent = mission.completion_definition || "Define the evidence that proves this mission is complete.";
   const linked = operationsForMission(mission);
-  missionDetails.querySelector("#mission-details-operations").innerHTML = linked.length
+  dialog.querySelector("#mission-details-operations").innerHTML = linked.length
     ? linked.map((operation) => `<article class="mission-operation-link"><strong>${escape(operation.title)}</strong><span>${escape(operationStatus(operation))}${operationDate(operation) ? ` · ${escape(operationDate(operation))}` : ""}${operation.category ? ` · ${escape(operation.category)}` : ""}</span></article>`).join("")
     : '<p class="mission-details-empty">No operation is attached yet. Schedule one from this mission or link it when creating an operation.</p>';
-  missionDetails.showModal();
+  if (!dialog.open) dialog.showModal();
 }
+
+window.AEGIS_OPEN_MISSION_DETAILS = (id) => {
+  const mission = missions.find((item) => String(item.id) === String(id));
+  openMissionDetails(mission);
+};
 
 window.AEGIS_RENDER_COMMAND_MISSIONS = renderCommandMissionBoard;
 
@@ -351,6 +362,17 @@ function bindDialogs() {
     publishDataChange("recovery");
   });
 }
+
+// Mission-tab cards are the read-only ledger surface. Capture this before
+// route/navigation handlers so the click always opens the attached-operation
+// details panel instead of being interpreted as an old editor action.
+document.addEventListener("click", (event) => {
+  const card = event.target.closest?.("[data-mission-ledger-card]");
+  if (!card) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  window.AEGIS_OPEN_MISSION_DETAILS?.(card.dataset.missionId);
+}, true);
 
 window.addEventListener("aegis:open-mission", (event) => {
   const id = event.detail?.id;
