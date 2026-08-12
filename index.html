@@ -240,11 +240,41 @@
         window.addEventListener("popstate", routeFromAddress);
         window.AEGIS_ROUTE = showView;
         routeFromAddress();
+
+        // Last-resort mission paint. The operations feed can authenticate and
+        // publish mission rows even when an optional mission module is delayed
+        // or blocked by a stale browser module cache. This only runs until the
+        // canonical mission renderer announces readiness, so it cannot replace
+        // the real editor or its expanded cards.
+        (() => {
+          const esc = value => String(value ?? "").replace(/[&<>'"]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
+          const paint = rows => {
+            if (window.AEGIS_MISSION_RENDERER_READY || !Array.isArray(rows)) return;
+            const normalized = rows.map(row => ({ ...row, progress: row.completion_type === "units" && Number(row.target_count) > 0 ? Math.round((Math.min(Number(row.completed_count) || 0, Number(row.target_count)) / Number(row.target_count)) * 100) : row.completed ? 100 : Number(row.progress) || 0 }));
+            const active = normalized.filter(row => row.progress < 100);
+            const complete = normalized.filter(row => row.progress >= 100);
+            const label = row => row.completion_type === "units" && Number(row.target_count) > 0 ? `${Math.min(Number(row.completed_count) || 0, Number(row.target_count))} / ${row.target_count} ${row.unit_label || "units"}` : row.completed ? "Complete" : "Not complete";
+            const card = row => `<button type="button" class="mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${esc(row.id)}"><span class="eyebrow amber">${esc(row.priority || "Schedule")}</span><h3>${esc(row.title)}</h3><p>${esc(row.category || "Self Mastery")} mission · ${esc(label(row))}</p><div class="meter"><i style="width:${row.progress}%"></i></div><small>${esc(row.completion_definition || "Define the evidence that proves this mission is complete.")}</small></button>`;
+            const ledger = document.getElementById("mission-cards");
+            if (ledger) ledger.innerHTML = `<div class="mission-view-tabs"><button type="button" class="mission-view-tab active" data-mission-view="active">ACTIVE · ${active.length}</button><button type="button" class="mission-view-tab" data-mission-view="complete">COMPLETED · ${complete.length}</button></div><div class="mission-card-list" data-mission-list>${active.map(card).join("") || '<article class="mission-card"><h3>No missions in this view.</h3></article>'}</div>`;
+            const command = document.getElementById("command-missions");
+            if (command) command.innerHTML = `<div class="command-mission-list">${active.map(row => `<article class="command-mission-card mission-open" data-mission-id="${esc(row.id)}" data-open-mission="${esc(row.id)}" tabindex="0"><div class="command-mission-heading"><div class="mission-icon"></div><div class="command-mission-copy"><strong>${esc(row.title)}</strong><small>${esc(row.category || "Self Mastery")} · ${esc(row.priority || "Schedule")}</small></div><span class="command-mission-percent">${row.progress}%</span></div><div class="meter command-mission-meter"><i style="width:${row.progress}%"></i></div><p class="command-mission-progress">${esc(label(row))}</p><p class="command-mission-evidence"><b>Completion evidence:</b> ${esc(row.completion_definition || "Define the evidence that proves this mission is complete.")}</p><div class="command-mission-actions"><button type="button" class="command-mission-details">View details →</button></div></article>`).join("") || '<article class="command-mission-empty"><strong>No active missions.</strong><small>Open the next objective from Mission Control.</small></article>'}</div>`;
+            window.AEGIS_MISSIONS = normalized;
+          };
+          window.addEventListener("aegis:missions-loaded", event => paint(event.detail?.missions));
+          document.addEventListener("click", event => {
+            const card = event.target.closest?.("[data-mission-ledger-card], #command-missions [data-open-mission]");
+            if (!card || window.AEGIS_MISSION_RENDERER_READY) return;
+            event.preventDefault();
+            window.AEGIS_OPEN_MISSION_EDITOR?.(card.dataset.missionId);
+            window.dispatchEvent(new CustomEvent("aegis:open-mission", { detail: { id: card.dataset.missionId } }));
+          }, true);
+        })();
       })();
     </script>
     <script type="module" src="auth-flow.js"></script>
     <script type="module" src="cross-browser-sync.js?v=realtime-v2"></script>
-    <script type="module" src="mission.js?v=mission-ledger-boot-v4"></script>
+    <script type="module" src="mission.js?v=mission-ledger-boot-v5"></script>
     <script type="module" src="phase-protocol.js?v=phase-protocol-v7"></script>
     <script type="module" src="detective.js?v=account-profit-deposits-v2"></script>
     <script type="module" src="brain-review.js?v=correction-feedback-v1"></script>
@@ -252,7 +282,7 @@
     <script type="module" src="notion-importer.js"></script>
     <script type="module" src="enterprise.js?v=manual-evidence-dates-v2"></script>
     <script type="module" src="character.js?v=radar-palette-v7"></script>
-    <script type="module" src="command-center.js?v=mission-feed-handoff-v4"></script>
+    <script type="module" src="command-center.js?v=mission-feed-handoff-v5"></script>
     <script type="module" src="command-summary.js?v=shared-operation-state-v2"></script>
     <script type="module" src="command-dashboard.js?v=shared-operation-state-v3"></script>
     <script type="module" src="system-review.js?v=manual-evidence-dates-v2"></script>

@@ -355,6 +355,7 @@ window.AEGIS_OPEN_MISSION_EDITOR = (id) => {
 };
 
 window.AEGIS_RENDER_COMMAND_MISSIONS = renderCommandMissionBoard;
+window.AEGIS_MISSION_RENDERER_READY = true;
 window.dispatchEvent(new CustomEvent("aegis:mission-renderer-ready"));
 
 function publishDataChange(source) { window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source } })); }
