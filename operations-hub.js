@@ -613,7 +613,13 @@ async function refreshDurableOperationState() {
     // that transient response; the next realtime event or boot will retry.
     if (!remoteOperations.length && operations.length) return;
     if (!remoteOccurrences.length && operationOccurrences.length) return;
-    operations = remoteOperations;
+    // A realtime/focus refresh returns only durable rows.  The initial boot
+    // also repairs the current day's standing operations (morning, journal,
+    // reading, gym, and evening debrief).  Replacing the repaired queue with
+    // the raw snapshot made those rows flash in, then disappear seconds later.
+    // Reconcile the snapshot through the same path as boot so every refresh
+    // has the same complete queue shape.
+    operations = await ensureTodayOperations(await reconcileCachedOperationEdits(remoteOperations));
     operationOccurrences = remoteOccurrences;
     await syncOperationMissionLinks();
     await markExpiredOperationsMissed();
@@ -2230,7 +2236,10 @@ function wireCalendarPanels() {
   });
 }
 
+let bootInFlight = false;
 async function boot() {
+  if (bootInFlight) return;
+  bootInFlight = true;
   operationsReady = false;
   try {
     ensurePermanentMissionCalendar();
@@ -2273,6 +2282,8 @@ async function boot() {
     operationsReady = true;
     renderQueue();
     renderCalendar();
+  } finally {
+    bootInFlight = false;
   }
 }
 
