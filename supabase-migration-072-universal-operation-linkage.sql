@@ -6,6 +6,49 @@
 alter table public.operations
   add column if not exists allow_unlinked boolean not null default false;
 
+-- Older deployments allowed legacy categories such as Mind and Body.  The
+-- universal trigger below normalizes those values, but PostgreSQL checks a
+-- row's constraints before a trigger can finish if the old check rejects the
+-- value.  Make this migration safe to run against that data shape.
+drop trigger if exists aegis_normalize_operation_link on public.operations;
+
+do $$
+declare
+  constraint_row record;
+begin
+  for constraint_row in
+    select conname
+    from pg_constraint
+    where conrelid = 'public.operations'::regclass
+      and contype = 'c'
+      and pg_get_constraintdef(oid) ilike '%category%'
+  loop
+    execute format(
+      'alter table public.operations drop constraint if exists %I',
+      constraint_row.conname
+    );
+  end loop;
+end $$;
+
+update public.operations
+set category = case lower(trim(coalesce(category, '')))
+  when 'recovery' then 'Recovery'
+  when 'trading' then 'Trading'
+  when 'business' then 'Business'
+  when 'self mastery' then 'Self Mastery'
+  when 'mind' then 'Self Mastery'
+  when 'body' then 'Self Mastery'
+  when 'mastery' then 'Self Mastery'
+  when 'life admin' then 'Life Admin'
+  when 'day to day' then 'Life Admin'
+  when 'day-to-day' then 'Life Admin'
+  else 'Self Mastery'
+end;
+
+alter table public.operations
+  add constraint operations_category_check
+  check (category in ('Recovery', 'Trading', 'Business', 'Self Mastery', 'Life Admin'));
+
 create or replace function public.aegis_normalize_operation_link()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
