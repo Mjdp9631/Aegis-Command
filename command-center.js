@@ -25,6 +25,13 @@ function updateMetric(title, mission) {
 
 function render(missions, operations = []) {
   const normalizedMissions = missions.map((mission) => ({ ...mission, category: normalizeCategory(mission.category), progress: progress(mission) }));
+  // Share the authoritative mission rows with Mission Control. This avoids a
+  // race where the Command Center fetch completes before mission.js receives
+  // its auth callback.
+  window.AEGIS_MISSIONS = normalizedMissions;
+  window.dispatchEvent(new CustomEvent("aegis:missions-loaded", {
+    detail: { missions: normalizedMissions, source: "command-center" },
+  }));
   if (typeof window.AEGIS_RENDER_COMMAND_MISSIONS === "function") window.AEGIS_RENDER_COMMAND_MISSIONS(normalizedMissions, operations);
   const target = $("#command-missions") || document.querySelector("#command .mission-panel .mission-list");
   if (target) {

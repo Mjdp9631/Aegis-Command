@@ -30,6 +30,14 @@ function renderMissionLoadFailure(error) {
   list.innerHTML = `<article class="mission-card"><h3>Mission sync is taking longer than expected.</h3><small>${escape(error?.message || "Retrying the authenticated mission feed.")}</small></article>`;
 }
 
+function hydrateMissionLedgerFromSharedState() {
+  if (missions.length) return true;
+  const shared = window.AEGIS_MISSIONS;
+  if (!Array.isArray(shared) || !shared.length) return false;
+  applyMissionRows(shared);
+  return true;
+}
+
 function isMeasured(mission) { return mission.completion_type === "units" && Number(mission.target_count) > 0; }
 function missionProgress(mission) { return isMeasured(mission) ? Math.round((Math.min(Number(mission.completed_count) || 0, Number(mission.target_count)) / Number(mission.target_count)) * 100) : mission.completed ? 100 : 0; }
 function missionLabel(mission) { return isMeasured(mission) ? `${Math.min(Number(mission.completed_count) || 0, Number(mission.target_count))} / ${mission.target_count} ${mission.unit_label || "units"}` : mission.completed ? "Complete" : "Not complete"; }
@@ -680,7 +688,7 @@ async function loadData() {
       // Paint the authoritative mission rows before optional operation-link,
       // book, and recovery queries. The ledger should never depend on those
       // secondary feeds completing first.
-      applyMissionRows(data || []);
+      applyMissionRows(Array.isArray(data) ? data : []);
 
       let operationRows = [];
       let operationError = null;
@@ -772,7 +780,7 @@ async function loadData() {
         .filter((mission) => !mission.completed && String(mission.metric_key || "").toLowerCase() === "chapters_read")
         .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
       currentBookMissionId = bookMission?.id || (!hasBookSpecificMission ? (fallbackBookMission?.id || latestChapterMission?.id || "") : "");
-      applyMissionRows(data || []);
+      applyMissionRows(Array.isArray(data) ? data : []);
 
       try {
         const { data: logs } = await withMissionTimeout(client.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1), "Recovery query");
@@ -941,6 +949,7 @@ document.addEventListener("click", (event) => {
 renderMissions(); renderCommandMissions(); renderRecovery();
 bindDialogs();
 missionDetails = buildMissionDetails();
+hydrateMissionLedgerFromSharedState();
 
 if (cloudReady) {
   client = createClient(config.supabaseUrl, config.supabaseAnonKey);
@@ -975,3 +984,14 @@ window.addEventListener("aegis:missions-refresh", async (event) => {
   if (event.detail?.source !== "operations-hub" || !session) return;
   await loadData();
 });
+
+// Command Center and Operations Hub can finish their user-scoped mission
+// query before this module's auth callback. Re-check the shared feed after
+// the page has settled so the ledger never stays on its static loading shell.
+window.addEventListener("load", () => {
+  if (hydrateMissionLedgerFromSharedState()) return;
+  if (session) void loadData();
+});
+setTimeout(() => {
+  if (!missions.length) hydrateMissionLedgerFromSharedState();
+}, 2500);
