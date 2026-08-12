@@ -116,22 +116,40 @@ function buildMissionDetails() {
   dialog.id = "mission-details-dialog";
   dialog.innerHTML = `<form method="dialog" class="dialog-card mission-details-card"><button class="dialog-close" type="submit" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">MISSION OPERATIONS</p><h2 id="mission-details-title">Mission</h2><p id="mission-details-progress" class="body-copy"></p><div id="mission-details-definition" class="mission-details-definition"></div><div><p class="eyebrow">ATTACHED OPERATIONS</p><div id="mission-details-operations" class="mission-details-operations"></div></div><button class="primary" id="mission-details-edit" type="button">Edit mission</button></form>`;
   document.body.appendChild(dialog);
+  wireMissionDetailsDialog(dialog);
   return dialog;
+}
+
+function wireMissionDetailsDialog(dialog) {
+  const button = dialog?.querySelector("#mission-details-edit");
+  if (!button || button.dataset.aegisWired === "true") return;
+  button.dataset.aegisWired = "true";
+  button.addEventListener("click", openMissionEditorFromDetails);
 }
 
 function openMissionEditorFromDetails(event) {
   const button = event?.target?.closest?.("#mission-details-edit");
-  if (!button || !missionDetails || !missionEditor) return false;
+  if (!button) return false;
   event.preventDefault();
   event.stopImmediatePropagation();
-  const mission = missions.find((item) => String(item.id) === String(missionDetails.dataset.missionId));
+  // Resolve the dialog that actually owns the clicked button. This survives
+  // route transitions and stale dialog nodes left by an earlier module copy.
+  const detailsDialog = button.closest("#mission-details-dialog") || missionDetails;
+  if (!detailsDialog) return true;
+  missionDetails = detailsDialog;
+  wireMissionDetailsDialog(detailsDialog);
+  if (!missionEditor || !missionEditor.isConnected) missionEditor = buildMissionEditor();
+  const mission = missions.find((item) => String(item.id) === String(detailsDialog.dataset.missionId));
   if (!mission) return true;
   const launch = () => {
     try {
       if (!missionEditor.open) openEditor(missionEditor, mission);
     } catch (error) {
       console.warn("Mission editor could not open", error);
-      setTimeout(() => { if (!missionEditor.open) openEditor(missionEditor, mission); }, 50);
+      setTimeout(() => {
+        try { if (!missionEditor.open) openEditor(missionEditor, mission); }
+        catch (retryError) { console.warn("Mission editor retry failed", retryError); }
+      }, 50);
     }
   };
   // Close first, then open on the next task. A browser can reject two modal
@@ -143,17 +161,9 @@ function openMissionEditorFromDetails(event) {
   return true;
 }
 
-// One capture-level handler owns this action. This prevents the dialog's
-// method="dialog" form and other page modules from swallowing the click.
-if (!window.AEGIS_MISSION_EDIT_HANDLER) {
-  window.AEGIS_MISSION_EDIT_HANDLER = true;
-  document.addEventListener("click", (event) => {
-    openMissionEditorFromDetails(event);
-  }, true);
-}
-
 function ensureMissionDetailsDialog() {
   if (!missionDetails || !missionDetails.isConnected) missionDetails = buildMissionDetails();
+  wireMissionDetailsDialog(missionDetails);
   return missionDetails;
 }
 
@@ -168,7 +178,11 @@ function openMissionDetails(mission) {
   dialog.querySelector("#mission-details-operations").innerHTML = linked.length
     ? linked.map((operation) => `<article class="mission-operation-link"><strong>${escape(operation.title)}</strong><span>${escape(operationStatus(operation))}${operationDate(operation) ? ` · ${escape(operationDate(operation))}` : ""}${operation.category ? ` · ${escape(operation.category)}` : ""}</span></article>`).join("")
     : '<p class="mission-details-empty">No operation is attached yet. Schedule one from this mission or link it when creating an operation.</p>';
-  if (!dialog.open) dialog.showModal();
+  if (dialog.open) dialog.close();
+  setTimeout(() => {
+    try { if (!dialog.open) dialog.showModal(); }
+    catch (error) { console.warn("Mission details could not open", error); }
+  }, 0);
 }
 
 window.AEGIS_OPEN_MISSION_DETAILS = (id) => {

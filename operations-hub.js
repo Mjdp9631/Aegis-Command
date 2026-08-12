@@ -409,10 +409,10 @@ function operationInstances() {
     }
     const rows = operationOccurrences.filter((row) => String(row.operation_id) === String(operation.id));
     if (!rows.length) {
-      // Before migration 044 is run, retain a safe single display instance;
-      // after it runs, every scheduled date gets its own durable row.
-      const first = recurringDateKeys(operation, 0)[0];
-      if (first) instances.push(ongoingDisplayOperation(completedDisplayOperation({ ...operation, id: `virtual:${operation.id}:${first}`, _series: operation, _occurrence: { occurrence_date: first, status_override: false }, scheduled_date: first, status: operation.status, completed: operation.completed })));
+      // If occurrence rows are temporarily unavailable, keep every date from
+      // the recurrence rule visible. Rendering only the first date made
+      // future PT and weekly operations appear to disappear after refresh.
+      recurringDateKeys(operation).forEach((date) => instances.push(ongoingDisplayOperation(completedDisplayOperation({ ...operation, id: `virtual:${operation.id}:${date}`, _series: operation, _occurrence: { occurrence_date: date, status_override: false }, scheduled_date: date, status: operation.status, completed: operation.completed }))));
       return;
     }
     rows.forEach((row) => instances.push(ongoingDisplayOperation(completedDisplayOperation({
@@ -836,6 +836,10 @@ function resolveMission(operation, includeCompleted = false) {
     if (explicit && canonicalOperationCategory(explicit.category) !== "Life Admin"
       && (!explicit.completed || Boolean(operation.completed))) return explicit;
   }
+  // Define this before metric lookup. Metric-based operations used to throw
+  // here because canAdvance was still in the temporal dead zone, aborting the
+  // entire durable operations boot.
+  const canAdvance = (mission) => !mission.completed || Boolean(operation.completed);
   const operationMetric = inferredMetricForOperation(operation);
   if (operationMetric) {
     const metricMatch = missions.find((mission) => canAdvance(mission) && metricsMatch(mission.metric_key, operationMetric));
@@ -845,7 +849,6 @@ function resolveMission(operation, includeCompleted = false) {
   // These are intentionally exact enough to keep daily evidence attached to
   // the right Phase 0 mission instead of whichever mission happens to share a
   // category.
-  const canAdvance = (mission) => !mission.completed || Boolean(operation.completed);
   const byPhrase = (phrases) => missions.find((mission) => canAdvance(mission) && phrases.some((phrase) => `${mission.title || ""} ${mission.completion_definition || ""}`.toLowerCase().includes(phrase)));
   const phraseMatch = /pt session|orthopedic|acl rehab/.test(title) ? byPhrase(["orthopedic recovery", "pt sessions", "return to sports"])
     : /gym|legs|push|pull|upper body|lower body|rest and reset/.test(title) ? byPhrase(["training baseline", "recovery-safe"])
@@ -2046,7 +2049,11 @@ function openDaySchedulePicker(date) {
   const mode = dialog.querySelector("#operation-schedule-mode");
   if (mode) mode.value = "one_time";
   mode?.dispatchEvent(new Event("change"));
-  if (!dialog.open) dialog.showModal();
+  if (dialog.open) dialog.close();
+  setTimeout(() => {
+    try { if (!dialog.open) dialog.showModal(); }
+    catch (error) { console.warn("Schedule picker could not open", error); }
+  }, 0);
 }
 
 function openScheduleDialog(operation) {
@@ -2140,7 +2147,12 @@ function scheduledCountForMission(missionId) {
 function ensurePermanentMissionCalendar() {
   const missionsView = $("#missions");
   const dialog = $("#operations-calendar-dialog");
-  if (!missionsView || missionsView.querySelector("#mission-calendar") || !dialog) return;
+  if (!missionsView) return;
+  if (missionsView.querySelector("#mission-calendar")) {
+    wireMissionCalendarAddButton(missionsView.querySelector("#mission-calendar"));
+    return;
+  }
+  if (!dialog) return;
   const source = dialog.querySelector(".operation-calendar-card");
   if (!source) return;
   source.classList.remove("dialog-card", "operation-calendar-card");
@@ -2167,24 +2179,25 @@ function ensurePermanentMissionCalendar() {
   dialog.remove();
   $("#open-operations-calendar")?.remove();
   wireCalendarPanels();
+  wireMissionCalendarAddButton(panel);
 }
 
-// The permanent calendar panel can be moved/rebuilt during navigation. Keep
-// the action on document once so the button never loses its behavior.
-if (!window.AEGIS_CALENDAR_ADD_HANDLER) {
-  window.AEGIS_CALENDAR_ADD_HANDLER = true;
-  document.addEventListener("click", (event) => {
-    const button = event.target.closest?.("#mission-add-operation");
-    if (!button) return;
+function wireMissionCalendarAddButton(root = document) {
+  const button = root?.querySelector?.("#mission-add-operation");
+  if (!button || button.dataset.aegisWired === "true") return;
+  button.dataset.aegisWired = "true";
+  button.addEventListener("click", (event) => {
     event.preventDefault();
-    event.stopImmediatePropagation();
     try {
       openDaySchedulePicker(selectedDay || operatingDayKey());
     } catch (error) {
       console.warn("Calendar operation picker could not open", error);
-      setTimeout(() => openDaySchedulePicker(selectedDay || operatingDayKey()), 0);
+      setTimeout(() => {
+        try { openDaySchedulePicker(selectedDay || operatingDayKey()); }
+        catch (retryError) { console.warn("Calendar operation picker retry failed", retryError); }
+      }, 0);
     }
-  }, true);
+  });
 }
 
 function renderCalendar() {
