@@ -912,8 +912,8 @@ function renderTrades(trades) {
       <td>${escapeHtml(trade.cb_hour || "—")}</td>
       <td>${displayNumber(trade.mae_30m)}</td>
       <td>${displayNumber(trade.mfe_30m)}</td>
-      <td class="${Number(trade.r_multiple) >= 0 ? "result-positive" : "result-negative"}">${displayNumber(trade.r_multiple, "R")}</td>
-      <td>${displayNumber(trade.pnl_percent, "%")}</td>
+      <td>${displayNumber(trade.r_multiple, "R")}</td>
+      <td class="${Number(trade.pnl_percent) > 0 ? "result-positive" : Number(trade.pnl_percent) < 0 ? "result-negative" : ""}">${displayNumber(trade.pnl_percent, "%")}</td>
       <td class="${resultClass}">${outcome}</td>
       <td>${escapeHtml(trade.position || "—")}</td>
       <td>${escapeHtml(trade.account || "—")}${isTheoretical(trade) ? "<small class=\"theoretical-account\">Review only</small>" : ""}</td>
