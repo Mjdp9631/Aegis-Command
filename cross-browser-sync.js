@@ -54,6 +54,10 @@ async function subscribe() {
 if (supabase) {
   void subscribe();
   supabase.auth.onAuthStateChange(() => { subscribedUser = ""; setTimeout(() => { void subscribe(); }, 0); });
-  window.addEventListener("focus", () => { subscribedUser = ""; setTimeout(() => { void subscribe(); }, 0); });
-  window.addEventListener("online", () => { subscribedUser = ""; setTimeout(() => { void subscribe(); }, 0); });
+  // A focus event is common while switching tabs or returning from a form.
+  // Rebuilding the realtime channel on every focus caused subscription churn
+  // and duplicate event bursts. Keep the healthy channel; reconnect only when
+  // it is actually absent.
+  window.addEventListener("focus", () => { if (!channel) setTimeout(() => { void subscribe(); }, 0); });
+  window.addEventListener("online", () => { if (!channel) setTimeout(() => { void subscribe(); }, 0); });
 }

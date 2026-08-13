@@ -411,6 +411,21 @@ function recurringDateKeys(operation, maxDays = 370) {
 }
 
 function operationInstances() {
+  const cacheKey = JSON.stringify({
+    operations: operations.map((operation) => [
+      operation?.id, operation?.title, operation?.status, Boolean(operation?.completed),
+      operation?.completed_on, operation?.scheduled_date, operation?.scheduled_time,
+      operation?.scheduled_end_date, operation?.schedule_mode, operation?.updated_at,
+      operation?.local_updated_at, operation?.operation_family_key,
+      Array.isArray(operation?.linked_mission_ids) ? operation.linked_mission_ids : [],
+    ]),
+    occurrences: operationOccurrences.map((occurrence) => [
+      occurrence?.id, occurrence?.operation_id, occurrence?.occurrence_date,
+      occurrence?.status, Boolean(occurrence?.completed), occurrence?.completed_on,
+      occurrence?.status_override, occurrence?.updated_at,
+    ]),
+  });
+  if (operationInstances.cacheKey === cacheKey && operationInstances.cache) return operationInstances.cache;
   const instances = [];
   operations.forEach((operation) => {
     // A newly-created repeating operation is local until Supabase returns its
@@ -425,7 +440,11 @@ function operationInstances() {
       // If occurrence rows are temporarily unavailable, keep every date from
       // the recurrence rule visible. Rendering only the first date made
       // future PT and weekly operations appear to disappear after refresh.
-      recurringDateKeys(operation).forEach((date) => instances.push(ongoingDisplayOperation(completedDisplayOperation({ ...operation, id: `virtual:${operation.id}:${date}`, _series: operation, _occurrence: { occurrence_date: date, status_override: false }, scheduled_date: date, status: operation.status, completed: operation.completed }))));
+      // Durable occurrence rows cover the long calendar history. When they
+      // are temporarily unavailable, only materialize a short display
+      // horizon instead of expanding every daily series into 370 DOM/data
+      // rows on every repaint.
+      recurringDateKeys(operation, 45).forEach((date) => instances.push(ongoingDisplayOperation(completedDisplayOperation({ ...operation, id: `virtual:${operation.id}:${date}`, _series: operation, _occurrence: { occurrence_date: date, status_override: false }, scheduled_date: date, status: operation.status, completed: operation.completed }))));
       return;
     }
     rows.forEach((row) => instances.push(ongoingDisplayOperation(completedDisplayOperation({
@@ -441,8 +460,12 @@ function operationInstances() {
       status_override: Boolean(row.status_override),
     }))));
   });
+  operationInstances.cacheKey = cacheKey;
+  operationInstances.cache = instances;
   return instances;
 }
+operationInstances.cacheKey = "";
+operationInstances.cache = null;
 
 function operationDisplayIdentity(operation) {
   if (operation?._occurrence?.id) return `occurrence:${operation._occurrence.id}`;
@@ -612,8 +635,28 @@ async function reconcileRecurringCompletion() {
 
 let operationSyncChannel = null;
 let operationSyncInFlight = false;
+let operationRefreshQueued = false;
+let lastDurableOperationSnapshot = "";
+
+function durableOperationSnapshot(operationsSnapshot = [], occurrencesSnapshot = []) {
+  const operationRows = (Array.isArray(operationsSnapshot) ? operationsSnapshot : []).map((row) => [
+    row?.id, row?.status, Boolean(row?.completed), row?.completed_on,
+    row?.scheduled_date, row?.scheduled_time, row?.scheduled_end_date,
+    row?.schedule_mode, row?.updated_at,
+  ]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  const occurrenceRows = (Array.isArray(occurrencesSnapshot) ? occurrencesSnapshot : []).map((row) => [
+    row?.id, row?.operation_id, row?.occurrence_date, row?.status,
+    Boolean(row?.completed), row?.completed_on, row?.status_override, row?.updated_at,
+  ]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  return JSON.stringify([operationRows, occurrenceRows]);
+}
+
 async function refreshDurableOperationState() {
-  if (!client || !currentUser || operationSyncInFlight) return;
+  if (!client || !currentUser) return;
+  if (operationSyncInFlight) {
+    operationRefreshQueued = true;
+    return;
+  }
   operationSyncInFlight = true;
   try {
     const [operationResult, occurrenceResult] = await Promise.all([
@@ -630,6 +673,9 @@ async function refreshDurableOperationState() {
     // settling. Never turn a populated queue into an empty one because of
     // that transient response; the next realtime event or boot will retry.
     if (!remoteOperations.length && operations.length) return;
+    const remoteSnapshot = durableOperationSnapshot(remoteOperations, remoteOccurrences);
+    if (remoteSnapshot === lastDurableOperationSnapshot) return;
+    lastDurableOperationSnapshot = remoteSnapshot;
     // A realtime/focus refresh returns only durable rows.  The initial boot
     // also repairs the current day's standing operations (morning, journal,
     // reading, gym, and evening debrief).  Replacing the repaired queue with
@@ -650,8 +696,14 @@ async function refreshDurableOperationState() {
     announceOperationsLoaded();
     renderQueue();
     renderCalendar();
+  } catch (error) {
+    console.warn("Durable operation refresh skipped after a transient error", error);
   } finally {
     operationSyncInFlight = false;
+    if (operationRefreshQueued) {
+      operationRefreshQueued = false;
+      scheduleDurableOperationRefresh(250);
+    }
   }
 }
 
@@ -660,8 +712,8 @@ function subscribeToOperationSync() {
   try {
     if (operationSyncChannel) client.removeChannel(operationSyncChannel);
     operationSyncChannel = client.channel(`aegis-operation-sync-${currentUser.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "operations", filter: `user_id=eq.${currentUser.id}` }, () => { void refreshDurableOperationState(); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "operation_occurrences", filter: `user_id=eq.${currentUser.id}` }, () => { void refreshDurableOperationState(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "operations", filter: `user_id=eq.${currentUser.id}` }, () => { scheduleDurableOperationRefresh(250); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "operation_occurrences", filter: `user_id=eq.${currentUser.id}` }, () => { scheduleDurableOperationRefresh(250); })
       .subscribe();
   } catch (error) {
     // Realtime is an enhancement only. A channel failure must not abort boot
@@ -672,10 +724,10 @@ function subscribeToOperationSync() {
 }
 
 let operationRefreshTimer = null;
-function scheduleDurableOperationRefresh() {
+function scheduleDurableOperationRefresh(delay = 160) {
   if (!client || !currentUser) return;
   clearTimeout(operationRefreshTimer);
-  operationRefreshTimer = setTimeout(() => { void refreshDurableOperationState(); }, 80);
+  operationRefreshTimer = setTimeout(() => { void refreshDurableOperationState(); }, delay);
 }
 
 window.addEventListener("focus", scheduleDurableOperationRefresh);
@@ -2487,14 +2539,12 @@ async function boot() {
     operations = await seedIfEmpty();
     await loadOperationMissionLinks();
     await syncOperationMissionLinks();
-    await loadOperationMissionLinks();
     await syncDailyReadingOperation();
     await loadOccurrences();
     await ensureRecurringOccurrences();
     await markExpiredOperationsMissed();
     await reconcileRecurringCompletion();
     await reconcileMeasuredMissionCounts();
-    await syncDailyReadingOperation();
     subscribeToOperationSync();
   } else {
     operations = await ensureTodayOperations(local.length ? local : starterOperations());

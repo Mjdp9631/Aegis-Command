@@ -168,26 +168,50 @@ function render({ data, issues }) {
   target.innerHTML = `<div class="panel-head"><div><p class="eyebrow blue-text">SYSTEM INTEGRITY / WEEKLY REVIEW</p><h3>Clean inputs. Better decisions.</h3><p class="body-copy">${review.start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${review.end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}. This review observes the record; it does not rewrite it.</p></div><span class="system-audit-status ${issues.length ? "has-issues" : "clean"}">${severity}</span></div><div class="system-review-columns"><section><p class="eyebrow">DATA QUALITY MONITOR · ${issues.length} ISSUE${issues.length === 1 ? "" : "S"}</p><ul class="system-audit-list">${issueRows}</ul></section><section><p class="eyebrow">SEVEN-DAY OPERATING REVIEW</p><div class="system-review-stats">${stats}</div><div class="system-review-focus"><span>TOMORROW'S FOCUS</span><strong>${escape(review.focus)}</strong></div></section></div><div class="system-review-signals"><p class="eyebrow">THIRTY-DAY CROSS-SYSTEM SIGNALS</p><ul>${signals.map((signal) => `<li><span>${escape(signal.label)}</span><small>${escape(signal.text)}</small></li>`).join("")}</ul></div>`;
 }
 
+let reviewLoadTimer = null;
+let reviewLoadInFlight = false;
+let reviewLoadQueued = false;
+
+function scheduleReviewLoad(delay = 180) {
+  if (!supabase) return;
+  clearTimeout(reviewLoadTimer);
+  reviewLoadTimer = setTimeout(() => { void load(); }, delay);
+}
+
 async function load() {
   if (!supabase) return;
-  const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) return;
+  if (reviewLoadInFlight) {
+    reviewLoadQueued = true;
+    return;
+  }
+  reviewLoadInFlight = true;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData.session?.user?.id;
+    if (!userId) return;
   const [operationsResult, occurrencesResult, missionsResult, tradesResult, masteryResult, trainingResult, projectsResult, recoveryResult] = await Promise.all([
-    supabase.from("operations").select("*"),
-    supabase.from("operation_occurrences").select("*"),
-    supabase.from("missions").select("*"),
-    supabase.from("trade_debriefs").select("*"),
-    supabase.from("mastery_entries").select("*"),
-    supabase.from("training_sessions").select("*"),
-    supabase.from("business_projects").select("*"),
-    supabase.from("recovery_logs").select("*")
+    supabase.from("operations").select("*").eq("user_id", userId),
+    supabase.from("operation_occurrences").select("*").eq("user_id", userId),
+    supabase.from("missions").select("*").eq("user_id", userId),
+    supabase.from("trade_debriefs").select("*").eq("user_id", userId),
+    supabase.from("mastery_entries").select("*").eq("user_id", userId),
+    supabase.from("training_sessions").select("*").eq("user_id", userId),
+    supabase.from("business_projects").select("*").eq("user_id", userId),
+    supabase.from("recovery_logs").select("*").eq("user_id", userId)
   ]);
   const data = { operations: operationsResult.data || [], occurrences: occurrencesResult.data || [], missions: missionsResult.data || [], trades: tradesResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], projects: projectsResult.data || [], recoveryLogs: recoveryResult.data || [] };
   render({ data, issues: qualityReport(data) });
+  } finally {
+    reviewLoadInFlight = false;
+    if (reviewLoadQueued) {
+      reviewLoadQueued = false;
+      scheduleReviewLoad(250);
+    }
+  }
 }
 
 if (supabase) {
-  load();
-  ["aegis:missions-changed", "aegis:operations-changed", "aegis:mastery-changed", "aegis:data-changed"].forEach((eventName) => window.addEventListener(eventName, () => setTimeout(load, 180)));
-  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 120); });
+  void load();
+  ["aegis:missions-changed", "aegis:operations-changed", "aegis:mastery-changed", "aegis:data-changed"].forEach((eventName) => window.addEventListener(eventName, () => scheduleReviewLoad(220)));
+  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; scheduleReviewLoad(180); });
 }
