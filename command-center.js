@@ -32,14 +32,77 @@ function fallbackMissionProgress(mission) {
   return mission?.completed ? 100 : Number(mission?.progress) || 0;
 }
 
+function fallbackOperationFamilyKey(operation) {
+  if (operation?.operation_family_key) return String(operation.operation_family_key);
+  return `${String(operation?.title || "operation").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${normalizeCategory(operation?.category).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`.replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+
+function fallbackOperationRows() {
+  const rows = Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [];
+  const grouped = new Map();
+  rows.filter((operation) => operation && !operation._occurrence && normalizeCategory(operation.category) !== "Life Admin").forEach((operation) => {
+    const key = fallbackOperationFamilyKey(operation);
+    if (!grouped.has(key)) grouped.set(key, { ...operation, operation_family_key: key });
+  });
+  return [...grouped.values()];
+}
+
+function fallbackLinkedOperations(mission) {
+  return fallbackOperationRows().filter((operation) => String(operation.mission_id || "") === String(mission?.id) || (Array.isArray(operation.linked_mission_ids) && operation.linked_mission_ids.some((id) => String(id) === String(mission?.id))));
+}
+
+function renderFallbackOperationLinkage(form, mission) {
+  const linkedTarget = form.querySelector("#fallback-linked-operations");
+  const existing = form.querySelector("#fallback-operation-existing");
+  if (!linkedTarget || !existing) return;
+  const linked = fallbackLinkedOperations(mission);
+  linkedTarget.innerHTML = linked.length
+    ? linked.map((operation) => `<article class="mission-editor-linked-row"><div><strong>${escape(operation.title)}</strong><span>${escape(operation.status || (operation.completed ? "Complete" : "Queued"))}${operation.category ? ` · ${escape(operation.category)}` : ""}</span></div><button type="button" class="text-button mission-operation-unlink" data-fallback-unlink-operation="${escape(operation.id)}">Unlink pathway</button></article>`).join("")
+    : '<p class="mission-details-empty">No operation is attached yet. Choose Add existing operation or Create operation below.</p>';
+  const rows = fallbackOperationRows();
+  existing.innerHTML = rows.length ? rows.map((operation) => `<option value="${escape(operation.id)}">${escape(operation.title)}${operation.scheduled_date ? ` · ${escape(operation.scheduled_date)}` : " · unscheduled"}${operation.category ? ` · ${escape(operation.category)}` : ""}${operation.mission_id ? " · pathway linked" : ""}</option>`).join("") : '<option value="">No existing operations available</option>';
+}
+
+async function applyFallbackOperationLinkage(mission, form) {
+  if (!supabase || !mission) return;
+  const mode = form.elements.operation_mode?.value || "none";
+  const sessionResult = await supabase.auth.getSession();
+  const userId = sessionResult.data?.session?.user?.id;
+  if (!userId || mode === "none") return;
+  if (mode === "existing") {
+    const selected = [...(form.elements.operation_existing?.selectedOptions || [])].map((option) => option.value).filter(Boolean);
+    for (const operationId of selected) {
+      await supabase.from("operations").update({ mission_id: mission.id, allow_unlinked: false }).eq("id", operationId).eq("user_id", userId);
+    }
+  } else if (mode === "create") {
+    const title = String(form.elements.operation_title?.value || "").trim();
+    if (!title) return;
+    await supabase.from("operations").insert({ user_id: userId, title, category: normalizeCategory(mission.category), brief: String(form.elements.operation_brief?.value || "").trim() || mission.completion_definition || "Complete one operation for this mission.", mission_id: mission.id, status: "Queued", completed: false, scheduled_date: form.elements.operation_date?.value || new Date().toISOString().slice(0, 10), operation_family_key: fallbackOperationFamilyKey({ title, category: mission.category }), allow_unlinked: false });
+  }
+}
+
 function ensureFallbackMissionEditor() {
   if (fallbackMissionEditor?.isConnected) return fallbackMissionEditor;
   const dialog = document.createElement("dialog");
   dialog.id = "fallback-mission-editor-dialog";
-  dialog.innerHTML = `<form method="dialog" class="dialog-card mission-editor-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Edit the objective.</h2><label>Mission <input name="title" required /></label><label>Matrix priority <select name="priority"><option>Do now</option><option>Schedule</option><option>Delegate</option><option>Eliminate</option></select></label><label>What does complete mean? <textarea name="definition" rows="4"></textarea></label><div class="two-col"><label>Completed count <input name="completed_count" type="number" min="0" step="1" /></label><label>Total required <input name="target_count" type="number" min="1" step="1" /></label></div><label class="check-label"><input name="completed" type="checkbox" /> Mission complete</label><button class="primary" type="submit">Save mission</button></form>`;
+  dialog.innerHTML = `<form method="dialog" class="dialog-card mission-editor-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Define the evidence.</h2><label>Mission <input name="title" required /></label><label>Matrix priority <select name="priority"><option>Do now</option><option>Schedule</option><option>Delegate</option><option>Eliminate</option></select></label><label>What does complete mean? <textarea name="definition" rows="4"></textarea></label><div class="two-col"><label>Completed count <input name="completed_count" type="number" min="0" step="1" /></label><label>Total required <input name="target_count" type="number" min="1" step="1" /></label></div><label class="check-label"><input name="completed" type="checkbox" /> Mission complete</label><fieldset class="mission-operation-plan"><legend>Operation linkage</legend><p class="mission-operation-help">Link an existing operation or create one. One operation may advance multiple missions.</p><p class="eyebrow">CURRENT LINKED PATHWAYS</p><div id="fallback-linked-operations" class="mission-editor-linked-list"></div><label>Operation action <select name="operation_mode"><option value="none">No operation change</option><option value="existing">Add existing operation</option><option value="create">Create operation</option></select></label><div class="mission-operation-fields" data-fallback-existing hidden><label>Existing operation<select name="operation_existing" id="fallback-operation-existing" multiple size="5"></select></label></div><div class="mission-operation-fields" data-fallback-create hidden><label>Operation <input name="operation_title" placeholder="What moves this mission forward?" /></label><label>Brief <textarea name="operation_brief" rows="2"></textarea></label><label>First date <input name="operation_date" type="date" /></label></div></fieldset><button class="primary" type="submit">Save mission</button></form>`;
   document.body.appendChild(dialog);
   const form = dialog.querySelector("form");
   dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
+  form.elements.operation_mode.addEventListener("change", () => {
+    form.querySelector("[data-fallback-existing]").hidden = form.elements.operation_mode.value !== "existing";
+    form.querySelector("[data-fallback-create]").hidden = form.elements.operation_mode.value !== "create";
+  });
+  form.addEventListener("click", async (event) => {
+    const unlink = event.target.closest("[data-fallback-unlink-operation]");
+    if (!unlink) return;
+    event.preventDefault();
+    const sessionResult = await supabase?.auth.getSession();
+    const userId = sessionResult?.data?.session?.user?.id;
+    if (!userId) return alert("Sign in before unlinking an operation.");
+    await supabase.from("operations").update({ mission_id: null, allow_unlinked: true }).eq("id", unlink.dataset.fallbackUnlinkOperation).eq("user_id", userId);
+    renderFallbackOperationLinkage(form, (window.AEGIS_MISSIONS || []).find((row) => String(row.id) === String(dialog.dataset.missionId)));
+  });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const mission = (window.AEGIS_MISSIONS || []).find((row) => String(row.id) === String(dialog.dataset.missionId));
@@ -60,6 +123,7 @@ function ensureFallbackMissionEditor() {
     if (!supabase) return alert("Sign in before editing a mission.");
     const { data, error } = await supabase.from("missions").update(payload).eq("id", mission.id).select().single();
     if (error) return alert(`Mission could not be updated: ${error.message}`);
+    await applyFallbackOperationLinkage(mission, form);
     dialog.close();
     window.AEGIS_MISSIONS = (window.AEGIS_MISSIONS || []).map((row) => String(row.id) === String(data.id) ? data : row);
     window.dispatchEvent(new CustomEvent("aegis:missions-loaded", { detail: { missions: window.AEGIS_MISSIONS, source: "fallback-mission-editor" } }));
@@ -79,6 +143,7 @@ async function openFallbackMissionEditor(id) {
   form.elements.completed_count.value = mission.completed_count || 0;
   form.elements.target_count.value = mission.target_count || 1;
   form.elements.completed.checked = Boolean(mission.completed);
+  renderFallbackOperationLinkage(form, mission);
   dialog.dataset.missionId = mission.id;
   if (!dialog.open) dialog.showModal();
 }
@@ -101,6 +166,7 @@ function render(missions, operations = []) {
   // race where the Command Center fetch completes before mission.js receives
   // its auth callback.
   window.AEGIS_MISSIONS = authoritativeMissions;
+  window.AEGIS_OPERATIONS = Array.isArray(operations) ? operations : [];
   window.dispatchEvent(new CustomEvent("aegis:missions-loaded", {
     detail: { missions: authoritativeMissions, source: "command-center" },
   }));
