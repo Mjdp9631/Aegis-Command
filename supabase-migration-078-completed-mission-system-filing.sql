@@ -10,10 +10,28 @@
 -- refreshes, and cross-browser updates cannot create duplicate XP evidence.
 
 alter table public.mastery_entries
+  add column if not exists logged_on date,
   add column if not exists source_mission_id uuid references public.missions(id) on delete set null;
 
 alter table public.business_projects
+  add column if not exists logged_on date,
   add column if not exists source_mission_id uuid references public.missions(id) on delete set null;
+
+update public.mastery_entries
+set logged_on = (created_at at time zone 'America/New_York')::date
+where logged_on is null;
+
+update public.business_projects
+set logged_on = (created_at at time zone 'America/New_York')::date
+where logged_on is null;
+
+alter table public.mastery_entries
+  alter column logged_on set default ((now() at time zone 'America/New_York')::date),
+  alter column logged_on set not null;
+
+alter table public.business_projects
+  alter column logged_on set default ((now() at time zone 'America/New_York')::date),
+  alter column logged_on set not null;
 
 -- Keep the category vocabulary used by the current Self Mastery UI available
 -- to both manual entries and mission-generated evidence.
