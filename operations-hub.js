@@ -929,7 +929,7 @@ function attachMissionLink(operation) {
   const metric = inferredMetricForOperation(operation) || operation.metric_key || null;
   if (category && operation.category !== category) operation.category = category;
   if (metric && operation.metric_key !== metric) operation.metric_key = metric;
-  if (operation?.allow_unlinked || category === "Life Admin") operation.mission_id = null;
+  if (operation?.allow_unlinked || category === "Life Admin" || window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE === true || window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE === true) operation.mission_id = null;
 }
 
 function missionNeedsScheduling(mission) {
@@ -1405,7 +1405,7 @@ async function persist(operation) {
     schedule_mode: scheduleMode(operation) === "weekly" ? "recurring" : scheduleMode(operation),
     operation_date: operation.operation_date || null,
     is_daily: Boolean(operation.is_daily),
-    mission_id: operation.mission_id || null,
+    mission_id: (window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE === true || window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE === true) ? null : (operation.mission_id || null),
     metric_key: operation.metric_key || null,
   operation_family_key: operationFamilyKey(operation),
     allow_unlinked: Boolean(operation.allow_unlinked),
@@ -1546,6 +1546,10 @@ async function reconcileMeasuredMissionCounts() {
 // absent, so this cannot create duplicate progress on a healthy deployment.
 async function repairMissionProgressFromCompletion(operation) {
   if (!client || !currentUser || normalizedStatus(operation) !== "Complete") return;
+  // Once the explicit pathway table is available, PostgreSQL is the only
+  // writer for measured progress. A browser-side repair here could recreate
+  // the duplicate XP/counter drift this rebuild is removing.
+  if (window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE === true) return;
   const linkedMissions = operationMissionIds(operation).map((id) => missions.find((mission) => String(mission.id) === String(id))).filter(Boolean);
   const measuredMissions = linkedMissions.filter((mission) => String(mission.completion_type || "").toLowerCase() === "units");
   if (!measuredMissions.length) return;
@@ -1878,6 +1882,7 @@ async function loadOperationMissionLinks() {
   });
   operations = operations.map((operation) => ({
     ...operation,
+    mission_id: familyLinksAvailable || legacyLinksAvailable ? null : operation.mission_id,
     linked_mission_ids: links.get(familyLinksAvailable ? operationFamilyKey(operation) : String(operation.id)) || (familyLinksAvailable ? [] : (operation.mission_id ? [operation.mission_id] : [])),
     operation_family_key: operationFamilyKey(operation),
     mission_link_mode: familyLinksAvailable ? "family" : (legacyLinksAvailable ? "legacy" : "operation"),
@@ -1886,6 +1891,9 @@ async function loadOperationMissionLinks() {
 }
 
 function operationMissionIds(operation) {
+  if (window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE === true || window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE === true) {
+    return Array.isArray(operation?.linked_mission_ids) ? operation.linked_mission_ids : [];
+  }
   return Array.isArray(operation?.linked_mission_ids) && operation.linked_mission_ids.length
     ? operation.linked_mission_ids
     : operation?.mission_id ? [operation.mission_id] : [];
@@ -1919,16 +1927,16 @@ async function loadCurrentBook() {
 async function syncDailyReadingOperation() {
   const operation = operations.find((item) => isReadingOperation(item) && dateOnly(item.operation_date) === operatingDayKey() && !item._occurrence);
   if (!operation) return;
-  const before = `${operation.brief || ""}|${operation.mission_id || ""}|${operation.metric_key || ""}`;
+  const before = `${operation.brief || ""}|${operation.metric_key || ""}`;
   operation.brief = readingBrief();
   operation.metric_key = "chapters_read";
   attachMissionLink(operation);
-  const after = `${operation.brief || ""}|${operation.mission_id || ""}|${operation.metric_key || ""}`;
+  const after = `${operation.brief || ""}|${operation.metric_key || ""}`;
   if (before === after) return;
   saveCachedOperations();
   if (client && currentUser && operation.id && !String(operation.id).startsWith("local-")) {
     const { error } = await client.from("operations")
-      .update({ brief: operation.brief, category: operation.category || "Self Mastery", mission_id: operation.mission_id || null, metric_key: operation.metric_key, allow_unlinked: Boolean(operation.allow_unlinked) })
+      .update({ brief: operation.brief, category: operation.category || "Self Mastery", metric_key: operation.metric_key, allow_unlinked: Boolean(operation.allow_unlinked) })
       .eq("id", operation.id)
       .eq("user_id", currentUser.id);
     if (error) console.warn("Could not sync current book to reading operation", error.message);
@@ -1938,11 +1946,11 @@ async function syncDailyReadingOperation() {
 async function syncOperationMissionLinks() {
   const pending = [];
   operations.forEach((operation) => {
-    const before = `${operation.mission_id || ""}|${operation.metric_key || ""}|${operation.category || ""}`;
+    const before = `${operation.metric_key || ""}|${operation.category || ""}|${operation.allow_unlinked ? "1" : "0"}`;
     attachMissionLink(operation);
-    const after = `${operation.mission_id || ""}|${operation.metric_key || ""}|${operation.category || ""}`;
+    const after = `${operation.metric_key || ""}|${operation.category || ""}|${operation.allow_unlinked ? "1" : "0"}`;
     if (before === after || !operation.id || String(operation.id).startsWith("local-")) return;
-    pending.push({ operation, payload: { mission_id: operation.mission_id || null, metric_key: operation.metric_key || null, category: operation.category || "Self Mastery", allow_unlinked: Boolean(operation.allow_unlinked) } });
+    pending.push({ operation, payload: { metric_key: operation.metric_key || null, category: operation.category || "Self Mastery", allow_unlinked: Boolean(operation.allow_unlinked) } });
   });
   if (!pending.length) return;
   saveCachedOperations();

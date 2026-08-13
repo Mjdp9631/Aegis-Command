@@ -286,7 +286,6 @@
             const linked = (Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : []).filter(operation => {
               const linkedIds = Array.isArray(operation.linked_mission_ids) ? operation.linked_mission_ids : null;
               if (window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE === true || window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE === true || operation.mission_link_mode === "family" || operation.mission_link_mode === "legacy") return Boolean(linkedIds?.some(linkedId => String(linkedId) === String(id)));
-              if (window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE === true || window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE === true || operation.mission_link_mode === "family" || operation.mission_link_mode === "legacy") return Boolean(linkedIds?.some(linkedId => String(linkedId) === String(id)));
               if (linkedIds && linkedIds.length) return linkedIds.some(linkedId => String(linkedId) === String(id));
               return String(operation.mission_id || "") === String(id);
             });

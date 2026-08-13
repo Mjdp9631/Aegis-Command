@@ -80,10 +80,7 @@ async function persistFallbackOperationLink(operation, mission, userId) {
   if (familyResult.error && /relation|table|schema cache|column/i.test(String(familyResult.error.message || ""))) {
     familyResult = await supabase.from("operation_mission_links").upsert({ user_id: userId, operation_id: operation.id, mission_id: mission.id, is_explicit: true }, { onConflict: "operation_id,mission_id" });
   }
-  if (familyResult.error && !/relation|table|schema cache|column/i.test(String(familyResult.error.message || ""))) return familyResult;
-  const update = await supabase.from("operations").update({ mission_id: mission.id, allow_unlinked: false }).eq("id", operation.id).eq("user_id", userId);
-  if (update.error && /allow_unlinked|column|schema cache/i.test(String(update.error.message || ""))) return supabase.from("operations").update({ mission_id: mission.id }).eq("id", operation.id).eq("user_id", userId);
-  return update;
+  return familyResult;
 }
 
 function renderFallbackOperationLinkage(form, mission) {
@@ -115,7 +112,7 @@ async function applyFallbackOperationLinkage(mission, form) {
   } else if (mode === "create") {
     const title = String(form.elements.operation_title?.value || "").trim();
     if (!title) return;
-    const operationPayload = { user_id: userId, title, category: normalizeCategory(mission.category), brief: String(form.elements.operation_brief?.value || "").trim() || mission.completion_definition || "Complete one operation for this mission.", mission_id: mission.id, status: "Queued", completed: false, scheduled_date: form.elements.operation_date?.value || new Date().toISOString().slice(0, 10), operation_family_key: fallbackOperationFamilyKey({ title, category: mission.category }), allow_unlinked: false };
+    const operationPayload = { user_id: userId, title, category: normalizeCategory(mission.category), brief: String(form.elements.operation_brief?.value || "").trim() || mission.completion_definition || "Complete one operation for this mission.", mission_id: null, status: "Queued", completed: false, scheduled_date: form.elements.operation_date?.value || new Date().toISOString().slice(0, 10), operation_family_key: fallbackOperationFamilyKey({ title, category: mission.category }), allow_unlinked: false };
     const inserted = await supabase.from("operations").insert(operationPayload).select().single();
     if (inserted.error) throw new Error(inserted.error.message);
     const result = await persistFallbackOperationLink(inserted.data, mission, userId);
@@ -262,7 +259,7 @@ async function load() {
   ]);
   if (!missionsResult.error) {
     const familyLinksAvailable = !familyLinksResult.error;
-    const legacyLinksAvailable = !legacyLinksResult.error;
+    const legacyLinksAvailable = !familyLinksAvailable && !legacyLinksResult.error;
     const familyLinks = familyLinksAvailable ? (familyLinksResult.data || []) : [];
     const legacyLinks = legacyLinksAvailable ? (legacyLinksResult.data || []) : [];
     window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE = familyLinksAvailable;
@@ -271,6 +268,7 @@ async function load() {
       const normalizedFamilyKey = fallbackOperationFamilyKey(operation);
       return {
       ...operation,
+      mission_id: familyLinksAvailable || legacyLinksAvailable ? null : operation.mission_id,
       operation_family_key: normalizedFamilyKey,
       linked_mission_ids: [...new Set([
         ...(Array.isArray(operation.linked_mission_ids) ? operation.linked_mission_ids : []),

@@ -106,7 +106,11 @@ function operationMatchesMission(operation, mission) {
 function operationsForMission(mission) {
   const grouped = new Map();
   const mergedOperations = new Map();
-  [...missionOperations, ...(Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [])]
+  const authoritativeLinks = window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE === true || window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE === true;
+  const sourceRows = authoritativeLinks && missionOperations.length
+    ? missionOperations
+    : [...missionOperations, ...(Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [])];
+  sourceRows
     .filter((operation) => operation && operation.id)
     .forEach((operation) => {
       const key = String(operation.id);
@@ -115,7 +119,9 @@ function operationsForMission(mission) {
       else mergedOperations.set(key, {
         ...current,
         ...operation,
-        linked_mission_ids: [...new Set([...(current.linked_mission_ids || []), ...(operation.linked_mission_ids || [])])],
+        linked_mission_ids: authoritativeLinks
+          ? (Array.isArray(operation.linked_mission_ids) ? operation.linked_mission_ids : current.linked_mission_ids)
+          : [...new Set([...(current.linked_mission_ids || []), ...(operation.linked_mission_ids || [])])],
       });
     });
   const allOperations = [...mergedOperations.values()];
@@ -336,7 +342,6 @@ async function unlinkMissionOperation(operationId, missionId) {
       remainingIds = (data || []).map((row) => row.mission_id);
     }
   }
-  const nextLegacyMission = remainingIds[0] || null;
   const familyOperations = missionOperations.filter((item) => operationFamilyLinkKeys(item).some((key) => familyKeys.includes(key)) && !isLocalOperationId(item.id));
   if (client && familyOperations.length) {
     const legacyResult = await client.from("operation_mission_links")
@@ -345,15 +350,13 @@ async function unlinkMissionOperation(operationId, missionId) {
     if (legacyResult.error && !/relation|table|schema cache/i.test(String(legacyResult.error.message || ""))) {
       window.alert(`The family link was removed, but one legacy pathway could not be updated: ${legacyResult.error.message}`);
     }
-    const legacyPrimary = nextLegacyMission
-      ? await client.from("operations").update({ mission_id: nextLegacyMission }).eq("user_id", session.user.id).eq("mission_id", missionId).in("id", familyOperations.map((item) => item.id))
-      : await client.from("operations").update({ mission_id: null }).eq("user_id", session.user.id).eq("mission_id", missionId).in("id", familyOperations.map((item) => item.id));
+    const legacyPrimary = await client.from("operations").update({ mission_id: null }).eq("user_id", session.user.id).eq("mission_id", missionId).in("id", familyOperations.map((item) => item.id));
     if (legacyPrimary.error && !/column|schema cache/i.test(String(legacyPrimary.error.message || ""))) {
       window.alert(`The family link was removed, but one legacy operation path could not be updated: ${legacyPrimary.error.message}`);
     }
   }
   missionOperations = missionOperations.map((item) => familyOperations.some((familyOperation) => String(familyOperation.id) === String(item.id))
-    ? { ...item, mission_id: String(item.mission_id || "") === String(missionId) ? nextLegacyMission : item.mission_id, linked_mission_ids: remainingIds, mission_link_mode: manyToManyAvailable ? "family" : item.mission_link_mode }
+    ? { ...item, mission_id: manyToManyAvailable ? null : item.mission_id, linked_mission_ids: remainingIds, mission_link_mode: manyToManyAvailable ? "family" : item.mission_link_mode }
     : item);
   window.AEGIS_OPERATIONS = missionOperations;
   window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "mission-unlink", operations: missionOperations } }));
@@ -543,7 +546,10 @@ function renderMissionEditorLinkedOperations(form, prefix, mission) {
 }
 
 function operationPlanRows() {
-  const rows = [...missionOperations, ...(Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [])];
+  const authoritativeLinks = window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE === true || window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE === true;
+  const rows = authoritativeLinks && missionOperations.length
+    ? missionOperations
+    : [...missionOperations, ...(Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [])];
   const grouped = new Map();
   rows.filter((operation) => {
     if (!operation || operation._occurrence) return false;
@@ -558,6 +564,7 @@ function operationPlanRows() {
     else if (!current.family_operation_ids.some((id) => String(id) === String(operation.id))) {
       current.family_operation_ids.push(operation.id);
       current.family_count += 1;
+      current.linked_mission_ids = [...new Set([...(current.linked_mission_ids || []), ...(operation.linked_mission_ids || [])])];
     }
   });
   return [...grouped.values()];
@@ -604,14 +611,7 @@ async function attachExistingOperation(operation, mission) {
 
   // Migration 073 is optional for older deployments. Preserve the old path
   // until the many-to-many table exists, without blocking mission saves.
-  const fallback = { mission_id: mission.id, allow_unlinked: false };
-  if (mission.metric_key) fallback.metric_key = mission.metric_key;
-  result = await client.from("operations").update(fallback).eq("id", operation.id).eq("user_id", session.user.id).select().single();
-  if (result.error && /allow_unlinked|column|schema cache/i.test(String(result.error.message || ""))) {
-    delete fallback.allow_unlinked;
-    result = await client.from("operations").update(fallback).eq("id", operation.id).eq("user_id", session.user.id).select().single();
-  }
-  return result;
+  return { data: null, error: new Error("No explicit operation-pathway table is available. Run migration 076 before linking operations.") };
 }
 
 function populateOperationPlanChoices(form, prefix, mission = null) {
@@ -969,6 +969,7 @@ async function loadData() {
         }
       });
       window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE = familyLinksAvailable;
+      window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE = legacyLinksAvailable;
       if (Array.isArray(operationRows)) operationRows = operationRows.map((operation) => {
         const normalizedFamilyKey = operationFamilyKey(operation);
         const explicitIds = [
@@ -978,6 +979,7 @@ async function loadData() {
         ].filter((id, index, ids) => ids.findIndex((candidate) => String(candidate) === String(id)) === index);
         return {
           ...operation,
+          mission_id: familyLinksAvailable || legacyLinksAvailable ? null : operation.mission_id,
           operation_family_key: normalizedFamilyKey,
           mission_link_mode: familyLinksAvailable ? "family" : (legacyLinksAvailable ? "legacy" : "operation"),
           linked_mission_ids: explicitIds.length
