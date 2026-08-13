@@ -1214,12 +1214,10 @@ function init() {
   const dialog = $("#detective-trade-dialog");
   const tradeTime = $("#detective-time");
   if (tradeTime) {
-    // Keep date/time as manual text entry. The native datetime-local control
-    // opens a calendar popup that is slow and inconsistent across browsers.
-    tradeTime.type = "text";
-    tradeTime.inputMode = "numeric";
-    tradeTime.placeholder = "YYYY-MM-DDTHH:MM";
-    tradeTime.autocomplete = "off";
+    // Preserve the original datetime-local format and value behavior. The
+    // calendar affordance is hidden in detective.css; users still enter the
+    // same date/time format and the existing timestamp conversion is unchanged.
+    tradeTime.type = "datetime-local";
   }
   const sessionTime = $("#detective-session-time");
   if (sessionTime) {
