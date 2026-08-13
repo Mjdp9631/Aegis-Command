@@ -365,6 +365,13 @@ function ensureMissionDetailsDialog() {
 function openMissionDetails(mission) {
   if (!mission) return;
   const dialog = ensureMissionDetailsDialog();
+  // A different route can leave an older native dialog open. Close it before
+  // opening the mission surface so showModal() is not rejected by the browser.
+  document.querySelectorAll("dialog[open]").forEach((openDialog) => {
+    if (openDialog !== dialog) {
+      try { openDialog.close(); } catch (error) { openDialog.removeAttribute("open"); }
+    }
+  });
   dialog.dataset.missionId = mission.id;
   dialog.querySelector("#mission-details-title").textContent = mission.title;
   dialog.querySelector("#mission-details-progress").textContent = `${mission.category} · ${missionLabel(mission)}`;
@@ -380,14 +387,13 @@ function openMissionDetails(mission) {
     ? linked.map((operation) => `<article class="mission-operation-link"><div><strong>${escape(operation.title)}</strong><span>${escape(operationStatus(operation))}${operation.family_count > 1 ? ` · ${escape(operation.family_count)} completion records` : ""}${operationDate(operation) ? ` · ${escape(operationDate(operation))}` : ""}${operation.category ? ` · ${escape(operation.category)}` : ""}</span></div><button type="button" class="text-button mission-operation-unlink" data-unlink-operation="${escape(operation.id)}" data-unlink-mission="${escape(mission.id)}">Unlink pathway</button></article>`).join("")
     : '<p class="mission-details-empty">No operation is attached yet. Schedule one from this mission or link it when creating an operation.</p>';
   if (dialog.open) dialog.close();
-  setTimeout(() => {
-    try {
-      if (!dialog.open) dialog.showModal();
-    } catch (error) {
-      console.warn("Mission details modal could not open; using visible dialog fallback", error);
-      dialog.setAttribute("open", "");
-    }
-  }, 0);
+  try {
+    dialog.showModal();
+  } catch (error) {
+    console.warn("Mission details modal could not open; using visible dialog fallback", error);
+    dialog.setAttribute("open", "");
+  }
+  return true;
 }
 
 async function openEditorFromMissionCard(mission) {
@@ -422,8 +428,15 @@ async function openEditorFromMissionCard(mission) {
 }
 
 window.AEGIS_OPEN_MISSION_DETAILS = (id) => {
-  const mission = missionForId(id);
-  openMissionDetails(mission);
+  try {
+    const mission = missionForId(id);
+    if (!mission) throw new Error(`Mission ${id} was not found in the rendered or shared mission feed.`);
+    return openMissionDetails(mission);
+  } catch (error) {
+    console.error("Mission details could not open", error);
+    window.alert("Mission details could not open. Refresh the Missions tab once and try again.");
+    return false;
+  }
 };
 window.AEGIS_OPEN_MISSION_EDITOR = (id) => {
   const mission = missionForId(id);
