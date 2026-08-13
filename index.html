@@ -244,6 +244,48 @@
         // the real editor or its expanded cards.
         (() => {
           const esc = value => String(value ?? "").replace(/[&<>'"]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
+          const fallbackMissionRows = () => Array.isArray(window.AEGIS_MISSIONS) ? window.AEGIS_MISSIONS : [];
+          const fallbackMissionForId = id => {
+            const row = fallbackMissionRows().find(item => String(item.id) === String(id));
+            if (row) return row;
+            const card = [...document.querySelectorAll("[data-mission-ledger-card], [data-open-mission]")].find(item => String(item.dataset.missionId) === String(id));
+            if (!card) return null;
+            const title = card.querySelector("h3, strong")?.textContent?.trim() || "Mission";
+            const meta = card.querySelector("p")?.textContent?.trim() || "Self Mastery mission";
+            const category = meta.split(/\s+mission\b/i)[0].trim() || "Self Mastery";
+            const progress = Number(card.querySelector(".meter i")?.style?.width?.replace("%", "")) || 0;
+            return { id, title, category, priority: card.querySelector(".eyebrow")?.textContent?.trim() || "Schedule", progress, completion_definition: card.querySelector("small")?.textContent?.trim() || "Define the evidence that proves this mission is complete.", completed: progress >= 100 };
+          };
+          const ensureFallbackMissionDialog = () => {
+            let dialog = document.getElementById("mission-fallback-details");
+            if (dialog) return dialog;
+            dialog = document.createElement("dialog");
+            dialog.id = "mission-fallback-details";
+            dialog.innerHTML = `<form method="dialog" class="dialog-card mission-details-card"><button class="dialog-close" type="submit" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">MISSION CONTROL / READ ONLY</p><h2 id="fallback-mission-title">Mission</h2><p id="fallback-mission-meta" class="body-copy"></p><div class="mission-details-fields"><div><span>Category</span><strong id="fallback-mission-category"></strong></div><div><span>Priority</span><strong id="fallback-mission-priority"></strong></div><div><span>Progress</span><strong id="fallback-mission-progress"></strong></div></div><p class="eyebrow">COMPLETION EVIDENCE</p><div id="fallback-mission-definition" class="mission-details-definition"></div><div class="mission-details-actions"><button class="secondary" id="fallback-mission-edit" type="button">Edit mission</button></div></form>`;
+            document.body.appendChild(dialog);
+            dialog.querySelector("#fallback-mission-edit").addEventListener("click", event => {
+              event.preventDefault();
+              const id = dialog.dataset.missionId;
+              if (dialog.open) dialog.close();
+              if (typeof window.AEGIS_OPEN_MISSION_EDITOR === "function") window.AEGIS_OPEN_MISSION_EDITOR(id);
+              else window.dispatchEvent(new CustomEvent("aegis:open-mission-editor", { detail: { id } }));
+            });
+            return dialog;
+          };
+          const openFallbackMissionDialog = id => {
+            const mission = fallbackMissionForId(id);
+            if (!mission) return false;
+            const dialog = ensureFallbackMissionDialog();
+            dialog.dataset.missionId = id;
+            dialog.querySelector("#fallback-mission-title").textContent = mission.title || "Mission";
+            dialog.querySelector("#fallback-mission-meta").textContent = `${mission.category || "Self Mastery"} · ${mission.completed ? "Complete" : "Active"}`;
+            dialog.querySelector("#fallback-mission-category").textContent = mission.category || "Self Mastery";
+            dialog.querySelector("#fallback-mission-priority").textContent = mission.priority || "Schedule";
+            dialog.querySelector("#fallback-mission-progress").textContent = mission.completion_type === "units" && Number(mission.target_count) > 0 ? `${mission.completed_count || 0} / ${mission.target_count} ${mission.unit_label || "units"}` : `${Number(mission.progress) || 0}%`;
+            dialog.querySelector("#fallback-mission-definition").textContent = mission.completion_definition || "Define the evidence that proves this mission is complete.";
+            try { if (dialog.open) dialog.close(); dialog.showModal(); } catch (error) { dialog.setAttribute("open", ""); }
+            return true;
+          };
           const paint = rows => {
             if (window.AEGIS_MISSION_RENDERER_READY || !Array.isArray(rows)) return;
             const normalized = rows.map(row => ({ ...row, progress: row.completion_type === "units" && Number(row.target_count) > 0 ? Math.round((Math.min(Number(row.completed_count) || 0, Number(row.target_count)) / Number(row.target_count)) * 100) : row.completed ? 100 : Number(row.progress) || 0 }));
@@ -302,25 +344,16 @@
             event.preventDefault();
             event.stopImmediatePropagation();
             const id = card.dataset.missionId;
-            if (typeof window.AEGIS_OPEN_MISSION_DETAILS === "function") {
-              Promise.resolve(window.AEGIS_OPEN_MISSION_DETAILS(id)).catch(error => console.warn("Mission details could not open", error));
-            } else {
-              window.dispatchEvent(new CustomEvent("aegis:open-mission-details", { detail: { id } }));
-              let attempts = 0;
-              const retry = () => {
-                if (typeof window.AEGIS_OPEN_MISSION_DETAILS === "function") return void window.AEGIS_OPEN_MISSION_DETAILS(id);
-                if (++attempts < 15) return void setTimeout(retry, 100);
-                console.warn("Mission details did not become available", id);
-              };
-              setTimeout(retry, 0);
-            }
+            try { if (typeof window.AEGIS_OPEN_MISSION_DETAILS === "function") window.AEGIS_OPEN_MISSION_DETAILS(id); }
+            catch (error) { console.warn("Mission details module could not open", error); }
+            if (!document.querySelector("#mission-details-dialog[open]")) openFallbackMissionDialog(id);
           }, true);
         })();
       })();
     </script>
     <script type="module" src="auth-flow.js"></script>
     <script type="module" src="cross-browser-sync.js?v=realtime-v2"></script>
-    <script type="module" src="mission.js?v=mission-ledger-boot-v13"></script>
+    <script type="module" src="mission.js?v=mission-ledger-boot-v14"></script>
     <script type="module" src="phase-protocol.js?v=phase-protocol-v7"></script>
     <script type="module" src="detective.js?v=account-profit-deposits-v2"></script>
     <script type="module" src="brain-review.js?v=correction-feedback-v1"></script>
