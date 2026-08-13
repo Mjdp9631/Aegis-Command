@@ -1,6 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { effectiveOperations } from "./operation-state.js?v=shared-operation-state-v2";
-
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const $ = (selector) => document.querySelector(selector);
@@ -37,18 +35,28 @@ function fallbackOperationFamilyKey(operation) {
   return `${String(operation?.title || "operation").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${normalizeCategory(operation?.category).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`.replace(/-+/g, "-").replace(/^-|-$/g, "");
 }
 function fallbackDisplayFamilyKey(operation) {
-  const title = String(operation?.title || "operation").toLowerCase().trim()
+  const rawTitle = String(operation?.title || "operation");
+  if (/(?:physical therapy|\bpt\b|orthopedic|acl|rehab|rehabilitation)/i.test(rawTitle) && !/appointment|visit/i.test(rawTitle)) return `complete-10-pt-sessions-${normalizeCategory(operation?.category).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const title = rawTitle.toLowerCase().trim()
     .replace(/\b20\d{2}[-/]\d{2}[-/]\d{2}\b/g, "")
     .replace(/\b(?:session|sessions|chapter|chapters)\s*#?\s*\d+\b/g, "")
+    .replace(/\s*[–—-]?\s*pt\s*$/i, "")
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "operation";
   return `${title}-${normalizeCategory(operation?.category).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`.replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+function fallbackOperationLabel(operation) {
+  const title = String(operation?.title || "");
+  if (/(?:physical therapy|\bpt\b|orthopedic|acl|rehab|rehabilitation)/i.test(title) && !/appointment|visit/i.test(title)) return "Complete 10 PT sessions";
+  return title || "Operation";
 }
 function fallbackFamilyLinkKeys(operation) {
   return [...new Set([fallbackOperationFamilyKey(operation), fallbackDisplayFamilyKey(operation)].filter(Boolean))];
 }
 
 function fallbackOperationRows() {
-  const rows = Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [];
+  const rows = Array.isArray(window.AEGIS_OPERATION_FAMILIES)
+    ? window.AEGIS_OPERATION_FAMILIES
+    : (Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : []);
   const grouped = new Map();
   rows.filter((operation) => operation && !operation._occurrence && normalizeCategory(operation.category) !== "Life Admin").forEach((operation) => {
     const key = fallbackDisplayFamilyKey(operation);
@@ -92,7 +100,8 @@ function renderFallbackOperationLinkage(form, mission) {
     ? linked.map((operation) => `<article class="mission-editor-linked-row"><div><strong>${escape(operation.title)}</strong><span>${escape(operation.status || (operation.completed ? "Complete" : "Queued"))}${operation.category ? ` · ${escape(operation.category)}` : ""}</span></div><button type="button" class="text-button mission-operation-unlink" data-fallback-unlink-operation="${escape(operation.id)}">Unlink pathway</button></article>`).join("")
     : '<p class="mission-details-empty">No operation is attached yet. Choose Add existing operation or Create operation below.</p>';
   const rows = fallbackOperationRows();
-  existing.innerHTML = rows.length ? rows.map((operation) => `<option value="${escape(operation.id)}">${escape(operation.title)}${operation.scheduled_date ? ` · ${escape(operation.scheduled_date)}` : " · unscheduled"}${operation.category ? ` · ${escape(operation.category)}` : ""}${operation.mission_id ? " · pathway linked" : ""}</option>`).join("") : '<option value="">No existing operations available</option>';
+  const selected = new Set([...existing.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value));
+  existing.innerHTML = rows.length ? rows.map((operation) => `<label class="mission-operation-choice"><input type="checkbox" name="operation_existing" value="${escape(operation.id)}"${selected.has(String(operation.id)) ? " checked" : ""} /><span>${escape(fallbackOperationLabel(operation))}${operation.family_count > 1 ? ` · ${operation.family_count} scheduled occurrences` : ""}${operation.category ? ` · ${escape(operation.category)}` : ""}${operation.mission_id ? " · pathway linked" : ""}</span></label>`).join("") : '<p class="mission-details-empty">No existing operations available.</p>';
 }
 
 async function applyFallbackOperationLinkage(mission, form) {
@@ -102,7 +111,7 @@ async function applyFallbackOperationLinkage(mission, form) {
   const userId = sessionResult.data?.session?.user?.id;
   if (!userId || mode === "none") return;
   if (mode === "existing") {
-    const selected = [...(form.elements.operation_existing?.selectedOptions || [])].map((option) => option.value).filter(Boolean);
+    const selected = [...form.querySelectorAll('#fallback-operation-existing input[type="checkbox"]:checked')].map((input) => input.value).filter(Boolean);
     for (const operationId of selected) {
       const operation = fallbackOperationRows().find((row) => String(row.id) === String(operationId));
       if (!operation) continue;
@@ -124,7 +133,7 @@ function ensureFallbackMissionEditor() {
   if (fallbackMissionEditor?.isConnected) return fallbackMissionEditor;
   const dialog = document.createElement("dialog");
   dialog.id = "fallback-mission-editor-dialog";
-  dialog.innerHTML = `<form method="dialog" class="dialog-card mission-editor-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Define the evidence.</h2><label>Mission <input name="title" required /></label><label>Matrix priority <select name="priority"><option>Do now</option><option>Schedule</option><option>Delegate</option><option>Eliminate</option></select></label><label>What does complete mean? <textarea name="definition" rows="4"></textarea></label><div class="two-col"><label>Completed count <input name="completed_count" type="number" min="0" step="1" /></label><label>Total required <input name="target_count" type="number" min="1" step="1" /></label></div><label class="check-label"><input name="completed" type="checkbox" /> Mission complete</label><fieldset class="mission-operation-plan"><legend>Operation linkage</legend><p class="mission-operation-help">Link an existing operation or create one. One operation may advance multiple missions.</p><p class="eyebrow">CURRENT LINKED PATHWAYS</p><div id="fallback-linked-operations" class="mission-editor-linked-list"></div><label>Operation action <select name="operation_mode"><option value="none">No operation change</option><option value="existing">Add existing operation</option><option value="create">Create operation</option></select></label><div class="mission-operation-fields" data-fallback-existing hidden><label>Existing operation<select name="operation_existing" id="fallback-operation-existing" multiple size="5"></select></label></div><div class="mission-operation-fields" data-fallback-create hidden><label>Operation <input name="operation_title" placeholder="What moves this mission forward?" /></label><label>Brief <textarea name="operation_brief" rows="2"></textarea></label><label>First date <input name="operation_date" type="date" /></label></div></fieldset><button class="primary" type="submit">Save mission</button></form>`;
+  dialog.innerHTML = `<form method="dialog" class="dialog-card mission-editor-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Define the evidence.</h2><label>Mission <input name="title" required /></label><label>Matrix priority <select name="priority"><option>Do now</option><option>Schedule</option><option>Delegate</option><option>Eliminate</option></select></label><label>What does complete mean? <textarea name="definition" rows="4"></textarea></label><div class="two-col"><label>Completed count <input name="completed_count" type="number" min="0" step="1" /></label><label>Total required <input name="target_count" type="number" min="1" step="1" /></label></div><label class="check-label"><input name="completed" type="checkbox" /> Mission complete</label><fieldset class="mission-operation-plan"><legend>Operation linkage</legend><p class="mission-operation-help">Link an existing operation or create one. One operation may advance multiple missions.</p><p class="eyebrow">CURRENT LINKED PATHWAYS</p><div id="fallback-linked-operations" class="mission-editor-linked-list"></div><label>Operation action <select name="operation_mode"><option value="none">No operation change</option><option value="existing">Add existing operation</option><option value="create">Create operation</option></select></label><div class="mission-operation-fields" data-fallback-existing hidden><label>Existing operation families<div class="mission-operation-picker" data-operation-picker="fallback"><button type="button" class="mission-operation-picker-toggle" aria-expanded="false">Choose operation families</button><div class="mission-operation-picker-menu" hidden><div name="operation_existing" id="fallback-operation-existing" class="mission-operation-checklist" role="group" aria-label="Existing operation families"></div></div></div></label></div><div class="mission-operation-fields" data-fallback-create hidden><label>Operation <input name="operation_title" placeholder="What moves this mission forward?" /></label><label>Brief <textarea name="operation_brief" rows="2"></textarea></label><label>First date <input name="operation_date" type="date" /></label></div></fieldset><button class="primary" type="submit">Save mission</button></form>`;
   const titleLabel = dialog.querySelector('input[name="title"]')?.closest("label");
   titleLabel?.insertAdjacentHTML("afterend", '<label>Category <select name="category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Self Mastery</option><option>Life Admin</option></select></label>');
   const definitionLabel = dialog.querySelector('textarea[name="definition"]')?.closest("label");
@@ -143,6 +152,14 @@ function ensureFallbackMissionEditor() {
   form.elements.operation_mode.addEventListener("change", () => {
     form.querySelector("[data-fallback-existing]").hidden = form.elements.operation_mode.value !== "existing";
     form.querySelector("[data-fallback-create]").hidden = form.elements.operation_mode.value !== "create";
+  });
+  const picker = form.querySelector('[data-operation-picker="fallback"]');
+  const toggle = picker?.querySelector(".mission-operation-picker-toggle");
+  const menu = picker?.querySelector(".mission-operation-picker-menu");
+  toggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    menu.hidden = !menu.hidden;
+    toggle.setAttribute("aria-expanded", String(!menu.hidden));
   });
   const syncMeasuredFields = () => {
     const measured = form.elements.completion_type.value === "units";
@@ -291,7 +308,8 @@ async function load() {
     const legacyLinks = legacyLinksAvailable ? (legacyLinksResult.data || []) : [];
     window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE = familyLinksAvailable;
     window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE = legacyLinksAvailable;
-    const operations = effectiveOperations(operationsResult.data || [], occurrenceResult.data || []).map((operation) => {
+    const rawOperations = operationsResult.data || [];
+    const operations = rawOperations.map((operation) => {
       const normalizedFamilyKey = fallbackOperationFamilyKey(operation);
       return {
       ...operation,
@@ -305,6 +323,7 @@ async function load() {
       mission_link_mode: familyLinksAvailable ? "family" : (legacyLinksAvailable ? "legacy" : "operation"),
       };
     });
+    window.AEGIS_OPERATION_FAMILIES = operations;
     render(missionsResult.data || [], operations);
   }
 }

@@ -66,6 +66,7 @@ function operationFamilyKey(operation) {
   const title = String(operation?.title || "").toLowerCase().trim()
     .replace(/\b20\d{2}[-/]\d{2}[-/]\d{2}\b/g, "")
     .replace(/\b(?:session|sessions|chapter|chapters)\s*#?\s*\d+\b/g, "")
+    .replace(/\s*[–—-]?\s*pt\s*$/i, "")
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "operation";
   const category = missionCategory(operation?.category).toLowerCase();
   return `${title}-${category.replace(/[^a-z0-9]+/g, "-")}`.replace(/-+/g, "-").replace(/^-+|-+$/g, "");
@@ -75,12 +76,20 @@ function operationFamilyKey(operation) {
 // collapse those rows into one pathway while retaining the durable key for
 // database reads and writes.
 function operationDisplayFamilyKey(operation) {
-  const title = String(operation?.title || "operation").toLowerCase().trim()
+  const rawTitle = String(operation?.title || "operation");
+  if (/(?:physical therapy|\bpt\b|orthopedic|acl|rehab|rehabilitation)/i.test(rawTitle) && !/appointment|visit/i.test(rawTitle)) return `complete-10-pt-sessions-${missionCategory(operation?.category).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const title = rawTitle.toLowerCase().trim()
     .replace(/\b20\d{2}[-/]\d{2}[-/]\d{2}\b/g, "")
     .replace(/\b(?:session|sessions|chapter|chapters)\s*#?\s*\d+\b/g, "")
+    .replace(/\s*[–—-]?\s*pt\s*$/i, "")
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "operation";
   const category = missionCategory(operation?.category).toLowerCase();
   return `${title}-${category.replace(/[^a-z0-9]+/g, "-")}`.replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+}
+function operationFamilyLabel(operation) {
+  const title = String(operation?.title || "");
+  if (/(?:physical therapy|\bpt\b|orthopedic|acl|rehab|rehabilitation)/i.test(title) && !/appointment|visit/i.test(title)) return "Complete 10 PT sessions";
+  return title || "Operation";
 }
 function canonicalFamilyLinkKey(value) {
   return String(value || "operation").toLowerCase().trim()
@@ -533,7 +542,7 @@ function readMission(root, prefix, includeCategory, existing = null) {
 }
 
 function operationPlanMarkup(prefix) {
-  return `<fieldset class="mission-operation-plan"><legend>Operation linkage</legend><p class="mission-operation-help">Each operation family linked here can advance this mission. Repeating dates are completion records for the same operation, not new pathways. One operation may advance multiple missions. Life Admin operations remain informational and do not advance progress.</p><div class="mission-editor-linked"><p class="eyebrow">CURRENT LINKED PATHWAYS</p><div id="${prefix}-linked-operations" class="mission-editor-linked-list"><p class="mission-details-empty">Open a mission to view its linked pathways.</p></div></div><label>Operation action <select id="${prefix}-operation-mode"><option value="none">No operation yet</option><option value="create">Create operation</option><option value="existing">Add existing operation</option></select></label><div id="${prefix}-create-operation" class="mission-operation-fields" hidden><label>Operation <input id="${prefix}-operation-title" placeholder="What moves this mission forward?" /></label><label>Brief <textarea id="${prefix}-operation-brief" rows="2" placeholder="What counts as one completed operation?"></textarea></label><div class="two-col"><label>First date <input id="${prefix}-operation-date" type="date" /></label><label>Time <span class="field-optional">optional</span><input id="${prefix}-operation-time" type="time" /></label></div><label>Cadence <select id="${prefix}-operation-cadence"><option value="one_time">One-time</option><option value="daily">Repeat daily</option><option value="weekly">Repeat weekly</option></select></label><label id="${prefix}-operation-end-wrap">End date <span class="field-optional">optional for repeats</span><input id="${prefix}-operation-end-date" type="date" /></label></div><div id="${prefix}-existing-operation" class="mission-operation-fields" hidden><label>Existing operation families<select id="${prefix}-operation-existing" multiple size="5"><option value="">Choose one or more operation families</option></select></label><small id="${prefix}-operation-existing-note" class="mission-operation-note"></small></div></fieldset>`;
+  return `<fieldset class="mission-operation-plan"><legend>Operation linkage</legend><p class="mission-operation-help">Each operation family linked here can advance this mission. Repeating dates are completion records for the same operation, not new pathways. One operation may advance multiple missions. Life Admin operations remain informational and do not advance progress.</p><div class="mission-editor-linked"><p class="eyebrow">CURRENT LINKED PATHWAYS</p><div id="${prefix}-linked-operations" class="mission-editor-linked-list"><p class="mission-details-empty">Open a mission to view its linked pathways.</p></div></div><label>Operation action <select id="${prefix}-operation-mode"><option value="none">No operation yet</option><option value="create">Create operation</option><option value="existing">Add existing operation</option></select></label><div id="${prefix}-create-operation" class="mission-operation-fields" hidden><label>Operation <input id="${prefix}-operation-title" placeholder="What moves this mission forward?" /></label><label>Brief <textarea id="${prefix}-operation-brief" rows="2" placeholder="What counts as one completed operation?"></textarea></label><div class="two-col"><label>First date <input id="${prefix}-operation-date" type="date" /></label><label>Time <span class="field-optional">optional</span><input id="${prefix}-operation-time" type="time" /></label></div><label>Cadence <select id="${prefix}-operation-cadence"><option value="one_time">One-time</option><option value="daily">Repeat daily</option><option value="weekly">Repeat weekly</option></select></label><label id="${prefix}-operation-end-wrap">End date <span class="field-optional">optional for repeats</span><input id="${prefix}-operation-end-date" type="date" /></label></div><div id="${prefix}-existing-operation" class="mission-operation-fields" hidden><label>Existing operation families<div class="mission-operation-picker" data-operation-picker="${prefix}"><button type="button" class="mission-operation-picker-toggle" aria-expanded="false">Choose operation families</button><div class="mission-operation-picker-menu" hidden><div id="${prefix}-operation-existing" class="mission-operation-checklist" role="group" aria-label="Existing operation families"></div></div></div></label><small id="${prefix}-operation-existing-note" class="mission-operation-note"></small></div></fieldset>`;
 }
 
 function renderMissionEditorLinkedOperations(form, prefix, mission) {
@@ -546,10 +555,17 @@ function renderMissionEditorLinkedOperations(form, prefix, mission) {
 }
 
 function operationPlanRows() {
-  const authoritativeLinks = window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE === true || window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE === true;
-  const rows = authoritativeLinks && missionOperations.length
-    ? missionOperations
-    : [...missionOperations, ...(Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [])];
+  const merged = new Map();
+  const sharedFamilies = Array.isArray(window.AEGIS_OPERATION_FAMILIES)
+    ? window.AEGIS_OPERATION_FAMILIES
+    : (Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : []);
+  [...missionOperations, ...sharedFamilies].forEach((operation) => {
+    if (!operation?.id) return;
+    const key = String(operation.id);
+    const current = merged.get(key);
+    merged.set(key, current ? { ...current, ...operation, linked_mission_ids: [...new Set([...(current.linked_mission_ids || []), ...(operation.linked_mission_ids || [])])] } : { ...operation });
+  });
+  const rows = [...merged.values()];
   const grouped = new Map();
   rows.filter((operation) => {
     if (!operation || operation._occurrence) return false;
@@ -615,18 +631,37 @@ async function attachExistingOperation(operation, mission) {
 }
 
 function populateOperationPlanChoices(form, prefix, mission = null) {
-  const select = form?.querySelector(`#${prefix}-operation-existing`);
-  if (!select) return;
-  const currentMissionId = String(mission?.id || "");
+  const list = form?.querySelector(`#${prefix}-operation-existing`);
+  if (!list) return;
+  const selected = new Set([...list.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value));
   const rows = operationPlanRows().sort((a, b) => operationSuggestionScore(b, mission) - operationSuggestionScore(a, mission) || String(a.title || "").localeCompare(String(b.title || "")));
-  select.innerHTML = rows.length ? rows.map((operation) => {
-    const suggestion = operationSuggestionScore(operation, mission) > 0 ? " · exact match suggestion" : "";
+  list.innerHTML = rows.length ? rows.map((operation) => {
     const familyLabel = operation.family_count > 1 ? ` · ${operation.family_count} scheduled occurrences` : "";
     const hasPathway = operation.linked_mission_ids?.length || (operation.mission_link_mode !== "family" && operation.mission_id);
-    return `<option value="${escape(operation.id)}">${escape(operation.title)}${operation.scheduled_date ? ` · ${escape(operation.scheduled_date)}` : " · unscheduled"}${familyLabel}${operation.category ? ` · ${escape(operation.category)}` : ""}${hasPathway ? " · pathway linked" : ""}${suggestion}</option>`;
-  }).join("") : `<option value="">No existing operations available</option>`;
+    const label = `${operationFamilyLabel(operation)}${familyLabel}${operation.category ? ` · ${operation.category}` : ""}${hasPathway ? " · pathway linked" : ""}`;
+    return `<label class="mission-operation-choice"><input type="checkbox" name="operation_existing" value="${escape(operation.id)}"${selected.has(String(operation.id)) ? " checked" : ""} /><span>${escape(label)}</span></label>`;
+  }).join("") : `<p class="mission-details-empty">No existing operations available.</p>`;
   const note = form.querySelector(`#${prefix}-operation-existing-note`);
-  if (note) note.textContent = rows.length ? `${rows.length} existing operation${rows.length === 1 ? "" : "s"} available. Exact metric/title matches are shown first as suggestions; nothing is attached until you select it. One operation may advance multiple missions.` : "No existing operations are available yet.";
+  if (note) note.textContent = rows.length ? `${rows.length} operation famil${rows.length === 1 ? "y" : "ies"} available. Nothing is attached until selected. One operation may advance multiple missions.` : "No existing operations are available yet.";
+}
+
+function bindOperationPicker(form, prefix) {
+  const picker = form?.querySelector(`[data-operation-picker="${prefix}"]`);
+  const toggle = picker?.querySelector(".mission-operation-picker-toggle");
+  const menu = picker?.querySelector(".mission-operation-picker-menu");
+  if (!picker || !toggle || !menu || picker.dataset.bound === "true") return;
+  picker.dataset.bound = "true";
+  const updateLabel = () => {
+    const count = picker.querySelectorAll('input[type="checkbox"]:checked').length;
+    toggle.textContent = count ? `${count} operation famil${count === 1 ? "y" : "ies"} selected` : "Choose operation families";
+  };
+  toggle.addEventListener("click", (event) => {
+    event.preventDefault();
+    menu.hidden = !menu.hidden;
+    toggle.setAttribute("aria-expanded", String(!menu.hidden));
+  });
+  picker.addEventListener("change", updateLabel);
+  updateLabel();
 }
 
 function refreshOperationPlanChoices() {
@@ -655,7 +690,7 @@ function syncOperationPlanFields(form, prefix) {
 
 function readOperationPlan(form, prefix) {
   const mode = form?.querySelector(`#${prefix}-operation-mode`)?.value || "none";
-  if (mode === "existing") return { mode, existingIds: [...(form.querySelector(`#${prefix}-operation-existing`)?.selectedOptions || [])].map((option) => option.value).filter(Boolean) };
+  if (mode === "existing") return { mode, existingIds: [...form.querySelectorAll(`#${prefix}-operation-existing input[type="checkbox"]:checked`)].map((input) => input.value).filter(Boolean) };
   if (mode !== "create") return { mode };
   const cadence = form.querySelector(`#${prefix}-operation-cadence`)?.value || "one_time";
   const date = form.querySelector(`#${prefix}-operation-date`)?.value || easternDateKey();
@@ -774,6 +809,7 @@ function configureCreateDialog() {
   $(`#new-mission-operation-cadence`).addEventListener("change", () => syncOperationPlanFields(form, "new-mission"));
   $(`#new-mission-operation-date`).value = easternDateKey();
   populateOperationPlanChoices(form, "new-mission");
+  bindOperationPicker(form, "new-mission");
   syncOperationPlanFields(form, "new-mission");
   updateTrackingFields(form, "new-mission");
   form.addEventListener("submit", async (event) => {
@@ -821,6 +857,7 @@ function buildMissionEditor() {
   });
   $(`#edit-mission-operation-date`).value = easternDateKey();
   populateOperationPlanChoices(form, "edit-mission");
+  bindOperationPicker(form, "edit-mission");
   syncOperationPlanFields(form, "edit-mission");
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
