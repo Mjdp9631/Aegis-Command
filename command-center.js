@@ -125,6 +125,11 @@ function ensureFallbackMissionEditor() {
   const dialog = document.createElement("dialog");
   dialog.id = "fallback-mission-editor-dialog";
   dialog.innerHTML = `<form method="dialog" class="dialog-card mission-editor-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Define the evidence.</h2><label>Mission <input name="title" required /></label><label>Matrix priority <select name="priority"><option>Do now</option><option>Schedule</option><option>Delegate</option><option>Eliminate</option></select></label><label>What does complete mean? <textarea name="definition" rows="4"></textarea></label><div class="two-col"><label>Completed count <input name="completed_count" type="number" min="0" step="1" /></label><label>Total required <input name="target_count" type="number" min="1" step="1" /></label></div><label class="check-label"><input name="completed" type="checkbox" /> Mission complete</label><fieldset class="mission-operation-plan"><legend>Operation linkage</legend><p class="mission-operation-help">Link an existing operation or create one. One operation may advance multiple missions.</p><p class="eyebrow">CURRENT LINKED PATHWAYS</p><div id="fallback-linked-operations" class="mission-editor-linked-list"></div><label>Operation action <select name="operation_mode"><option value="none">No operation change</option><option value="existing">Add existing operation</option><option value="create">Create operation</option></select></label><div class="mission-operation-fields" data-fallback-existing hidden><label>Existing operation<select name="operation_existing" id="fallback-operation-existing" multiple size="5"></select></label></div><div class="mission-operation-fields" data-fallback-create hidden><label>Operation <input name="operation_title" placeholder="What moves this mission forward?" /></label><label>Brief <textarea name="operation_brief" rows="2"></textarea></label><label>First date <input name="operation_date" type="date" /></label></div></fieldset><button class="primary" type="submit">Save mission</button></form>`;
+  const titleLabel = dialog.querySelector('input[name="title"]')?.closest("label");
+  titleLabel?.insertAdjacentHTML("afterend", '<label>Category <select name="category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Self Mastery</option><option>Life Admin</option></select></label>');
+  const definitionLabel = dialog.querySelector('textarea[name="definition"]')?.closest("label");
+  definitionLabel?.insertAdjacentHTML("beforebegin", '<label>Completion method <select name="completion_type"><option value="binary">One-time completion</option><option value="units">Measured progress</option></select></label>');
+  definitionLabel?.insertAdjacentHTML("afterend", '<div class="two-col" data-fallback-measured><label>Tracked metric <select name="metric_key"><option value="chapters_read">Chapter read</option><option value="pt_session">PT session</option><option value="body.gym">Gym workout</option><option value="trading.trade">Trade logged</option><option value="mastery.entry">Self Mastery entry</option><option value="operation.complete">Completed operation</option></select></label><label>Count each completion as <input name="unit_label" placeholder="e.g. chapters, days, months, or notes" /></label></div>');
   document.body.appendChild(dialog);
   const form = dialog.querySelector("form");
   dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
@@ -132,6 +137,15 @@ function ensureFallbackMissionEditor() {
     form.querySelector("[data-fallback-existing]").hidden = form.elements.operation_mode.value !== "existing";
     form.querySelector("[data-fallback-create]").hidden = form.elements.operation_mode.value !== "create";
   });
+  const syncMeasuredFields = () => {
+    const measured = form.elements.completion_type.value === "units";
+    form.querySelector("[data-fallback-measured]").hidden = !measured;
+    form.elements.completed.closest("label").hidden = measured;
+    form.elements.completed_count.closest("label").hidden = !measured;
+    form.elements.target_count.closest("label").hidden = !measured;
+  };
+  form.elements.completion_type.addEventListener("change", syncMeasuredFields);
+  syncMeasuredFields();
   form.addEventListener("click", async (event) => {
     const unlink = event.target.closest("[data-fallback-unlink-operation]");
     if (!unlink) return;
@@ -160,15 +174,17 @@ function ensureFallbackMissionEditor() {
     if (!mission) return dialog.close();
     const values = new FormData(form);
     const target = Math.max(1, Number(values.get("target_count") || mission.target_count || 1));
-    const measured = mission.completion_type === "units" && Number(mission.target_count) > 0;
+    const measured = values.get("completion_type") === "units";
     const completedCount = measured ? Math.min(target, Math.max(0, Number(values.get("completed_count") || 0))) : 0;
     const completed = measured ? completedCount >= target : form.elements.completed.checked;
     const payload = {
       title: String(values.get("title") || "").trim(),
+      category: normalizeCategory(values.get("category") || mission.category),
       priority: values.get("priority"),
+      completion_type: measured ? "units" : "binary",
       completion_definition: String(values.get("definition") || "").trim() || null,
       completed,
-      ...(measured ? { completed_count: completedCount, target_count: target, progress: Math.round((completedCount / target) * 100) } : { progress: completed ? 100 : 0 }),
+      ...(measured ? { metric_key: values.get("metric_key") || "operation.complete", unit_label: String(values.get("unit_label") || "").trim() || "units", completed_count: completedCount, target_count: target, progress: Math.round((completedCount / target) * 100) } : { metric_key: null, unit_label: null, completed_count: 0, target_count: null, progress: completed ? 100 : 0 }),
     };
     if (!payload.title) return;
     if (!supabase) return alert("Sign in before editing a mission.");
@@ -190,11 +206,16 @@ async function openFallbackMissionEditor(id) {
   const dialog = ensureFallbackMissionEditor();
   const form = dialog.querySelector("form");
   form.elements.title.value = mission.title || "";
+  form.elements.category.value = normalizeCategory(mission.category || "Self Mastery");
   form.elements.priority.value = mission.priority || "Schedule";
+  form.elements.completion_type.value = mission.completion_type === "units" && Number(mission.target_count) > 0 ? "units" : "binary";
   form.elements.definition.value = mission.completion_definition || "";
   form.elements.completed_count.value = mission.completed_count || 0;
   form.elements.target_count.value = mission.target_count || 1;
+  form.elements.metric_key.value = mission.metric_key || "operation.complete";
+  form.elements.unit_label.value = mission.unit_label || "";
   form.elements.completed.checked = Boolean(mission.completed);
+  form.elements.completion_type.dispatchEvent(new Event("change"));
   renderFallbackOperationLinkage(form, mission);
   dialog.dataset.missionId = mission.id;
   if (!dialog.open) dialog.showModal();
