@@ -5,7 +5,57 @@
 -- mission counters already shown to the user. The old relationship rows are
 -- copied to checkpoint tables before they are cleared.
 --
--- Run once in Supabase SQL Editor after migration 075.
+-- Run once in Supabase SQL Editor after the base operations/mission tables.
+-- This migration bootstraps the relationship tables itself so it can be run
+-- safely even when migration 075 was skipped. Do not run 075 first merely to
+-- satisfy the old dependency: 075 clears legacy pathways before this
+-- migration can archive them.
+
+create table if not exists public.operation_mission_links (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  operation_id uuid not null references public.operations(id) on delete cascade,
+  mission_id uuid not null references public.missions(id) on delete cascade,
+  is_explicit boolean not null default false,
+  created_at timestamptz not null default now(),
+  primary key (operation_id, mission_id)
+);
+
+create table if not exists public.operation_family_mission_links (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  operation_family_key text not null,
+  mission_id uuid not null references public.missions(id) on delete cascade,
+  is_explicit boolean not null default true,
+  created_at timestamptz not null default now(),
+  primary key (user_id, operation_family_key, mission_id)
+);
+
+create index if not exists operation_mission_links_mission_idx
+  on public.operation_mission_links (mission_id, created_at desc);
+create index if not exists operation_family_mission_links_mission_idx
+  on public.operation_family_mission_links (mission_id, created_at desc);
+
+alter table public.operation_mission_links enable row level security;
+alter table public.operation_family_mission_links enable row level security;
+drop policy if exists "operation mission links private" on public.operation_mission_links;
+create policy "operation mission links private"
+  on public.operation_mission_links for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "operation family mission links private" on public.operation_family_mission_links;
+create policy "operation family mission links private"
+  on public.operation_family_mission_links for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+grant select, insert, update, delete on public.operation_mission_links, public.operation_family_mission_links to authenticated;
+grant all privileges on public.operation_mission_links, public.operation_family_mission_links to service_role;
+
+alter table public.operations
+  add column if not exists operation_family_key text,
+  add column if not exists allow_unlinked boolean not null default false,
+  add column if not exists mission_increment integer not null default 1;
+
+alter table public.mission_progress_events
+  add column if not exists occurrence_id uuid references public.operation_occurrences(id) on delete cascade,
+  add column if not exists activity_event_id uuid references public.activity_events(id) on delete cascade;
 
 create table if not exists public.aegis_checkpoint_operation_family_links
 (like public.operation_family_mission_links including all);
