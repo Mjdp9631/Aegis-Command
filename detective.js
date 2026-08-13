@@ -924,6 +924,12 @@ function renderTrades(trades) {
       <td>${escapeHtml(trade.wick || "—")}</td>
     </tr>`;
   }).join("");
+  table.querySelectorAll("tr").forEach((row) => {
+    const positionCell = row.children[12];
+    const position = positionCell?.textContent.trim().toLowerCase();
+    positionCell?.classList.toggle("position-long", position === "long");
+    positionCell?.classList.toggle("position-short", position === "short");
+  });
 }
 
 async function loadTrades() {
