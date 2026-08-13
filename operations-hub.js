@@ -1831,8 +1831,8 @@ async function cycleStatus(key, forcedStatus = null) {
   renderCalendar();
   window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "operations-hub", operations } }));
   window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "operation-status", operation } }));
-  // app.js still receives the public change event for calendars and summaries.
-  // It must not get the final paint over this queue.
+  // Other modules may consume the public change event; this module remains the
+  // sole owner of the operation queue and calendar paint.
 }
 
 async function seedIfEmpty() {
@@ -2583,8 +2583,7 @@ document.addEventListener("click", (event) => {
   const button = event.target.closest("#open-operations-calendar");
   if (!button) return;
   event.preventDefault();
-  // The old app.js calendar handler is still present.  Letting it receive the
-  // same click opens its outdated dialog after this current-month calendar.
+  // Capture this control so only the current-month calendar opens.
   event.stopImmediatePropagation();
   openCalendar();
 }, true);
@@ -2641,8 +2640,7 @@ const wireCalendar = () => {
     cursor = new Date(Date.UTC(Number(values.year), Number(values.month) - 1 + delta, 1, 17));
     renderCalendar();
   };
-  // app.js still has legacy calendar listeners. Capture these controls before
-  // they reach that code so there is one calendar renderer and one cursor.
+  // Capture these controls so there is one calendar renderer and one cursor.
   const captureCalendarMove = (selector, delta) => {
     document.addEventListener("click", (event) => {
       const control = event.target.closest(selector);

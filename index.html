@@ -221,9 +221,8 @@
           const calendarButton = (event.composedPath ? event.composedPath() : []).find(node => node?.id === "open-operations-calendar");
           if (!calendarButton) return;
           event.preventDefault();
-          // The operations hub is the canonical calendar owner. Stop the
-          // legacy handler below in app.js from opening/repainting a second,
-          // stale calendar over the current one.
+          // The operations hub is the canonical calendar owner. Stop any
+          // secondary calendar handler from repainting a stale surface over it.
           event.stopImmediatePropagation();
           if (typeof window.AEGIS_OPEN_CALENDAR === "function") {
             window.AEGIS_OPEN_CALENDAR();
