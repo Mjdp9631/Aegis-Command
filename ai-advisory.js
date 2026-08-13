@@ -16,6 +16,15 @@ function dateKey(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString("en-CA");
 }
+// Keep date comparisons date-only and timezone-neutral for queue deduplication.
+// The scan context has its own dateOnly helper, but this module also compares
+// raw operation rows when filing tomorrow's focus operation.
+function dateOnly(value) {
+  if (!value) return "";
+  const text = String(value);
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+  return dateKey(value) || "";
+}
 function easternParts(value = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(value);
   return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
