@@ -165,7 +165,10 @@ export function disciplineXp(operations = [], occurrences = [], startedAt) {
   const ledger = [];
   days.forEach(({ total, done }, date) => {
     const rate = total ? done / total : 0;
-    const change = rate >= 0.9 ? 6 : rate >= 0.75 ? 4 : rate >= 0.6 ? 2 : rate < 0.4 ? -1 : 0;
+    // Discipline is a daily operating score, so its reward is intentionally
+    // larger than the previous 6/4/2 bands while remaining below one-off
+    // mastery and project evidence rewards.
+    const change = rate >= 0.9 ? 12 : rate >= 0.75 ? 8 : rate >= 0.6 ? 4 : rate < 0.4 ? -1 : 0;
     ledger.push({ label: date, detail: `${done}/${total} operations - ${Math.round(rate * 100)}%`, change });
   });
   return { xp: Math.max(0, ledger.reduce((total, entry) => total + entry.change, 0)), ledger: ledger.sort((a, b) => b.label.localeCompare(a.label)) };
