@@ -129,7 +129,14 @@ function ensureFallbackMissionEditor() {
   titleLabel?.insertAdjacentHTML("afterend", '<label>Category <select name="category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Self Mastery</option><option>Life Admin</option></select></label>');
   const definitionLabel = dialog.querySelector('textarea[name="definition"]')?.closest("label");
   definitionLabel?.insertAdjacentHTML("beforebegin", '<label>Completion method <select name="completion_type"><option value="binary">One-time completion</option><option value="units">Measured progress</option></select></label>');
-  definitionLabel?.insertAdjacentHTML("afterend", '<div class="two-col" data-fallback-measured><label>Tracked metric <select name="metric_key"><option value="chapters_read">Chapter read</option><option value="pt_session">PT session</option><option value="body.gym">Gym workout</option><option value="trading.trade">Trade logged</option><option value="mastery.entry">Self Mastery entry</option><option value="operation.complete">Completed operation</option></select></label><label>Count each completion as <input name="unit_label" placeholder="e.g. chapters, days, months, or notes" /></label></div>');
+  definitionLabel?.insertAdjacentHTML("afterend", '<div data-fallback-measured><label>What is being measured? <input name="unit_label" placeholder="e.g. chapters, days, months, or notes" /></label><div class="two-col"><label>Total required <input name="target_count" type="number" min="1" step="1" /></label><label>Completed count <input name="completed_count" type="number" min="0" step="1" /></label></div></div>');
+  // The boot-safe template historically included these two fields before
+  // measured progress was made explicit. Remove that legacy pair so the
+  // editor has one source of truth for each value.
+  const targetInputs = [...dialog.querySelectorAll('input[name="target_count"]')];
+  const countInputs = [...dialog.querySelectorAll('input[name="completed_count"]')];
+  targetInputs[0]?.closest("label")?.remove();
+  countInputs[0]?.closest("label")?.remove();
   document.body.appendChild(dialog);
   const form = dialog.querySelector("form");
   dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
@@ -184,7 +191,7 @@ function ensureFallbackMissionEditor() {
       completion_type: measured ? "units" : "binary",
       completion_definition: String(values.get("definition") || "").trim() || null,
       completed,
-      ...(measured ? { metric_key: values.get("metric_key") || "operation.complete", unit_label: String(values.get("unit_label") || "").trim() || "units", completed_count: completedCount, target_count: target, progress: Math.round((completedCount / target) * 100) } : { metric_key: null, unit_label: null, completed_count: 0, target_count: null, progress: completed ? 100 : 0 }),
+      ...(measured ? { metric_key: mission.metric_key || "operation.complete", unit_label: String(values.get("unit_label") || "").trim() || "units", completed_count: completedCount, target_count: target, progress: Math.round((completedCount / target) * 100) } : { metric_key: null, unit_label: null, completed_count: 0, target_count: null, progress: completed ? 100 : 0 }),
     };
     if (!payload.title) return;
     if (!supabase) return alert("Sign in before editing a mission.");
@@ -212,7 +219,6 @@ async function openFallbackMissionEditor(id) {
   form.elements.definition.value = mission.completion_definition || "";
   form.elements.completed_count.value = mission.completed_count || 0;
   form.elements.target_count.value = mission.target_count || 1;
-  form.elements.metric_key.value = mission.metric_key || "operation.complete";
   form.elements.unit_label.value = mission.unit_label || "";
   form.elements.completed.checked = Boolean(mission.completed);
   form.elements.completion_type.dispatchEvent(new Event("change"));
