@@ -100,7 +100,19 @@ function ensureFallbackMissionEditor() {
     const sessionResult = await supabase?.auth.getSession();
     const userId = sessionResult?.data?.session?.user?.id;
     if (!userId) return alert("Sign in before unlinking an operation.");
-    await supabase.from("operations").update({ mission_id: null, allow_unlinked: true }).eq("id", unlink.dataset.fallbackUnlinkOperation).eq("user_id", userId);
+    const operationId = unlink.dataset.fallbackUnlinkOperation;
+    const operation = fallbackOperationRows().find((row) => String(row.id) === String(operationId));
+    if (!operation) return alert("That operation is no longer available. Refresh and try again.");
+    const familyKey = fallbackOperationFamilyKey(operation);
+    let linkResult = await supabase.from("operation_family_mission_links").delete().eq("user_id", userId).eq("operation_family_key", familyKey).eq("mission_id", dialog.dataset.missionId);
+    if (linkResult.error && /relation|table|schema cache|column/i.test(String(linkResult.error.message || ""))) {
+      linkResult = await supabase.from("operation_mission_links").delete().eq("user_id", userId).eq("operation_id", operationId).eq("mission_id", dialog.dataset.missionId);
+    }
+    if (linkResult.error && !/relation|table|schema cache|column/i.test(String(linkResult.error.message || ""))) return alert(`Could not unlink operation: ${linkResult.error.message}`);
+    const familyIds = fallbackOperationRows().filter((row) => fallbackOperationFamilyKey(row) === familyKey).map((row) => row.id);
+    const updateResult = await supabase.from("operations").update({ mission_id: null, allow_unlinked: true }).eq("user_id", userId).in("id", familyIds);
+    if (updateResult.error && !/allow_unlinked|column|schema cache/i.test(String(updateResult.error.message || ""))) return alert(`Could not update the operation pathway: ${updateResult.error.message}`);
+    window.AEGIS_OPERATIONS = (window.AEGIS_OPERATIONS || []).map((row) => familyIds.some((id) => String(id) === String(row.id)) ? { ...row, mission_id: null, allow_unlinked: true } : row);
     renderFallbackOperationLinkage(form, (window.AEGIS_MISSIONS || []).find((row) => String(row.id) === String(dialog.dataset.missionId)));
   });
   form.addEventListener("submit", async (event) => {
