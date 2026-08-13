@@ -285,10 +285,20 @@
             dialog.querySelector("#fallback-mission-definition").textContent = mission.completion_definition || "Define the evidence that proves this mission is complete.";
             const linked = (Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : []).filter(operation => {
               const linkedIds = Array.isArray(operation.linked_mission_ids) ? operation.linked_mission_ids : null;
+              if (window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE === true || window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE === true || operation.mission_link_mode === "family" || operation.mission_link_mode === "legacy") return Boolean(linkedIds?.some(linkedId => String(linkedId) === String(id)));
+              if (window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE === true || window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE === true || operation.mission_link_mode === "family" || operation.mission_link_mode === "legacy") return Boolean(linkedIds?.some(linkedId => String(linkedId) === String(id)));
               if (linkedIds && linkedIds.length) return linkedIds.some(linkedId => String(linkedId) === String(id));
               return String(operation.mission_id || "") === String(id);
             });
-            dialog.querySelector("#fallback-mission-operations").innerHTML = linked.length ? linked.map(operation => `<article class="mission-editor-linked-row"><div><strong>${esc(operation.title)}</strong><span>${esc(operation.status || (operation.completed ? "Complete" : "Queued"))}${operation.category ? ` · ${esc(operation.category)}` : ""}</span></div></article>`).join("") : '<p class="mission-details-empty">No operation is attached yet.</p>';
+            const linkedGroups = new Map();
+            linked.forEach(operation => {
+              const key = `${String(operation.title || "operation").toLowerCase().replace(/\b20\d{2}[-/]\d{2}[-/]\d{2}\b/g, "").replace(/\b(?:session|sessions|chapter|chapters)\s*#?\s*\d+\b/g, "").replace(/[^a-z0-9]+/g, "-")}-${String(operation.category || "Self Mastery").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+              const current = linkedGroups.get(key);
+              if (!current) linkedGroups.set(key, { ...operation, family_count: 1 });
+              else current.family_count += 1;
+            });
+            const linkedFamilies = [...linkedGroups.values()];
+            dialog.querySelector("#fallback-mission-operations").innerHTML = linkedFamilies.length ? linkedFamilies.map(operation => `<article class="mission-editor-linked-row"><div><strong>${esc(operation.title)}</strong><span>${esc(operation.status || (operation.completed ? "Complete" : "Queued"))}${operation.family_count > 1 ? ` · ${operation.family_count} completion records` : ""}${operation.category ? ` · ${esc(operation.category)}` : ""}</span></div></article>`).join("") : '<p class="mission-details-empty">No operation is attached yet.</p>';
             try { if (dialog.open) dialog.close(); dialog.showModal(); } catch (error) { dialog.setAttribute("open", ""); }
             return true;
           };
@@ -359,7 +369,7 @@
     </script>
     <script type="module" src="auth-flow.js"></script>
     <script type="module" src="cross-browser-sync.js?v=realtime-v2"></script>
-    <script type="module" src="mission.js?v=mission-ledger-boot-v16"></script>
+    <script type="module" src="mission.js?v=mission-ledger-boot-v17"></script>
     <script type="module" src="phase-protocol.js?v=phase-protocol-v7"></script>
     <script type="module" src="detective.js?v=account-profit-deposits-v2"></script>
     <script type="module" src="brain-review.js?v=correction-feedback-v1"></script>
@@ -367,7 +377,7 @@
     <script type="module" src="notion-importer.js"></script>
     <script type="module" src="enterprise.js?v=manual-evidence-dates-v2"></script>
     <script type="module" src="character.js?v=radar-palette-v7"></script>
-    <script type="module" src="command-center.js?v=mission-feed-handoff-v12"></script>
+    <script type="module" src="command-center.js?v=mission-feed-handoff-v13"></script>
     <script type="module" src="command-summary.js?v=shared-operation-state-v2"></script>
     <script type="module" src="command-dashboard.js?v=shared-operation-state-v3"></script>
     <script type="module" src="system-review.js?v=manual-evidence-dates-v2"></script>
@@ -377,6 +387,6 @@
     <script src="ai-context.js?v=manual-evidence-dates-v2"></script>
     <script type="module" src="ai-advisory.js?v=manual-evidence-dates-v2"></script>
     <script>document.getElementById("operation-suggestion").addEventListener("change",function(){if(!this.value)return;const [title,category]=this.value.split("|");document.getElementById("operation-input").value=title;const select=document.getElementById("operation-category");select.value=category;select.dispatchEvent(new Event("change"));});</script>
-    <script type="module" src="operations-hub.js?v=operation-family-counters-v1"></script>
+    <script type="module" src="operations-hub.js?v=operation-family-counters-v2"></script>
 </body>
 </html>

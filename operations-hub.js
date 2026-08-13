@@ -153,7 +153,7 @@ const operationCategory = (operation, mission = null) => {
   return canonicalOperationCategory(operation?.category) || operationCategoryForTitle(operation?.title) || "Self Mastery";
 };
 const operationFamilyKey = (operation) => {
-  if (operation?.operation_family_key) return String(operation.operation_family_key);
+  if (operation?.operation_family_key && !/^operation(?:-[a-z0-9-]+)?$/i.test(String(operation.operation_family_key).trim())) return String(operation.operation_family_key);
   const title = String(operation?.title || "").toLowerCase().trim()
     .replace(/\b20\d{2}[-/]\d{2}[-/]\d{2}\b/g, "")
     .replace(/\b(?:session|sessions|chapter|chapters)\s*#?\s*\d+\b/g, "")
@@ -1866,6 +1866,9 @@ async function loadOperationMissionLinks() {
       .eq("user_id", currentUser.id));
     if (error) return;
   }
+  const legacyLinksAvailable = !familyLinksAvailable;
+  window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE = familyLinksAvailable;
+  window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE = legacyLinksAvailable;
   const links = new Map();
   (data || []).forEach((link) => {
     const key = familyLinksAvailable ? String(link.operation_family_key) : String(link.operation_id);
@@ -1877,7 +1880,7 @@ async function loadOperationMissionLinks() {
     ...operation,
     linked_mission_ids: links.get(familyLinksAvailable ? operationFamilyKey(operation) : String(operation.id)) || (familyLinksAvailable ? [] : (operation.mission_id ? [operation.mission_id] : [])),
     operation_family_key: operationFamilyKey(operation),
-    mission_link_mode: familyLinksAvailable ? "family" : "operation",
+    mission_link_mode: familyLinksAvailable ? "family" : (legacyLinksAvailable ? "legacy" : "operation"),
   }));
   saveCachedOperations();
 }

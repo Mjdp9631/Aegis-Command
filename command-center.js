@@ -33,16 +33,32 @@ function fallbackMissionProgress(mission) {
 }
 
 function fallbackOperationFamilyKey(operation) {
-  if (operation?.operation_family_key) return String(operation.operation_family_key);
+  if (operation?.operation_family_key && !/^operation(?:-[a-z0-9-]+)?$/i.test(String(operation.operation_family_key).trim())) return String(operation.operation_family_key);
   return `${String(operation?.title || "operation").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${normalizeCategory(operation?.category).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`.replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+function fallbackDisplayFamilyKey(operation) {
+  const title = String(operation?.title || "operation").toLowerCase().trim()
+    .replace(/\b20\d{2}[-/]\d{2}[-/]\d{2}\b/g, "")
+    .replace(/\b(?:session|sessions|chapter|chapters)\s*#?\s*\d+\b/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "operation";
+  return `${title}-${normalizeCategory(operation?.category).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`.replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+function fallbackFamilyLinkKeys(operation) {
+  return [...new Set([fallbackOperationFamilyKey(operation), fallbackDisplayFamilyKey(operation)].filter(Boolean))];
 }
 
 function fallbackOperationRows() {
   const rows = Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [];
   const grouped = new Map();
   rows.filter((operation) => operation && !operation._occurrence && normalizeCategory(operation.category) !== "Life Admin").forEach((operation) => {
-    const key = fallbackOperationFamilyKey(operation);
-    if (!grouped.has(key)) grouped.set(key, { ...operation, operation_family_key: key });
+    const key = fallbackDisplayFamilyKey(operation);
+    const current = grouped.get(key);
+    if (!current) grouped.set(key, { ...operation, operation_family_key: key, family_operation_ids: [operation.id], family_count: 1, linked_mission_ids: [...(operation.linked_mission_ids || [])] });
+    else if (!current.family_operation_ids.some((id) => String(id) === String(operation.id))) {
+      current.family_operation_ids.push(operation.id);
+      current.family_count += 1;
+      current.linked_mission_ids = [...new Set([...(current.linked_mission_ids || []), ...(operation.linked_mission_ids || [])])];
+    }
   });
   return [...grouped.values()];
 }
@@ -50,6 +66,9 @@ function fallbackOperationRows() {
 function fallbackLinkedOperations(mission) {
   return fallbackOperationRows().filter((operation) => {
     const linkedIds = Array.isArray(operation.linked_mission_ids) ? operation.linked_mission_ids : null;
+    if (window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE === true || window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE === true || operation.mission_link_mode === "family" || operation.mission_link_mode === "legacy") {
+      return Boolean(linkedIds?.some((id) => String(id) === String(mission?.id)));
+    }
     if (linkedIds && linkedIds.length) return linkedIds.some((id) => String(id) === String(mission?.id));
     return String(operation.mission_id || "") === String(mission?.id);
   });
@@ -126,13 +145,13 @@ function ensureFallbackMissionEditor() {
     const operationId = unlink.dataset.fallbackUnlinkOperation;
     const operation = fallbackOperationRows().find((row) => String(row.id) === String(operationId));
     if (!operation) return alert("That operation is no longer available. Refresh and try again.");
-    const familyKey = fallbackOperationFamilyKey(operation);
-    let linkResult = await supabase.from("operation_family_mission_links").delete().eq("user_id", userId).eq("operation_family_key", familyKey).eq("mission_id", dialog.dataset.missionId);
+    const familyKeys = fallbackFamilyLinkKeys(operation);
+    let linkResult = await supabase.from("operation_family_mission_links").delete().eq("user_id", userId).in("operation_family_key", familyKeys).eq("mission_id", dialog.dataset.missionId);
     if (linkResult.error && /relation|table|schema cache|column/i.test(String(linkResult.error.message || ""))) {
       linkResult = await supabase.from("operation_mission_links").delete().eq("user_id", userId).eq("operation_id", operationId).eq("mission_id", dialog.dataset.missionId);
     }
     if (linkResult.error && !/relation|table|schema cache|column/i.test(String(linkResult.error.message || ""))) return alert(`Could not unlink operation: ${linkResult.error.message}`);
-    const familyIds = fallbackOperationRows().filter((row) => fallbackOperationFamilyKey(row) === familyKey).map((row) => row.id);
+    const familyIds = fallbackOperationRows().filter((row) => fallbackFamilyLinkKeys(row).some((key) => familyKeys.includes(key))).flatMap((row) => row.family_operation_ids || [row.id]);
     const updateResult = await supabase.from("operations").update({ mission_id: null, allow_unlinked: true }).eq("user_id", userId).in("id", familyIds);
     if (updateResult.error && !/allow_unlinked|column|schema cache/i.test(String(updateResult.error.message || ""))) return alert(`Could not update the operation pathway: ${updateResult.error.message}`);
     window.AEGIS_OPERATIONS = (window.AEGIS_OPERATIONS || []).map((row) => familyIds.some((id) => String(id) === String(row.id)) ? { ...row, mission_id: null, allow_unlinked: true } : row);
@@ -242,16 +261,25 @@ async function load() {
     supabase.from("operation_mission_links").select("operation_id, mission_id")
   ]);
   if (!missionsResult.error) {
-    const familyLinks = familyLinksResult.error ? [] : (familyLinksResult.data || []);
-    const legacyLinks = legacyLinksResult.error ? [] : (legacyLinksResult.data || []);
-    const operations = effectiveOperations(operationsResult.data || [], occurrenceResult.data || []).map((operation) => ({
+    const familyLinksAvailable = !familyLinksResult.error;
+    const legacyLinksAvailable = !legacyLinksResult.error;
+    const familyLinks = familyLinksAvailable ? (familyLinksResult.data || []) : [];
+    const legacyLinks = legacyLinksAvailable ? (legacyLinksResult.data || []) : [];
+    window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE = familyLinksAvailable;
+    window.AEGIS_OPERATION_LEGACY_LINKS_AVAILABLE = legacyLinksAvailable;
+    const operations = effectiveOperations(operationsResult.data || [], occurrenceResult.data || []).map((operation) => {
+      const normalizedFamilyKey = fallbackOperationFamilyKey(operation);
+      return {
       ...operation,
+      operation_family_key: normalizedFamilyKey,
       linked_mission_ids: [...new Set([
         ...(Array.isArray(operation.linked_mission_ids) ? operation.linked_mission_ids : []),
-        ...familyLinks.filter((link) => String(link.operation_family_key || "") === String(operation.operation_family_key || fallbackOperationFamilyKey(operation))).map((link) => link.mission_id),
-        ...legacyLinks.filter((link) => String(link.operation_id) === String(operation.id)).map((link) => link.mission_id),
+        ...familyLinks.filter((link) => [normalizedFamilyKey, fallbackDisplayFamilyKey(operation)].includes(String(link.operation_family_key || ""))).map((link) => link.mission_id),
+        ...(familyLinksResult.error ? legacyLinks.filter((link) => String(link.operation_id) === String(operation.id)).map((link) => link.mission_id) : []),
       ].filter(Boolean))],
-    }));
+      mission_link_mode: familyLinksAvailable ? "family" : (legacyLinksAvailable ? "legacy" : "operation"),
+      };
+    });
     render(missionsResult.data || [], operations);
   }
 }
