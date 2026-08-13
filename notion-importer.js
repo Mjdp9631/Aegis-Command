@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-let JSZip;
+import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
@@ -27,7 +27,6 @@ async function csvFromFile(file) {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
   if (bytes[0] !== 80 || bytes[1] !== 75) return new TextDecoder().decode(buffer);
-  JSZip ||= (await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm")).default;
   const outer = await JSZip.loadAsync(buffer);
   let entry = Object.values(outer.files).find((item) => !item.dir && item.name.toLowerCase().endsWith(".csv"));
   if (entry) return entry.async("string");
@@ -114,8 +113,4 @@ function buildImporter() {
   });
 }
 
-if (supabase) {
-  const mountImporter = () => { if (window.AEGIS_ACTIVE_VIEW === "detective") buildImporter(); };
-  if (!window.AEGIS_ACTIVE_VIEW || window.AEGIS_ACTIVE_VIEW === "detective") mountImporter();
-  window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "detective") mountImporter(); });
-}
+if (supabase) buildImporter();

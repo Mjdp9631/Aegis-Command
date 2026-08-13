@@ -52,7 +52,6 @@ styleCommandBriefing();
 renderFooters();
 async function loadSectionAdvice() {
   if (!supabase) return;
-  if (window.AEGIS_ACTIVE_VIEW && !messages[window.AEGIS_ACTIVE_VIEW]) return;
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return;
   const { data } = await supabase.from("ai_advisories").select("payload").order("created_at", { ascending: false }).limit(1).maybeSingle();

@@ -20,7 +20,6 @@ function render() {
 
 async function load() {
   if (!supabase) return;
-  if (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "enterprise") return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
   const [projectResult, contentResult, foundationResult] = await Promise.all([
@@ -76,7 +75,6 @@ function buildDialogs() {
 
 if (supabase) {
   buildDialogs(); render(); load();
-  window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "enterprise") void load(); });
   document.addEventListener("click", (event) => { const action = event.target.closest("[data-enterprise-action]")?.dataset.enterpriseAction; if (!action) return; const dialog = action === "project" ? $("#project-dialog") : action === "finance" ? $("#finance-dialog") : $("#content-dialog"); if (action === "finance" && financialFoundation) { ["income", "expenses", "reserves", "emergency", "debt", "revenue"].forEach((key) => { const field = $(`#finance-${key}`); const source = { income: "monthly_income", expenses: "monthly_expenses", reserves: "liquid_reserves", emergency: "emergency_fund_target", debt: "debt_balance", revenue: "business_revenue" }[key]; if (field) field.value = financialFoundation[source] ?? ""; }); $("#finance-notes").value = financialFoundation.notes || ""; } dialog.showModal(); });
   supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 50); });
 }

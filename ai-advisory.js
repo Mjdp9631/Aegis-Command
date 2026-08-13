@@ -679,13 +679,12 @@ if (supabase) {
     await loadRoadmap();
     await loadCalibration();
   };
-  supabase.auth.getSession().then(({ data: { session } }) => { if (session && (!window.AEGIS_ACTIVE_VIEW || window.AEGIS_ACTIVE_VIEW === "command")) restoreAdvisory(); });
+  supabase.auth.getSession().then(({ data: { session } }) => { if (session) restoreAdvisory(); });
   supabase.auth.onAuthStateChange((event, session) => {
     if (!session || event === "INITIAL_SESSION") return;
-    if (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "command") return;
     setTimeout(() => restoreAdvisory(), 150);
   });
-  window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "command") { mount(); paintLatestAdvisory(); void restoreAdvisory(); } });
+  window.addEventListener("aegis:navigation", () => { mount(); paintLatestAdvisory(); });
   window.addEventListener("aegis:adviser-ready", () => { mount(); paintLatestAdvisory(); });
   window.addEventListener("load", () => { mount(); paintLatestAdvisory(); }, { once: true });
 }

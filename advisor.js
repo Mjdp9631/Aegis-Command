@@ -63,7 +63,6 @@ function render({ operations, missions, trades }) {
 
 async function loadAdvisory() {
   if (!supabase) return;
-  if (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "command") return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
   const [operationsResult, missionsResult, tradesResult] = await Promise.all([
@@ -79,7 +78,6 @@ async function loadAdvisory() {
 
 if (supabase) {
   loadAdvisory();
-  window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "command") void loadAdvisory(); });
   supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(loadAdvisory, 100); });
   window.addEventListener("aegis:missions-changed", () => setTimeout(loadAdvisory, 100));
   document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(loadAdvisory, 700); });

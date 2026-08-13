@@ -485,7 +485,6 @@ async function saveAccountBalance(event) {
 }
 
 async function loadAccountLedger() {
-  if (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "detective") return;
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
@@ -943,7 +942,6 @@ function scheduleTradeLoad(delay = 120) {
 }
 
 async function loadTrades() {
-  if (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "detective") return;
   if (!supabase) return;
   if (tradeLoadInFlight) {
     tradeLoadQueued = true;
@@ -1327,7 +1325,6 @@ function init() {
   if (supabase) {
     void loadTrades();
     void loadAccountLedger();
-    window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "detective") { void loadTrades(); void loadAccountLedger(); } });
     supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; scheduleTradeLoad(100); });
   }
 }

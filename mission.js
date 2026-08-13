@@ -953,7 +953,6 @@ function openEditor(dialog, mission, options = {}) {
 
 async function loadData() {
   if (!session || !client) return;
-  if (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "missions") return;
   if (missionLoadInFlight) return missionLoadInFlight;
   missionLoadInFlight = (async () => {
     try {
@@ -1302,9 +1301,6 @@ if (cloudReady) {
 window.addEventListener("aegis:missions-refresh", async (event) => {
   if (event.detail?.source !== "operations-hub" || !session) return;
   await loadData();
-});
-window.addEventListener("aegis:navigation", (event) => {
-  if (event.detail?.view === "missions" && session) void loadData();
 });
 
 // Command Center and Operations Hub can finish their user-scoped mission

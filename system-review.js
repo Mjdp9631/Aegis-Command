@@ -180,7 +180,6 @@ function scheduleReviewLoad(delay = 180) {
 
 async function load() {
   if (!supabase) return;
-  if (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "command") return;
   if (reviewLoadInFlight) {
     reviewLoadQueued = true;
     return;
@@ -213,7 +212,6 @@ async function load() {
 
 if (supabase) {
   void load();
-  window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "command") scheduleReviewLoad(0); });
   ["aegis:missions-changed", "aegis:operations-changed", "aegis:mastery-changed", "aegis:data-changed"].forEach((eventName) => window.addEventListener(eventName, () => scheduleReviewLoad(220)));
   supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; scheduleReviewLoad(180); });
 }

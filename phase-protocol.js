@@ -165,7 +165,6 @@ async function persistPhase(nextPhase) {
 }
 
 async function load() {
-  if (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "missions") return;
   currentPhase = Number(localStorage.getItem("aegis-active-phase") || 0);
   let userId = null;
   if (db) {
@@ -211,7 +210,6 @@ document.addEventListener("click", (event) => {
 
 load();
 if (db) db.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 100); });
-window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "missions") void load(); });
 window.addEventListener("aegis:character-levels-changed", render);
 window.addEventListener("aegis:missions-changed", () => setTimeout(load, 100));
 window.addEventListener("focus", () => { void load(); });

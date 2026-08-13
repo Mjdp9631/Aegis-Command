@@ -220,7 +220,6 @@ function scheduleDashboardLoad(delay = 120) {
 
 async function load() {
   if (!supabase) return;
-  if (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "command") return;
   if (dashboardLoadInFlight) {
     dashboardLoadQueued = true;
     return;
@@ -273,7 +272,6 @@ document.addEventListener("keydown", (event) => { if ((event.key === "Enter" || 
 
 if (supabase) {
   void load();
-  window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "command") scheduleDashboardLoad(0); });
   supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; scheduleDashboardLoad(120); });
   window.addEventListener("aegis:missions-changed", () => scheduleDashboardLoad(140));
   window.addEventListener("aegis:operations-changed", () => scheduleDashboardLoad(140));
