@@ -49,6 +49,21 @@ function fallbackOperationLabel(operation) {
   if (/(?:physical therapy|\bpt\b|orthopedic|acl|rehab|rehabilitation)/i.test(title) && !/appointment|visit/i.test(title)) return "Complete 10 PT sessions";
   return title || "Operation";
 }
+function fallbackOperationTemplateRows() {
+  return ["Legs", "Push", "Pull", "Upper Body", "Lower Body"].map((split) => ({
+    id: `local-family-gym-${split.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    title: `Gym - ${split}`,
+    category: "Self Mastery",
+    status: "Queued",
+    completed: false,
+    schedule_mode: "daily",
+    is_daily: true,
+    scheduled_date: new Date().toISOString().slice(0, 10),
+    operation_date: new Date().toISOString().slice(0, 10),
+    brief: `Complete the ${split} session selected in Self Mastery. Log every exercise, weight, reps, and completed sets.`,
+    is_operation_family_template: true,
+  })).concat([{ id: "local-family-pt-sessions", title: "Complete 10 PT sessions", category: "Recovery", status: "Queued", completed: false, scheduled_date: new Date().toISOString().slice(0, 10), operation_date: new Date().toISOString().slice(0, 10), brief: "Complete one clinician-approved physical therapy session and record the recovery evidence.", is_operation_family_template: true }]);
+}
 function fallbackFamilyLinkKeys(operation) {
   return [...new Set([fallbackOperationFamilyKey(operation), fallbackDisplayFamilyKey(operation)].filter(Boolean))];
 }
@@ -58,7 +73,7 @@ function fallbackOperationRows() {
     ? window.AEGIS_OPERATION_FAMILIES
     : (Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : []);
   const grouped = new Map();
-  rows.filter((operation) => operation && !operation._occurrence && normalizeCategory(operation.category) !== "Life Admin").forEach((operation) => {
+  [...rows, ...fallbackOperationTemplateRows()].filter((operation) => operation && !operation._occurrence && normalizeCategory(operation.category) !== "Life Admin").forEach((operation) => {
     const key = fallbackDisplayFamilyKey(operation);
     const current = grouped.get(key);
     if (!current) grouped.set(key, { ...operation, operation_family_key: key, family_operation_ids: [operation.id], family_count: 1, linked_mission_ids: [...(operation.linked_mission_ids || [])] });
@@ -113,8 +128,13 @@ async function applyFallbackOperationLinkage(mission, form) {
   if (mode === "existing") {
     const selected = [...form.querySelectorAll('#fallback-operation-existing input[type="checkbox"]:checked')].map((input) => input.value).filter(Boolean);
     for (const operationId of selected) {
-      const operation = fallbackOperationRows().find((row) => String(row.id) === String(operationId));
+      let operation = fallbackOperationRows().find((row) => String(row.id) === String(operationId));
       if (!operation) continue;
+      if (operation.is_operation_family_template && String(operation.id).startsWith("local-")) {
+        const inserted = await supabase.from("operations").insert({ user_id: userId, title: operation.title, category: operation.category, brief: operation.brief, mission_id: null, status: "Queued", completed: false, scheduled_date: operation.scheduled_date, operation_date: operation.operation_date, is_daily: true, schedule_mode: "daily", allow_unlinked: true }).select().single();
+        if (inserted.error) throw new Error(inserted.error.message);
+        operation = inserted.data;
+      }
       const result = await persistFallbackOperationLink(operation, mission, userId);
       if (result.error) throw new Error(result.error.message);
     }

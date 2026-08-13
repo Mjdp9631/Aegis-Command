@@ -91,6 +91,22 @@ function operationFamilyLabel(operation) {
   if (/(?:physical therapy|\bpt\b|orthopedic|acl|rehab|rehabilitation)/i.test(title) && !/appointment|visit/i.test(title)) return "Complete 10 PT sessions";
   return title || "Operation";
 }
+function operationFamilyTemplateRows() {
+  return ["Legs", "Push", "Pull", "Upper Body", "Lower Body"].map((split) => ({
+    id: `local-family-gym-${split.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    title: `Gym - ${split}`,
+    category: "Self Mastery",
+    status: "Queued",
+    completed: false,
+    schedule_mode: "daily",
+    is_daily: true,
+    operation_date: easternDateKey(),
+    scheduled_date: easternDateKey(),
+    brief: `Complete the ${split} session selected in Self Mastery. Log every exercise, weight, reps, and completed sets.`,
+    operation_family_key: operationDisplayFamilyKey({ title: `Gym - ${split}`, category: "Self Mastery" }),
+    is_operation_family_template: true,
+  })).concat([{ id: "local-family-pt-sessions", title: "Complete 10 PT sessions", category: "Recovery", status: "Queued", completed: false, operation_date: easternDateKey(), scheduled_date: easternDateKey(), brief: "Complete one clinician-approved physical therapy session and record the recovery evidence.", operation_family_key: operationDisplayFamilyKey({ title: "Complete 10 PT sessions", category: "Recovery" }), is_operation_family_template: true }]);
+}
 function canonicalFamilyLinkKey(value) {
   return String(value || "operation").toLowerCase().trim()
     .replace(/\b20\d{2}[-/]\d{2}[-/]\d{2}\b/g, "")
@@ -583,6 +599,10 @@ function operationPlanRows() {
       current.linked_mission_ids = [...new Set([...(current.linked_mission_ids || []), ...(operation.linked_mission_ids || [])])];
     }
   });
+  operationFamilyTemplateRows().forEach((template) => {
+    const key = operationDisplayFamilyKey(template);
+    if (!grouped.has(key)) grouped.set(key, { ...template, operation_family_key: key, family_operation_ids: [], family_count: 0 });
+  });
   return [...grouped.values()];
 }
 
@@ -611,6 +631,21 @@ async function insertMissionOperation(payload) {
   ["allow_unlinked", "scheduled_end_date", "schedule_mode", "operation_date", "is_daily", "scheduled_time", "metric_key", "brief", "operation_family_key"].forEach((key) => delete attempt[key]);
   result = await client.from("operations").insert(attempt).select().single();
   return result;
+}
+
+async function materializeOperationFamily(operation, mission) {
+  if (!operation?.is_operation_family_template || !isLocalOperationId(operation.id)) return operation;
+  const payload = missionOperationPayload(mission, {
+    title: operation.title,
+    brief: operation.brief,
+    date: easternDateKey(),
+    time: "",
+    cadence: "daily",
+    endDate: "",
+  });
+  const { data, error } = await insertMissionOperation({ ...payload, mission_id: null, allow_unlinked: true, operation_family_key: operation.operation_family_key });
+  if (error) throw error;
+  return data;
 }
 
 async function attachExistingOperation(operation, mission) {
@@ -771,11 +806,14 @@ async function applyMissionOperationPlan(mission, plan) {
         continue;
       }
 
-      let { data, error } = await attachExistingOperation(selectedOperation, mission);
+      let materializedOperation = selectedOperation;
+      try { materializedOperation = await materializeOperationFamily(selectedOperation, mission); }
+      catch (error) { return { ok: false, message: error.message }; }
+      let { data, error } = await attachExistingOperation(materializedOperation, mission);
       if (error) return { ok: false, message: error.message };
       if (data) {
         latestData = data;
-        missionOperations = [...missionOperations.filter((operation) => String(operation.id) !== String(data.id)), data];
+        missionOperations = [...missionOperations.filter((operation) => String(operation.id) !== String(data.id) && String(operation.id) !== String(selectedOperation.id)), data];
       }
     }
     return { ok: true, data: latestData };
