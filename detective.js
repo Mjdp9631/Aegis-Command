@@ -1189,6 +1189,35 @@ async function saveTrade(event) {
 function init() {
   ensurePlanAdherenceFields();
   const dialog = $("#detective-trade-dialog");
+  const tradeTime = $("#detective-time");
+  if (tradeTime) {
+    // Keep date/time as manual text entry. The native datetime-local control
+    // opens a calendar popup that is slow and inconsistent across browsers.
+    tradeTime.type = "text";
+    tradeTime.inputMode = "numeric";
+    tradeTime.placeholder = "YYYY-MM-DDTHH:MM";
+    tradeTime.autocomplete = "off";
+  }
+  const sessionTime = $("#detective-session-time");
+  if (sessionTime) {
+    const sessionOptions = [
+      ["L5 (7 est)", "L5 (7 est)"],
+      ["NY0 (8 est)", "NY0 (8 est)"],
+      ["NY1 (9 est)", "NY1 (9 est)"],
+      ["NY2 (10 est)", "NY2 (10 est)"],
+      ["NY3 (11 est)", "NY3 (11 est)"],
+      ["NY4 (12 est)", "NY4 (12 est)"],
+      ["NY5 (13 est)", "NY5 (13 est)"],
+      ["NY6 (14 est)", "NY6 (14 est)"],
+      ["NY7 (15 est)", "NY7 (15 est)"],
+      ["NY8 (16 est)", "NY8 (16 est)"],
+      ["NY9 (17 est)", "NY9 (17 est)"],
+    ];
+    const existing = new Set(Array.from(sessionTime.options).map((option) => option.value));
+    sessionOptions.forEach(([value, label]) => {
+      if (!existing.has(value)) sessionTime.add(new Option(label, value));
+    });
+  }
   const account = $("#detective-account");
   if (account && !Array.from(account.options).some((option) => option.value === "Theoretical")) account.insertAdjacentHTML("beforeend", '<option>Theoretical</option>');
   const setup = $("#detective-setup");
