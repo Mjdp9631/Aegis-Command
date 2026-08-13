@@ -514,7 +514,7 @@ function renderRecovery(log) {
 }
 
 function fieldMarkup(prefix, includeCategory) {
-  return `<label>Mission <input id="${prefix}-title" required /></label>${includeCategory ? `<label>Department <select id="${prefix}-category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Self Mastery</option><option>Life Admin</option></select></label>` : ""}<label>Matrix priority <select id="${prefix}-priority">${priorities}</select></label><label>Completion method <select id="${prefix}-method"><option value="binary">One-time completion</option><option value="units">Measured progress</option></select></label><label>What does complete mean? <textarea id="${prefix}-definition" placeholder="Describe the evidence for completion"></textarea></label><div class="unit-fields" data-unit-fields="${prefix}"><div class="two-col"><label>Tracked metric <select id="${prefix}-metric"><option value="chapters_read">Chapter read</option><option value="pt_session">PT session</option><option value="body.gym">Gym workout</option><option value="trading.trade">Trade logged</option><option value="mastery.entry">Self Mastery entry</option><option value="operation.complete">Completed operation</option></select></label><label>Total required <input id="${prefix}-target" type="number" min="1" step="1" value="1" /></label></div><div class="two-col"><label>Cadence <select id="${prefix}-cadence"><option value="">No cadence</option><option value="daily">Daily</option><option value="weekly">Times per week</option></select></label><label>Cadence target <input id="${prefix}-cadence-target" type="number" min="1" step="1" value="1" /></label></div><label>Unit label <input id="${prefix}-unit-label" placeholder="e.g. chapters or sessions" /></label></div><label class="binary-fields" data-binary-fields="${prefix}"><input id="${prefix}-completed" type="checkbox" /> Mission complete</label>`;
+  return `<label>Mission <input id="${prefix}-title" required /></label>${includeCategory ? `<label>Category <select id="${prefix}-category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Self Mastery</option><option>Life Admin</option></select></label>` : ""}<label>Matrix priority <select id="${prefix}-priority">${priorities}</select></label><label>Completion method <select id="${prefix}-method"><option value="binary">One-time completion</option><option value="units">Measured progress</option></select></label><label>What does complete mean? <textarea id="${prefix}-definition" placeholder="Describe the evidence for completion"></textarea></label><div class="unit-fields" data-unit-fields="${prefix}"><div class="two-col"><label>Tracked metric <select id="${prefix}-metric"><option value="chapters_read">Chapter read</option><option value="pt_session">PT session</option><option value="body.gym">Gym workout</option><option value="trading.trade">Trade logged</option><option value="mastery.entry">Self Mastery entry</option><option value="operation.complete">Completed operation</option></select></label><label>Total required <input id="${prefix}-target" type="number" min="1" step="1" value="1" /></label></div><div class="two-col"><label>Cadence <select id="${prefix}-cadence"><option value="">No cadence</option><option value="daily">Daily</option><option value="weekly">Times per week</option></select></label><label>Cadence target <input id="${prefix}-cadence-target" type="number" min="1" step="1" value="1" /></label></div><label>Count each completion as <input id="${prefix}-unit-label" placeholder="e.g. chapters, days, months, or notes" /></label></div><label class="binary-fields" data-binary-fields="${prefix}"><input id="${prefix}-completed" type="checkbox" /> Mission complete</label>`;
 }
 
 function updateTrackingFields(root, prefix) {
@@ -804,7 +804,7 @@ function readOutcomeFields(root, prefix, mission) {
 function buildMissionEditor() {
   const dialog = document.createElement("dialog");
   dialog.id = "mission-editor-dialog";
-  dialog.innerHTML = `<form id="mission-edit-form" class="dialog-card mission-editor-card"><button class="dialog-close" type="button" aria-label="Close">x</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Define the evidence.</h2>${fieldMarkup("edit-mission", false)}${operationPlanMarkup("edit-mission")}<button class="primary" type="submit">Save mission</button></form>`;
+  dialog.innerHTML = `<form id="mission-edit-form" class="dialog-card mission-editor-card"><button class="dialog-close" type="button" aria-label="Close">x</button><p class="eyebrow amber">MISSION CONTROL</p><h2>Define the evidence.</h2>${fieldMarkup("edit-mission", true)}${operationPlanMarkup("edit-mission")}<button class="primary" type="submit">Save mission</button></form>`;
   dialog.querySelector("#mission-edit-form button[type=submit]").insertAdjacentHTML("beforebegin", outcomeMarkup("edit-mission"));
   document.body.appendChild(dialog);
   const form = $("#mission-edit-form");
@@ -825,7 +825,7 @@ function buildMissionEditor() {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const mission = missions.find((item) => String(item.id) === String(dialog.dataset.missionId));
-    const payload = { ...readMission(form, "edit-mission", false, mission), ...readOutcomeFields(form, "edit-mission", mission) };
+    const payload = { ...readMission(form, "edit-mission", true, mission), ...readOutcomeFields(form, "edit-mission", mission) };
     if (!mission || !payload.title) return;
     const { data, error } = await client.from("missions").update(payload).eq("id", mission.id).select().single();
     if (error) return alert(`Mission could not be updated: ${error.message}`);
@@ -849,6 +849,7 @@ function buildMissionEditor() {
 function openEditor(dialog, mission, options = {}) {
   dialog.dataset.missionId = mission.id;
   $(`#edit-mission-title`).value = mission.title;
+  $(`#edit-mission-category`).value = missionCategory(mission.category);
   $(`#edit-mission-priority`).value = mission.priority;
   $(`#edit-mission-method`).value = isMeasured(mission) ? "units" : "binary";
   $(`#edit-mission-definition`).value = mission.completion_definition || "";
