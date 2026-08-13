@@ -57,8 +57,23 @@ function render({ missions, trades, projects, content, recoveryLogs, operations,
   target.innerHTML = `${card("missions", "MISSIONS", `${activeMissions.length} active`, priority ? `Next: ${priority.title}` : "No current objective", "missions")}${card("detective", "DETECTIVE", winRate, closed.length ? `${closed.length} closed trade debriefs` : "Log the next trade debrief", "detective")}${card("enterprise", "SPECIAL PROJECTS", `${activeProjects} active`, `${published} published item${published === 1 ? "" : "s"}`, "special-projects")}${card("recovery", "RECOVERY", recoveryValue, recoveryNote, "recovery")}${card("mastery", "MASTERY", `${mindEntries} mind`, `${bodyEntries} body entries`, "mastery")}${card("character", "CHARACTER", `${completedOperations}/${operations.length || 0}`, "Today's operations completed", "character")}`;
 }
 
+let summaryLoadTimer = null;
+let summaryLoadInFlight = false;
+let summaryLoadQueued = false;
+
+function scheduleSummaryLoad(delay = 120) {
+  clearTimeout(summaryLoadTimer);
+  summaryLoadTimer = setTimeout(() => { void load(); }, delay);
+}
+
 async function load() {
   if (!supabase) return;
+  if (summaryLoadInFlight) {
+    summaryLoadQueued = true;
+    return;
+  }
+  summaryLoadInFlight = true;
+  try {
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
   const [missionsResult, tradesResult, projectsResult, contentResult, recoveryResult, operationsResult, occurrenceResult, masteryResult, trainingResult] = await Promise.all([
@@ -74,6 +89,13 @@ async function load() {
   ]);
   const todayOperations = operationsForDay(operationsResult.data || [], occurrenceResult.data || [], operatingDayKey());
   render({ missions: missionsResult.data || [], trades: tradesResult.data || [], projects: projectsResult.data || [], content: contentResult.data || [], recoveryLogs: recoveryResult.data || [], operations: todayOperations, masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [] });
+  } finally {
+    summaryLoadInFlight = false;
+    if (summaryLoadQueued) {
+      summaryLoadQueued = false;
+      scheduleSummaryLoad(250);
+    }
+  }
 }
 
 document.addEventListener("click", (event) => {
@@ -82,11 +104,11 @@ document.addEventListener("click", (event) => {
 });
 
 if (supabase) {
-  load();
-  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 100); });
-  window.addEventListener("aegis:missions-changed", () => setTimeout(load, 100));
-  window.addEventListener("aegis:operations-changed", () => setTimeout(load, 100));
-  window.addEventListener("aegis:mastery-changed", () => setTimeout(load, 100));
-  window.addEventListener("aegis:data-changed", (event) => { if (["mastery", "missions", "operation-status"].includes(event.detail?.source)) return; setTimeout(load, 100); });
-  document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(load, 700); });
+  void load();
+  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; scheduleSummaryLoad(120); });
+  window.addEventListener("aegis:missions-changed", () => scheduleSummaryLoad(120));
+  window.addEventListener("aegis:operations-changed", () => scheduleSummaryLoad(120));
+  window.addEventListener("aegis:mastery-changed", () => scheduleSummaryLoad(120));
+  window.addEventListener("aegis:data-changed", (event) => { if (["mastery", "missions", "operation-status", "remote-missions", "remote-operations", "remote-mastery"].includes(event.detail?.source)) return; scheduleSummaryLoad(120); });
+  document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) scheduleSummaryLoad(700); });
 }

@@ -932,11 +932,27 @@ function renderTrades(trades) {
   });
 }
 
+let tradeLoadInFlight = false;
+let tradeLoadQueued = false;
+let tradeLoadTimer = null;
+
+function scheduleTradeLoad(delay = 120) {
+  clearTimeout(tradeLoadTimer);
+  tradeLoadTimer = setTimeout(() => { void loadTrades(); }, delay);
+}
+
 async function loadTrades() {
   if (!supabase) return;
+  if (tradeLoadInFlight) {
+    tradeLoadQueued = true;
+    return;
+  }
+  tradeLoadInFlight = true;
+  try {
   const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) return;
-  const { data, error } = await supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false });
+  const userId = sessionData.session?.user?.id;
+  if (!userId) return;
+  const { data, error } = await supabase.from("trade_debriefs").select("*").eq("user_id", userId).order("traded_at", { ascending: false });
   if (error) {
     console.error(error);
     return;
@@ -944,6 +960,13 @@ async function loadTrades() {
   loadedTrades = data || [];
   applyFilters();
   renderGroupedAccountBalances();
+  } finally {
+    tradeLoadInFlight = false;
+    if (tradeLoadQueued) {
+      tradeLoadQueued = false;
+      scheduleTradeLoad(250);
+    }
+  }
 }
 
 function buildFilters() {
@@ -1302,15 +1325,15 @@ function init() {
   });
   dialog.querySelector("form").addEventListener("submit", saveTrade);
   if (supabase) {
-    loadTrades();
-    loadAccountLedger();
-    supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(loadTrades, 50); });
+    void loadTrades();
+    void loadAccountLedger();
+    supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; scheduleTradeLoad(100); });
   }
 }
 
 init();
 
 window.addEventListener("aegis:data-changed", (event) => {
-  if (event.detail?.source === "remote-trades") setTimeout(loadTrades, 120);
+  if (event.detail?.source === "remote-trades") scheduleTradeLoad(180);
   if (event.detail?.source === "remote-accounts") setTimeout(loadAccountLedger, 120);
 });

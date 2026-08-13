@@ -209,8 +209,23 @@ async function loadMarkets() {
   }
 }
 
+let dashboardLoadTimer = null;
+let dashboardLoadInFlight = false;
+let dashboardLoadQueued = false;
+
+function scheduleDashboardLoad(delay = 120) {
+  clearTimeout(dashboardLoadTimer);
+  dashboardLoadTimer = setTimeout(() => { void load(); }, delay);
+}
+
 async function load() {
   if (!supabase) return;
+  if (dashboardLoadInFlight) {
+    dashboardLoadQueued = true;
+    return;
+  }
+  dashboardLoadInFlight = true;
+  try {
   const { data: session } = await supabase.auth.getSession();
   if (!session.session) return;
   const [tradesResult, operationsResult, occurrenceResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, challengeResult, capabilityLogsResult, foundationResult, campaignResult, accountsResult, groupsResult, membershipsResult, tradeLinksResult, withdrawalsResult, allocationsResult] = await Promise.all([
@@ -236,6 +251,13 @@ async function load() {
   dashboardData = { trades: tradesResult.data || [], operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], capabilityLogs: capabilityLogsResult.data || [], financialFoundation: foundationResult.data || null, mastery: masteryResult.data || [], xpCampaign: campaignResult.data || null, accounts: accountsResult.data || [] };
   accountLedger = { groups: groupsResult.data || [], memberships: membershipsResult.data || [], tradeLinks: tradeLinksResult.data || [], withdrawals: withdrawalsResult.data || [], allocations: allocationsResult.data || [] };
   render();
+  } finally {
+    dashboardLoadInFlight = false;
+    if (dashboardLoadQueued) {
+      dashboardLoadQueued = false;
+      scheduleDashboardLoad(250);
+    }
+  }
 }
 
 document.addEventListener("click", (event) => {
@@ -249,14 +271,14 @@ document.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => { if ((event.key === "Enter" || event.key === " ") && event.target.matches("[data-dashboard-view]")) { event.preventDefault(); event.target.click(); } });
 
 if (supabase) {
-  load();
-  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 100); });
-  window.addEventListener("aegis:missions-changed", () => setTimeout(load, 120));
-  window.addEventListener("aegis:operations-changed", () => setTimeout(load, 120));
-  window.addEventListener("aegis:mastery-changed", () => setTimeout(load, 120));
-  window.addEventListener("aegis:accounts-changed", () => setTimeout(load, 120));
-  window.addEventListener("aegis:data-changed", (event) => { if (["mastery", "missions", "operation-status"].includes(event.detail?.source)) return; setTimeout(load, 120); });
-  document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(load, 700); });
+  void load();
+  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; scheduleDashboardLoad(120); });
+  window.addEventListener("aegis:missions-changed", () => scheduleDashboardLoad(140));
+  window.addEventListener("aegis:operations-changed", () => scheduleDashboardLoad(140));
+  window.addEventListener("aegis:mastery-changed", () => scheduleDashboardLoad(140));
+  window.addEventListener("aegis:accounts-changed", () => scheduleDashboardLoad(140));
+  window.addEventListener("aegis:data-changed", (event) => { if (["mastery", "missions", "operation-status", "remote-missions", "remote-operations", "remote-mastery", "remote-accounts"].includes(event.detail?.source)) return; scheduleDashboardLoad(140); });
+  document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) scheduleDashboardLoad(700); });
 }
 
 loadMarkets();
