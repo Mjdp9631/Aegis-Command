@@ -74,9 +74,10 @@ function operationMatchesMission(operation, mission) {
   // Mission pathways are explicit. Similarity can be useful as an editor
   // suggestion, but it must never make an unrelated operation advance a
   // mission automatically.
-  if ((operation.mission_link_mode !== "family" && String(operation.mission_id || "") === String(mission.id))
-    || (Array.isArray(operation.linked_mission_ids) && operation.linked_mission_ids.some((id) => String(id) === String(mission.id)))) return true;
-  return false;
+  const linkedIds = Array.isArray(operation.linked_mission_ids) ? operation.linked_mission_ids : null;
+  if (linkedIds && linkedIds.length) return linkedIds.some((id) => String(id) === String(mission.id));
+  return operation.mission_link_mode !== "family"
+    && String(operation.mission_id || "") === String(mission.id);
 }
 function operationsForMission(mission) {
   const grouped = new Map();
@@ -509,7 +510,9 @@ function operationPlanRows() {
   const grouped = new Map();
   rows.filter((operation) => {
     if (!operation || operation._occurrence) return false;
-    if (operation.allow_unlinked || missionCategory(operation.category) === "Life Admin") return false;
+    // allow_unlinked means the operation may exist without a mission. It
+    // must not hide that operation from the editor's explicit-link chooser.
+    if (missionCategory(operation.category) === "Life Admin") return false;
     return true;
   }).forEach((operation) => {
     const key = operationFamilyKey(operation);
@@ -879,24 +882,33 @@ async function loadData() {
 
       let operationLinkRows = [];
       let familyLinksAvailable = false;
+      let legacyLinksAvailable = false;
       if (!operationError) {
         try {
-          let linkResult = await withMissionTimeout(
+          const familyLinkResult = await withMissionTimeout(
             client.from("operation_family_mission_links").select("operation_family_key,mission_id").eq("user_id", session.user.id),
             "Operation family-link query",
           );
-          familyLinksAvailable = !linkResult.error;
-          if (linkResult.error) {
-            linkResult = await withMissionTimeout(
-              client.from("operation_mission_links").select("operation_id,mission_id").eq("user_id", session.user.id),
-              "Operation link fallback query",
-            );
-          }
-          if (!linkResult.error) operationLinkRows = (linkResult.data || []).map((link) => ({
+          familyLinksAvailable = !familyLinkResult.error;
+          if (!familyLinkResult.error) operationLinkRows.push(...(familyLinkResult.data || []).map((link) => ({
             ...link,
-            operation_id: familyLinksAvailable ? null : link.operation_id,
-            operation_family_key: familyLinksAvailable ? link.operation_family_key : null,
-          }));
+            operation_id: null,
+            operation_family_key: link.operation_family_key,
+          })));
+
+          // Keep the legacy table in the read path even when the family-link
+          // table exists. During migration, older explicit links can remain
+          // there; ignoring them makes the editor falsely report no links.
+          const legacyLinkResult = await withMissionTimeout(
+            client.from("operation_mission_links").select("operation_id,mission_id").eq("user_id", session.user.id),
+            "Operation link fallback query",
+          );
+          legacyLinksAvailable = !legacyLinkResult.error;
+          if (!legacyLinkResult.error) operationLinkRows.push(...(legacyLinkResult.data || []).map((link) => ({
+            ...link,
+            operation_id: link.operation_id,
+            operation_family_key: null,
+          })));
         } catch (linkError) {
           // The family-link migration is optional during rollout. Existing
           // operation rows still render, and the editor can retry linking.
@@ -910,14 +922,20 @@ async function loadData() {
         if (!ids.some((id) => String(id) === String(link.mission_id))) ids.push(link.mission_id);
         linkedMissionIds.set(key, ids);
       });
-      if (Array.isArray(operationRows)) operationRows = operationRows.map((operation) => ({
-        ...operation,
-        operation_family_key: operationFamilyKey(operation),
-        mission_link_mode: familyLinksAvailable ? "family" : "operation",
-        linked_mission_ids: linkedMissionIds.get(`family:${operationFamilyKey(operation)}`)
-          || linkedMissionIds.get(`operation:${operation.id}`)
-          || (familyLinksAvailable ? [] : (operation.mission_id ? [operation.mission_id] : [])),
-      }));
+      if (Array.isArray(operationRows)) operationRows = operationRows.map((operation) => {
+        const explicitIds = [
+          ...(linkedMissionIds.get(`family:${operationFamilyKey(operation)}`) || []),
+          ...(linkedMissionIds.get(`operation:${operation.id}`) || []),
+        ].filter((id, index, ids) => ids.findIndex((candidate) => String(candidate) === String(id)) === index);
+        return {
+          ...operation,
+          operation_family_key: operationFamilyKey(operation),
+          mission_link_mode: familyLinksAvailable ? "family" : "operation",
+          linked_mission_ids: explicitIds.length
+            ? explicitIds
+            : (familyLinksAvailable ? [] : (operation.mission_id ? [operation.mission_id] : [])),
+        };
+      });
       const sharedOperationRows = Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [];
       if (!operationError && Array.isArray(operationRows)) missionOperations = [...operationRows, ...sharedOperationRows.filter((shared) => !operationRows.some((operation) => String(operation.id) === String(shared.id)))];
       else if (sharedOperationRows.length) missionOperations = sharedOperationRows;

@@ -48,7 +48,11 @@ function fallbackOperationRows() {
 }
 
 function fallbackLinkedOperations(mission) {
-  return fallbackOperationRows().filter((operation) => String(operation.mission_id || "") === String(mission?.id) || (Array.isArray(operation.linked_mission_ids) && operation.linked_mission_ids.some((id) => String(id) === String(mission?.id))));
+  return fallbackOperationRows().filter((operation) => {
+    const linkedIds = Array.isArray(operation.linked_mission_ids) ? operation.linked_mission_ids : null;
+    if (linkedIds && linkedIds.length) return linkedIds.some((id) => String(id) === String(mission?.id));
+    return String(operation.mission_id || "") === String(mission?.id);
+  });
 }
 
 async function persistFallbackOperationLink(operation, mission, userId) {

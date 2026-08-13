@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="detective-visibility.css?v=tab-visibility-v1" />
     <link rel="stylesheet" href="trade-review-input.css?correction-feedback-v1" />
     <link rel="stylesheet" href="advisor.css" />
-    <link rel="stylesheet" href="mission.css?v=mission-details-readonly-v2" />
+    <link rel="stylesheet" href="mission.css?v=mission-details-readonly-v3" />
     <link rel="stylesheet" href="filters.css" />
     <link rel="stylesheet" href="importer.css" />
     <link rel="stylesheet" href="enterprise.css?v=financial-foundation-v1" />
@@ -283,7 +283,11 @@
             dialog.querySelector("#fallback-mission-priority").textContent = mission.priority || "Schedule";
             dialog.querySelector("#fallback-mission-progress").textContent = mission.completion_type === "units" && Number(mission.target_count) > 0 ? `${mission.completed_count || 0} / ${mission.target_count} ${mission.unit_label || "units"}` : `${Number(mission.progress) || 0}%`;
             dialog.querySelector("#fallback-mission-definition").textContent = mission.completion_definition || "Define the evidence that proves this mission is complete.";
-            const linked = (Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : []).filter(operation => String(operation.mission_id || "") === String(id) || (Array.isArray(operation.linked_mission_ids) && operation.linked_mission_ids.some(linkedId => String(linkedId) === String(id))));
+            const linked = (Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : []).filter(operation => {
+              const linkedIds = Array.isArray(operation.linked_mission_ids) ? operation.linked_mission_ids : null;
+              if (linkedIds && linkedIds.length) return linkedIds.some(linkedId => String(linkedId) === String(id));
+              return String(operation.mission_id || "") === String(id);
+            });
             dialog.querySelector("#fallback-mission-operations").innerHTML = linked.length ? linked.map(operation => `<article class="mission-editor-linked-row"><div><strong>${esc(operation.title)}</strong><span>${esc(operation.status || (operation.completed ? "Complete" : "Queued"))}${operation.category ? ` · ${esc(operation.category)}` : ""}</span></div></article>`).join("") : '<p class="mission-details-empty">No operation is attached yet.</p>';
             try { if (dialog.open) dialog.close(); dialog.showModal(); } catch (error) { dialog.setAttribute("open", ""); }
             return true;
@@ -355,7 +359,7 @@
     </script>
     <script type="module" src="auth-flow.js"></script>
     <script type="module" src="cross-browser-sync.js?v=realtime-v2"></script>
-    <script type="module" src="mission.js?v=mission-ledger-boot-v15"></script>
+    <script type="module" src="mission.js?v=mission-ledger-boot-v16"></script>
     <script type="module" src="phase-protocol.js?v=phase-protocol-v7"></script>
     <script type="module" src="detective.js?v=account-profit-deposits-v2"></script>
     <script type="module" src="brain-review.js?v=correction-feedback-v1"></script>
@@ -363,7 +367,7 @@
     <script type="module" src="notion-importer.js"></script>
     <script type="module" src="enterprise.js?v=manual-evidence-dates-v2"></script>
     <script type="module" src="character.js?v=radar-palette-v7"></script>
-    <script type="module" src="command-center.js?v=mission-feed-handoff-v11"></script>
+    <script type="module" src="command-center.js?v=mission-feed-handoff-v12"></script>
     <script type="module" src="command-summary.js?v=shared-operation-state-v2"></script>
     <script type="module" src="command-dashboard.js?v=shared-operation-state-v3"></script>
     <script type="module" src="system-review.js?v=manual-evidence-dates-v2"></script>
