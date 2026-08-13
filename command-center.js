@@ -51,6 +51,18 @@ function fallbackLinkedOperations(mission) {
   return fallbackOperationRows().filter((operation) => String(operation.mission_id || "") === String(mission?.id) || (Array.isArray(operation.linked_mission_ids) && operation.linked_mission_ids.some((id) => String(id) === String(mission?.id))));
 }
 
+async function persistFallbackOperationLink(operation, mission, userId) {
+  const familyKey = fallbackOperationFamilyKey(operation);
+  let familyResult = await supabase.from("operation_family_mission_links").upsert({ user_id: userId, operation_family_key: familyKey, mission_id: mission.id, is_explicit: true }, { onConflict: "user_id,operation_family_key,mission_id" });
+  if (familyResult.error && /relation|table|schema cache|column/i.test(String(familyResult.error.message || ""))) {
+    familyResult = await supabase.from("operation_mission_links").upsert({ user_id: userId, operation_id: operation.id, mission_id: mission.id, is_explicit: true }, { onConflict: "operation_id,mission_id" });
+  }
+  if (familyResult.error && !/relation|table|schema cache|column/i.test(String(familyResult.error.message || ""))) return familyResult;
+  const update = await supabase.from("operations").update({ mission_id: mission.id, allow_unlinked: false }).eq("id", operation.id).eq("user_id", userId);
+  if (update.error && /allow_unlinked|column|schema cache/i.test(String(update.error.message || ""))) return supabase.from("operations").update({ mission_id: mission.id }).eq("id", operation.id).eq("user_id", userId);
+  return update;
+}
+
 function renderFallbackOperationLinkage(form, mission) {
   const linkedTarget = form.querySelector("#fallback-linked-operations");
   const existing = form.querySelector("#fallback-operation-existing");
@@ -72,12 +84,19 @@ async function applyFallbackOperationLinkage(mission, form) {
   if (mode === "existing") {
     const selected = [...(form.elements.operation_existing?.selectedOptions || [])].map((option) => option.value).filter(Boolean);
     for (const operationId of selected) {
-      await supabase.from("operations").update({ mission_id: mission.id, allow_unlinked: false }).eq("id", operationId).eq("user_id", userId);
+      const operation = fallbackOperationRows().find((row) => String(row.id) === String(operationId));
+      if (!operation) continue;
+      const result = await persistFallbackOperationLink(operation, mission, userId);
+      if (result.error) throw new Error(result.error.message);
     }
   } else if (mode === "create") {
     const title = String(form.elements.operation_title?.value || "").trim();
     if (!title) return;
-    await supabase.from("operations").insert({ user_id: userId, title, category: normalizeCategory(mission.category), brief: String(form.elements.operation_brief?.value || "").trim() || mission.completion_definition || "Complete one operation for this mission.", mission_id: mission.id, status: "Queued", completed: false, scheduled_date: form.elements.operation_date?.value || new Date().toISOString().slice(0, 10), operation_family_key: fallbackOperationFamilyKey({ title, category: mission.category }), allow_unlinked: false });
+    const operationPayload = { user_id: userId, title, category: normalizeCategory(mission.category), brief: String(form.elements.operation_brief?.value || "").trim() || mission.completion_definition || "Complete one operation for this mission.", mission_id: mission.id, status: "Queued", completed: false, scheduled_date: form.elements.operation_date?.value || new Date().toISOString().slice(0, 10), operation_family_key: fallbackOperationFamilyKey({ title, category: mission.category }), allow_unlinked: false };
+    const inserted = await supabase.from("operations").insert(operationPayload).select().single();
+    if (inserted.error) throw new Error(inserted.error.message);
+    const result = await persistFallbackOperationLink(inserted.data, mission, userId);
+    if (result.error) throw new Error(result.error.message);
   }
 }
 
@@ -135,7 +154,8 @@ function ensureFallbackMissionEditor() {
     if (!supabase) return alert("Sign in before editing a mission.");
     const { data, error } = await supabase.from("missions").update(payload).eq("id", mission.id).select().single();
     if (error) return alert(`Mission could not be updated: ${error.message}`);
-    await applyFallbackOperationLinkage(mission, form);
+    try { await applyFallbackOperationLinkage(data, form); }
+    catch (linkError) { return alert(`Mission saved, but operation linkage failed: ${linkError.message}`); }
     dialog.close();
     window.AEGIS_MISSIONS = (window.AEGIS_MISSIONS || []).map((row) => String(row.id) === String(data.id) ? data : row);
     window.dispatchEvent(new CustomEvent("aegis:missions-loaded", { detail: { missions: window.AEGIS_MISSIONS, source: "fallback-mission-editor" } }));
@@ -210,12 +230,26 @@ async function load() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [missionsResult, operationsResult, occurrenceResult] = await Promise.all([
+  const [missionsResult, operationsResult, occurrenceResult, familyLinksResult, legacyLinksResult] = await Promise.all([
     supabase.from("missions").select("*").order("created_at", { ascending: false }),
-    supabase.from("operations").select("id, mission_id, title, category, schedule_mode, scheduled_date, operation_date, scheduled_time, completed_on, status, completed"),
-    supabase.from("operation_occurrences").select("*")
+    supabase.from("operations").select("id, mission_id, title, category, schedule_mode, scheduled_date, operation_date, scheduled_time, completed_on, status, completed, operation_family_key, allow_unlinked"),
+    supabase.from("operation_occurrences").select("*"),
+    supabase.from("operation_family_mission_links").select("operation_family_key, mission_id"),
+    supabase.from("operation_mission_links").select("operation_id, mission_id")
   ]);
-  if (!missionsResult.error) render(missionsResult.data || [], effectiveOperations(operationsResult.data || [], occurrenceResult.data || []));
+  if (!missionsResult.error) {
+    const familyLinks = familyLinksResult.error ? [] : (familyLinksResult.data || []);
+    const legacyLinks = legacyLinksResult.error ? [] : (legacyLinksResult.data || []);
+    const operations = effectiveOperations(operationsResult.data || [], occurrenceResult.data || []).map((operation) => ({
+      ...operation,
+      linked_mission_ids: [...new Set([
+        ...(Array.isArray(operation.linked_mission_ids) ? operation.linked_mission_ids : []),
+        ...familyLinks.filter((link) => String(link.operation_family_key || "") === String(operation.operation_family_key || fallbackOperationFamilyKey(operation))).map((link) => link.mission_id),
+        ...legacyLinks.filter((link) => String(link.operation_id) === String(operation.id)).map((link) => link.mission_id),
+      ].filter(Boolean))],
+    }));
+    render(missionsResult.data || [], operations);
+  }
 }
 
 if (supabase) {

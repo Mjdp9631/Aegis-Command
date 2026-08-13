@@ -261,7 +261,7 @@
             if (dialog) return dialog;
             dialog = document.createElement("dialog");
             dialog.id = "mission-fallback-details";
-            dialog.innerHTML = `<form method="dialog" class="dialog-card mission-details-card"><button class="dialog-close" type="submit" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">MISSION CONTROL / READ ONLY</p><h2 id="fallback-mission-title">Mission</h2><p id="fallback-mission-meta" class="body-copy"></p><div class="mission-details-fields"><div><span>Category</span><strong id="fallback-mission-category"></strong></div><div><span>Priority</span><strong id="fallback-mission-priority"></strong></div><div><span>Progress</span><strong id="fallback-mission-progress"></strong></div></div><p class="eyebrow">COMPLETION EVIDENCE</p><div id="fallback-mission-definition" class="mission-details-definition"></div><div class="mission-details-actions"><button class="secondary" id="fallback-mission-edit" type="button">Edit mission</button></div></form>`;
+            dialog.innerHTML = `<form method="dialog" class="dialog-card mission-details-card"><button class="dialog-close" type="submit" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">MISSION CONTROL / READ ONLY</p><h2 id="fallback-mission-title">Mission</h2><p id="fallback-mission-meta" class="body-copy"></p><div class="mission-details-fields"><div><span>Category</span><strong id="fallback-mission-category"></strong></div><div><span>Priority</span><strong id="fallback-mission-priority"></strong></div><div><span>Progress</span><strong id="fallback-mission-progress"></strong></div></div><p class="eyebrow">COMPLETION EVIDENCE</p><div id="fallback-mission-definition" class="mission-details-definition"></div><p class="eyebrow">LINKED OPERATIONS</p><div id="fallback-mission-operations" class="mission-editor-linked-list"></div><div class="mission-details-actions"><button class="secondary" id="fallback-mission-edit" type="button">Edit mission</button></div></form>`;
             document.body.appendChild(dialog);
             dialog.querySelector("#fallback-mission-edit").addEventListener("click", event => {
               event.preventDefault();
@@ -283,6 +283,8 @@
             dialog.querySelector("#fallback-mission-priority").textContent = mission.priority || "Schedule";
             dialog.querySelector("#fallback-mission-progress").textContent = mission.completion_type === "units" && Number(mission.target_count) > 0 ? `${mission.completed_count || 0} / ${mission.target_count} ${mission.unit_label || "units"}` : `${Number(mission.progress) || 0}%`;
             dialog.querySelector("#fallback-mission-definition").textContent = mission.completion_definition || "Define the evidence that proves this mission is complete.";
+            const linked = (Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : []).filter(operation => String(operation.mission_id || "") === String(id) || (Array.isArray(operation.linked_mission_ids) && operation.linked_mission_ids.some(linkedId => String(linkedId) === String(id))));
+            dialog.querySelector("#fallback-mission-operations").innerHTML = linked.length ? linked.map(operation => `<article class="mission-editor-linked-row"><div><strong>${esc(operation.title)}</strong><span>${esc(operation.status || (operation.completed ? "Complete" : "Queued"))}${operation.category ? ` · ${esc(operation.category)}` : ""}</span></div></article>`).join("") : '<p class="mission-details-empty">No operation is attached yet.</p>';
             try { if (dialog.open) dialog.close(); dialog.showModal(); } catch (error) { dialog.setAttribute("open", ""); }
             return true;
           };
@@ -361,7 +363,7 @@
     <script type="module" src="notion-importer.js"></script>
     <script type="module" src="enterprise.js?v=manual-evidence-dates-v2"></script>
     <script type="module" src="character.js?v=radar-palette-v7"></script>
-    <script type="module" src="command-center.js?v=mission-feed-handoff-v10"></script>
+    <script type="module" src="command-center.js?v=mission-feed-handoff-v11"></script>
     <script type="module" src="command-summary.js?v=shared-operation-state-v2"></script>
     <script type="module" src="command-dashboard.js?v=shared-operation-state-v3"></script>
     <script type="module" src="system-review.js?v=manual-evidence-dates-v2"></script>
