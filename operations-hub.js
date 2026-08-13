@@ -2527,7 +2527,7 @@ async function boot() {
   operationsReady = false;
   try {
     ensurePermanentMissionCalendar();
-    if (client) {
+  if (client) {
       const { data } = await client.auth.getSession();
       currentUser = data?.session?.user || null;
     }
@@ -2536,25 +2536,26 @@ async function boot() {
   // flight. Cloud records replace this small local safety feed as soon as the
   // session is available.
   const local = cachedOperations();
-    if (currentUser) {
-      // The queue only needs the durable operation and occurrence reads to
-      // become interactive. Mission-link reconciliation and recurrence
-      // maintenance are deferred until after the first paint so a refresh is
-      // not held hostage by a batch of writes.
-      operations = await seedIfEmpty();
-      await loadOccurrences();
-      subscribeToOperationSync();
-      saveCachedOperations();
-      operationsReady = true;
-      announceOperationsLoaded();
-      renderQueue();
-      renderCalendar();
-      void runDeferredOperationMaintenance();
-      return;
-    }
+  if (currentUser) {
+    await loadMissions();
+    await loadCurrentBook();
+  }
+  if (currentUser) {
+    operations = await seedIfEmpty();
+    await loadOperationMissionLinks();
+    await syncOperationMissionLinks();
+    await syncDailyReadingOperation();
+    await loadOccurrences();
+    await ensureRecurringOccurrences();
+    await markExpiredOperationsMissed();
+    await reconcileRecurringCompletion();
+    await reconcileMeasuredMissionCounts();
+    subscribeToOperationSync();
+  } else {
     operations = await ensureTodayOperations(local.length ? local : starterOperations());
     operationOccurrences = cachedOccurrences();
-    if (!operations.length) operations = local.length ? local : starterOperations();
+  }
+  if (!operations.length) operations = local.length ? local : starterOperations();
     saveCachedOperations();
     operationsReady = true;
     announceOperationsLoaded();
@@ -2570,27 +2571,6 @@ async function boot() {
     renderCalendar();
   } finally {
     bootInFlight = false;
-  }
-}
-
-async function runDeferredOperationMaintenance() {
-  if (!currentUser) return;
-  try {
-    await loadMissions();
-    await loadCurrentBook();
-    await loadOperationMissionLinks();
-    await syncOperationMissionLinks();
-    await syncDailyReadingOperation();
-    await ensureRecurringOccurrences();
-    await markExpiredOperationsMissed();
-    await reconcileRecurringCompletion();
-    await reconcileMeasuredMissionCounts();
-    await loadOccurrences();
-    saveCachedOperations();
-    renderQueue();
-    renderCalendar();
-  } catch (error) {
-    console.warn("Deferred operation maintenance skipped", error);
   }
 }
 
