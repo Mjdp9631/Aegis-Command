@@ -80,7 +80,8 @@ function operationMatchesMission(operation, mission) {
 }
 function operationsForMission(mission) {
   const grouped = new Map();
-  missionOperations.filter((operation) => operationMatchesMission(operation, mission)).forEach((operation) => {
+  const allOperations = [...new Map([...missionOperations, ...(Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [])].filter((operation) => operation && operation.id).map((operation) => [String(operation.id), operation])).values()];
+  allOperations.filter((operation) => operationMatchesMission(operation, mission)).forEach((operation) => {
     const key = operationFamilyKey(operation);
     const current = grouped.get(key);
     if (!current) grouped.set(key, { ...operation, family_count: 1 });
@@ -263,7 +264,7 @@ function openMissionLinkEditor(event) {
 
 async function unlinkMissionOperation(operationId, missionId) {
   if (!operationId || !missionId || !session?.user?.id) return;
-  const operation = missionOperations.find((item) => String(item.id) === String(operationId));
+  const operation = [...missionOperations, ...(Array.isArray(window.AEGIS_OPERATIONS) ? window.AEGIS_OPERATIONS : [])].find((item) => String(item.id) === String(operationId));
   if (!operation) return;
   const familyKey = operationFamilyKey(operation);
   let manyToManyAvailable = false;
@@ -491,7 +492,16 @@ function readMission(root, prefix, includeCategory, existing = null) {
 }
 
 function operationPlanMarkup(prefix) {
-  return `<fieldset class="mission-operation-plan"><legend>Operation linkage</legend><p class="mission-operation-help">Each operation family linked here can advance this mission. Repeating dates are completion records for the same operation, not new pathways. One operation may advance multiple missions. Life Admin operations remain informational and do not advance progress.</p><label>Operation action <select id="${prefix}-operation-mode"><option value="none">No operation yet</option><option value="create">Create operation</option><option value="existing">Add existing operation</option></select></label><div id="${prefix}-create-operation" class="mission-operation-fields" hidden><label>Operation <input id="${prefix}-operation-title" placeholder="What moves this mission forward?" /></label><label>Brief <textarea id="${prefix}-operation-brief" rows="2" placeholder="What counts as one completed operation?"></textarea></label><div class="two-col"><label>First date <input id="${prefix}-operation-date" type="date" /></label><label>Time <span class="field-optional">optional</span><input id="${prefix}-operation-time" type="time" /></label></div><label>Cadence <select id="${prefix}-operation-cadence"><option value="one_time">One-time</option><option value="daily">Repeat daily</option><option value="weekly">Repeat weekly</option></select></label><label id="${prefix}-operation-end-wrap">End date <span class="field-optional">optional for repeats</span><input id="${prefix}-operation-end-date" type="date" /></label></div><div id="${prefix}-existing-operation" class="mission-operation-fields" hidden><label>Existing operation families<select id="${prefix}-operation-existing" multiple size="5"><option value="">Choose one or more operation families</option></select></label><small id="${prefix}-operation-existing-note" class="mission-operation-note"></small></div></fieldset>`;
+  return `<fieldset class="mission-operation-plan"><legend>Operation linkage</legend><p class="mission-operation-help">Each operation family linked here can advance this mission. Repeating dates are completion records for the same operation, not new pathways. One operation may advance multiple missions. Life Admin operations remain informational and do not advance progress.</p><div class="mission-editor-linked"><p class="eyebrow">CURRENT LINKED PATHWAYS</p><div id="${prefix}-linked-operations" class="mission-editor-linked-list"><p class="mission-details-empty">Open a mission to view its linked pathways.</p></div></div><label>Operation action <select id="${prefix}-operation-mode"><option value="none">No operation yet</option><option value="create">Create operation</option><option value="existing">Add existing operation</option></select></label><div id="${prefix}-create-operation" class="mission-operation-fields" hidden><label>Operation <input id="${prefix}-operation-title" placeholder="What moves this mission forward?" /></label><label>Brief <textarea id="${prefix}-operation-brief" rows="2" placeholder="What counts as one completed operation?"></textarea></label><div class="two-col"><label>First date <input id="${prefix}-operation-date" type="date" /></label><label>Time <span class="field-optional">optional</span><input id="${prefix}-operation-time" type="time" /></label></div><label>Cadence <select id="${prefix}-operation-cadence"><option value="one_time">One-time</option><option value="daily">Repeat daily</option><option value="weekly">Repeat weekly</option></select></label><label id="${prefix}-operation-end-wrap">End date <span class="field-optional">optional for repeats</span><input id="${prefix}-operation-end-date" type="date" /></label></div><div id="${prefix}-existing-operation" class="mission-operation-fields" hidden><label>Existing operation families<select id="${prefix}-operation-existing" multiple size="5"><option value="">Choose one or more operation families</option></select></label><small id="${prefix}-operation-existing-note" class="mission-operation-note"></small></div></fieldset>`;
+}
+
+function renderMissionEditorLinkedOperations(form, prefix, mission) {
+  const target = form?.querySelector(`#${prefix}-linked-operations`);
+  if (!target) return;
+  const linked = mission ? operationsForMission(mission) : [];
+  target.innerHTML = linked.length
+    ? linked.map((operation) => `<article class="mission-editor-linked-row"><div><strong>${escape(operation.title)}</strong><span>${escape(operationStatus(operation))}${operation.family_count > 1 ? ` · ${escape(operation.family_count)} completion records` : ""}${operation.category ? ` · ${escape(operation.category)}` : ""}</span></div><button type="button" class="text-button mission-operation-unlink" data-editor-unlink-operation="${escape(operation.id)}" data-editor-unlink-mission="${escape(mission.id)}">Unlink pathway</button></article>`).join("")
+    : '<p class="mission-details-empty">No operation is attached yet. Choose Add existing operation or Create operation below.</p>';
 }
 
 function operationPlanRows() {
@@ -761,6 +771,13 @@ function buildMissionEditor() {
   $(`#edit-mission-method`).addEventListener("change", () => updateTrackingFields(form, "edit-mission"));
   $(`#edit-mission-operation-mode`).addEventListener("change", () => { populateOperationPlanChoices(form, "edit-mission"); syncOperationPlanFields(form, "edit-mission"); });
   $(`#edit-mission-operation-cadence`).addEventListener("change", () => syncOperationPlanFields(form, "edit-mission"));
+  form.addEventListener("click", (event) => {
+    const unlink = event.target.closest("[data-editor-unlink-operation]");
+    if (!unlink) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void unlinkMissionOperation(unlink.dataset.editorUnlinkOperation, unlink.dataset.editorUnlinkMission);
+  });
   $(`#edit-mission-operation-date`).value = easternDateKey();
   populateOperationPlanChoices(form, "edit-mission");
   syncOperationPlanFields(form, "edit-mission");
@@ -811,6 +828,7 @@ function openEditor(dialog, mission, options = {}) {
   $(`#edit-mission-operation-cadence`).value = "one_time";
   $(`#edit-mission-operation-end-date`).value = "";
   populateOperationPlanChoices($("#mission-edit-form"), "edit-mission", mission);
+  renderMissionEditorLinkedOperations($("#mission-edit-form"), "edit-mission", mission);
   syncOperationPlanFields($("#mission-edit-form"), "edit-mission");
   updateTrackingFields($("#mission-edit-form"), "edit-mission");
   dialog.showModal();
