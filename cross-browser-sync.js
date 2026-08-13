@@ -26,15 +26,31 @@ const tableEvents = {
 
 let channel = null;
 let subscribedUser = "";
+const pendingRelays = new Map();
+let relayTimer = null;
+
+function flushRelays() {
+  relayTimer = null;
+  const relays = [...pendingRelays.values()];
+  pendingRelays.clear();
+  relays.forEach(({ source, table }) => {
+    const detail = { source, table, remote: true };
+    window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail }));
+    if (source === "remote-operations") window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail }));
+    if (source === "remote-missions") window.dispatchEvent(new CustomEvent("aegis:missions-changed", { detail }));
+    if (source === "remote-mastery") window.dispatchEvent(new CustomEvent("aegis:mastery-changed", { detail }));
+    if (source === "remote-accounts") window.dispatchEvent(new CustomEvent("aegis:accounts-changed", { detail }));
+    if (source === "remote-phase") window.dispatchEvent(new CustomEvent("aegis:phase-changed", { detail }));
+  });
+}
 
 function relay(table) {
   const source = `remote-${tableEvents[table] || table}`;
-  window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source, table, remote: true } }));
-  if (source === "remote-operations") window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source, table, remote: true } }));
-  if (source === "remote-missions") window.dispatchEvent(new CustomEvent("aegis:missions-changed", { detail: { source, table, remote: true } }));
-  if (source === "remote-mastery") window.dispatchEvent(new CustomEvent("aegis:mastery-changed", { detail: { source, table, remote: true } }));
-  if (source === "remote-accounts") window.dispatchEvent(new CustomEvent("aegis:accounts-changed", { detail: { source, table, remote: true } }));
-  if (source === "remote-phase") window.dispatchEvent(new CustomEvent("aegis:phase-changed", { detail: { source, table, remote: true } }));
+  // Several rows can be written together (gym sets, occurrences, or linked
+  // account records). Dispatch one event per affected data lane instead of
+  // making every module reload once per row.
+  pendingRelays.set(source, { source, table });
+  if (!relayTimer) relayTimer = setTimeout(flushRelays, 120);
 }
 
 async function subscribe() {

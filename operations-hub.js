@@ -604,11 +604,11 @@ async function ensureRecurringOccurrences() {
   if (!client || !currentUser || !operationOccurrences) return;
   const desired = [];
   operations.filter((operation) => scheduleMode(operation) !== "one_time" && operation.id && !String(operation.id).startsWith("local-")).forEach((operation) => {
-    // Keep a practical rolling horizon. Materializing 370 days for every
-    // daily series creates thousands of rows and realtime notifications during
-    // boot, which can freeze the page. The parent schedule remains durable;
-    // the calendar can extend the horizon when needed.
-    recurringDateKeys(operation, 45).forEach((date) => desired.push({ user_id: currentUser.id, operation_id: operation.id, occurrence_date: date, scheduled_time: operation.scheduled_time || null }));
+    // Keep only the visible planning horizon materialized. The parent schedule
+    // remains durable and the display layer can derive future instances. A
+    // long insert burst for every daily series creates realtime notifications
+    // that can freeze the page during boot.
+    recurringDateKeys(operation, 14).forEach((date) => desired.push({ user_id: currentUser.id, operation_id: operation.id, occurrence_date: date, scheduled_time: operation.scheduled_time || null }));
   });
   if (!desired.length) return;
   const existing = new Set(operationOccurrences.map((row) => `${row.operation_id}|${dateOnly(row.occurrence_date)}`));
