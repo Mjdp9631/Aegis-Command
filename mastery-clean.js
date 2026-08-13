@@ -763,6 +763,7 @@ async function saveSystem(event) {
 }
 
 async function load() {
+  if (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "mastery") return;
   if (db) {
     const [entryResult, missionResult, workResult, challengeResult, sessionResult, setResult, weightResult, foodResult] = await Promise.all([
       db.from("mastery_entries").select("*").order("created_at", { ascending: false }), db.from("missions").select("*"), db.from("deep_work_logs").select("*").order("created_at", { ascending: false }).limit(30), db.from("mastery_challenges").select("*").order("created_at", { ascending: false }).limit(30),
@@ -804,6 +805,7 @@ document.addEventListener("click", event => {
 });
 
 function startMastery() { if (window.__aegisMasteryCleanStarted) return; window.__aegisMasteryCleanStarted = true; buildDialogs(); load(); }
+window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "mastery") void load(); });
 if (document.readyState === "complete") startMastery(); else window.addEventListener("load", startMastery, { once: true });
 window.addEventListener("aegis:mastery-changed", (event) => {
   if (event.detail?.remote) setTimeout(load, 120);

@@ -64,6 +64,7 @@ function renderHistory() {
 
 async function loadReviewerData() {
   if (!supabase) return;
+  if (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "detective") return;
   const { data: sessionData } = await supabase.auth.getSession(); if (!sessionData.session) return;
   const [tradeResult, reviewResult, scenarioResult, correctionResult] = await Promise.all([supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }), supabase.from("trade_reviews").select("*, trade_debriefs(*)").order("created_at", { ascending: false }).limit(24), supabase.from("ai_trade_scenarios").select("*").order("created_at", { ascending: false }).limit(100), supabase.from("trade_review_corrections").select("*").order("created_at", { ascending: false }).limit(100)]);
   trades = tradeResult.data || []; reviews = reviewResult.data || []; corrections = correctionResult.error ? [] : (correctionResult.data || []);
@@ -382,6 +383,9 @@ function init() {
     if (event.target.closest("#brain-image-dialog .dialog-close")) $("#brain-image-dialog").close();
     if (event.target.closest("#brain-evidence-dialog .dialog-close")) $("#brain-evidence-dialog").close();
   });
-  ensureImageDialog(); syncViolationReason(); renderChain(); renderBriefing(); loadCourseLibrary(); loadReviewerData(); supabase?.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(loadReviewerData, 50); });
+  ensureImageDialog(); syncViolationReason(); renderChain(); renderBriefing();
+  if (!window.AEGIS_ACTIVE_VIEW || window.AEGIS_ACTIVE_VIEW === "detective") { loadCourseLibrary(); loadReviewerData(); }
+  window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "detective") { loadCourseLibrary(); void loadReviewerData(); } });
+  supabase?.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION" || (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "detective")) return; setTimeout(loadReviewerData, 50); });
 }
 init();

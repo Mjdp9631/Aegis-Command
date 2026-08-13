@@ -140,6 +140,7 @@ function render({ operations, occurrences, trades, missions, projects, contentIt
 
 async function load() {
   if (!supabase) return;
+  if (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "character") return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
   const [operationsResult, occurrenceResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, campaignResult, reviewResult, challengeResult, capabilityLogsResult, financialFoundationResult] = await Promise.all([
@@ -186,6 +187,7 @@ document.addEventListener("click", async (event) => {
 
 if (supabase) {
   load();
+  window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "character") void load(); });
   supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 80); });
   document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(load, 700); });
   window.addEventListener("aegis:mastery-changed", () => setTimeout(load, 120));

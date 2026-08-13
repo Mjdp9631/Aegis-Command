@@ -192,6 +192,8 @@
           const title = document.getElementById("view-title");
           if (title) title.textContent = titleFor(view);
           if (writeAddress && location.hash !== `#${view}`) history.pushState(null, "", `#${view}`);
+          window.AEGIS_ACTIVE_VIEW = view;
+          window.dispatchEvent(new CustomEvent("aegis:navigation", { detail: { view } }));
           releaseSidebarFocus();
           return true;
         };

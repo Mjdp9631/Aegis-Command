@@ -312,6 +312,7 @@ window.addEventListener("load", () => setTimeout(repaintCommandMissions, 0), { o
 
 async function load() {
   if (!supabase) return;
+  if (window.AEGIS_ACTIVE_VIEW && window.AEGIS_ACTIVE_VIEW !== "command") return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
   const [missionsResult, operationsResult, occurrenceResult, familyLinksResult, legacyLinksResult] = await Promise.all([
@@ -350,6 +351,7 @@ async function load() {
 
 if (supabase) {
   load();
+  window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "command") void load(); });
   supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 80); });
   window.addEventListener("aegis:missions-changed", () => setTimeout(load, 80));
   document.addEventListener("click", (event) => { if (event.target.closest("#save-mission, #mission-editor-dialog .primary")) setTimeout(load, 1200); });

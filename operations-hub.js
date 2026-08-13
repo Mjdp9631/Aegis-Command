@@ -2522,6 +2522,7 @@ function wireCalendarPanels() {
 let bootInFlight = false;
 async function boot() {
   if (bootInFlight) return;
+  if (window.AEGIS_ACTIVE_VIEW && !["command", "missions"].includes(window.AEGIS_ACTIVE_VIEW)) return;
   bootInFlight = true;
   operationsReady = false;
   try {
@@ -2589,7 +2590,7 @@ document.addEventListener("click", (event) => {
 }, true);
 const startHub = () => {
   window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
-  setInterval(refreshMorningCountdown, 1000);
+  if (!window.AEGIS_ACTIVE_VIEW || ["command", "missions"].includes(window.AEGIS_ACTIVE_VIEW)) setInterval(refreshMorningCountdown, 1000);
   ensurePermanentMissionCalendar();
   syncSystemDate();
   // Keep one stable surface while auth and Supabase synchronize. Painting the
@@ -2603,7 +2604,10 @@ const startHub = () => {
 };
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startHub, { once: true });
 else startHub();
-window.addEventListener("aegis:auth-ready", boot);
+window.addEventListener("aegis:auth-ready", () => { if (!window.AEGIS_ACTIVE_VIEW || ["command", "missions"].includes(window.AEGIS_ACTIVE_VIEW)) void boot(); });
+window.addEventListener("aegis:navigation", (event) => {
+  if (["command", "missions"].includes(event.detail?.view)) void boot();
+});
 // A full refresh and a route transition each recreate parts of the Command
 // Center.  These last-resort paints make the queue independent of render
 // order, while the durable Supabase rows remain the source of truth.
@@ -2661,6 +2665,7 @@ const wireCalendar = () => {
   // durable queue after the new Command Center surface is in the DOM instead
   // of relying on a stale July-era placeholder from the legacy script.
   const refreshCommandSurface = () => setTimeout(() => {
+    if (window.AEGIS_ACTIVE_VIEW && !["command", "missions"].includes(window.AEGIS_ACTIVE_VIEW)) return;
     syncSystemDate();
     renderQueue();
     renderCalendar();
