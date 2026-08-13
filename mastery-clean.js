@@ -358,13 +358,24 @@ function openDialog(existing = null) {
   if (form.elements.logged_on) form.elements.logged_on.value = entryLoggedDay(existing);
   dialog.querySelector("h2").textContent = existing ? "Edit the useful thing." : "Capture the useful thing.";
   dialog.querySelector(".primary").textContent = existing ? "Update entry" : "Save entry";
+  form.querySelector("[data-mastery-delete-entry]")?.remove();
   if (existing) {
+    dialog.querySelector(".primary")?.insertAdjacentHTML("afterend", `<button type="button" class="ghost compact mastery-delete-action" data-mastery-delete-entry="${escapeHtml(existing.id)}">Delete entry</button>`);
     ["title", "rating", "summary", "quotes", "lessons", "actions"].forEach(field => {
       const input = form.elements[field];
       if (input) input.value = existing[field === "quotes" ? "favorite_quotes" : field] || "";
     });
   }
   dialog.showModal();
+}
+
+async function deleteMasteryEntry(id) {
+  if (!id || !db || !confirm("Delete this Self Mastery entry? This cannot be undone.")) return;
+  const { error } = await db.from("mastery_entries").delete().eq("id", id);
+  if (error) return alert(`Could not delete this entry: ${error.message}`);
+  document.querySelector("#mastery-clean-dialog")?.close();
+  await load();
+  window.dispatchEvent(new Event("aegis:mastery-changed"));
 }
 
 function gymSetRow() {
@@ -430,11 +441,17 @@ function openFitnessDialog(type, existing = null, editKind = "") {
   dialog.querySelector("form")?.insertAdjacentHTML("afterbegin", `<label>Log date<input name="logged_on" type="date" value="${escapeHtml(logDate)}" required /></label>`);
   dialog.querySelector("[data-add-exercise]")?.addEventListener("click", () => dialog.querySelector(".exercise-list").insertAdjacentHTML("beforeend", gymSetRow()));
   dialog.querySelector("[data-add-food]")?.addEventListener("click", () => dialog.querySelector(".food-list").insertAdjacentHTML("beforeend", foodRow()));
-  dialog.onclick = event => {
+  dialog.onclick = async event => {
      const removeExercise = event.target.closest("[data-remove-exercise]");
      const removeFood = event.target.closest("[data-remove-food]");
      const estimateFood = event.target.closest("[data-estimate-food]");
      const addSet = event.target.closest("[data-add-set]");
+     const deleteFitness = event.target.closest("[data-mastery-delete-fitness]");
+     if (deleteFitness) {
+       event.preventDefault();
+       await deleteFitnessLog(form);
+       return;
+     }
      if (removeExercise) removeExercise.closest(".exercise-row")?.remove();
      if (removeFood) removeFood.closest(".nutrition-row")?.remove();
      if (estimateFood) { estimateFoodRow(estimateFood.closest(".nutrition-row")); return; }
@@ -476,9 +493,11 @@ function openFitnessDialog(type, existing = null, editKind = "") {
   form.dataset.editKind = editKind;
   form.dataset.editLoggedOn = existing ? sessionLoggedDay(existing) : "";
   form.dataset.editMeasuredAt = existing?.measured_at || "";
+  form.querySelector("[data-mastery-delete-fitness]")?.remove();
   if (existing) {
     dialog.querySelector("h2").textContent = type === "Gym" ? "Edit the training record." : "Edit the health record.";
     form.querySelector(".primary").textContent = type === "Gym" ? "Update gym session" : "Update health log";
+    form.querySelector(".primary")?.insertAdjacentHTML("afterend", `<button type="button" class="ghost compact mastery-delete-action" data-mastery-delete-fitness>Delete ${type === "Gym" ? "gym session" : "health log"}</button>`);
     if (type === "Gym") {
       form.elements.workout_split.value = existing.workout_split || existing.session_type || "Legs";
       form.elements.notes.value = existing.notes || "";
@@ -532,6 +551,44 @@ function openFitnessDialog(type, existing = null, editKind = "") {
   }
   form.addEventListener("submit", saveFitnessLog);
   dialog.showModal();
+}
+
+async function deleteFitnessLog(form) {
+  if (!db || !form || !confirm("Delete this Self Mastery log? This cannot be undone.")) return;
+  const userId = await currentUserId();
+  if (!userId) return alert("Your session has expired. Please sign in again.");
+  const editId = form.dataset.editId || "";
+  const editKind = form.dataset.editKind || "";
+  try {
+    if (form.dataset.fitnessMode === "gym") {
+      const { error: setError } = await db.from("training_sets").delete().eq("session_id", editId).eq("user_id", userId);
+      if (setError) throw setError;
+      const { error } = await db.from("training_sessions").delete().eq("id", editId).eq("user_id", userId);
+      if (error) throw error;
+    } else if (editKind === "weight") {
+      const { error } = await db.from("health_weight_logs").delete().eq("id", editId).eq("user_id", userId);
+      if (error) throw error;
+    } else if (editKind === "food") {
+      const { error } = await db.from("health_food_logs").delete().eq("id", editId).eq("user_id", userId);
+      if (error) throw error;
+    } else if (editKind === "health") {
+      const weightIds = Object.values(JSON.parse(form.dataset.editWeightIds || "{}"));
+      const foodIds = JSON.parse(form.dataset.editFoodIds || "[]");
+      const [weights, foods] = await Promise.all([
+        weightIds.length ? db.from("health_weight_logs").delete().in("id", weightIds).eq("user_id", userId) : Promise.resolve({ error: null }),
+        foodIds.length ? db.from("health_food_logs").delete().in("id", foodIds).eq("user_id", userId) : Promise.resolve({ error: null }),
+      ]);
+      if (weights.error) throw weights.error;
+      if (foods.error) throw foods.error;
+    } else {
+      return;
+    }
+    document.querySelector("#mastery-fitness-dialog")?.close();
+    await load();
+    window.dispatchEvent(new Event("aegis:mastery-changed"));
+  } catch (error) {
+    alert(`Could not delete this log: ${error.message || error}`);
+  }
 }
 
 function openSystemDialog(mode, challenge) {
@@ -782,6 +839,8 @@ document.addEventListener("click", event => {
   if (laneButton) { lane = laneButton.dataset.masteryCleanLane; activeType = lane === "mind" ? "Book" : "Health"; saveView(); render(); return; }
   const editEntry = event.target.closest("[data-mastery-edit-entry]");
   if (editEntry) { const entry = entries.find(item => String(item.id) === String(editEntry.dataset.masteryEditEntry)); if (entry) { lane = bodyTypes.includes(entry.category) ? "body" : "mind"; activeType = entry.category; saveView(); openDialog(entry); } return; }
+  const deleteEntry = event.target.closest("[data-mastery-delete-entry]");
+  if (deleteEntry) return deleteMasteryEntry(deleteEntry.dataset.masteryDeleteEntry);
   const editSession = event.target.closest("[data-mastery-edit-session]");
   if (editSession) { const session = trainingSessions.find(item => String(item.id) === String(editSession.dataset.masteryEditSession)); if (session) { lane = "body"; activeType = "Gym"; saveView(); openFitnessDialog("Gym", session); } return; }
   const editHealth = event.target.closest("[data-mastery-edit-health]");
