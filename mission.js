@@ -104,6 +104,19 @@ function missionRowsForLookup() {
   });
   return rows;
 }
+function missionForId(id) {
+  const mission = missionRowsForLookup().find((item) => String(item.id) === String(id));
+  if (mission) return mission;
+  const card = [...document.querySelectorAll("[data-mission-ledger-card], [data-open-mission]")]
+    .find((item) => String(item.dataset.missionId) === String(id));
+  if (!card) return null;
+  const title = card.querySelector("h3, strong")?.textContent?.trim() || "Mission";
+  const meta = card.querySelector("p")?.textContent?.trim() || "Self Mastery mission";
+  const category = meta.split(/\s+mission\b/i)[0].trim() || "Self Mastery";
+  const priority = card.querySelector(".eyebrow")?.textContent?.trim() || "Schedule";
+  const progress = Number(card.querySelector(".meter i")?.style?.width?.replace("%", "")) || 0;
+  return normalize({ id, title, category, priority, progress, completed: progress >= 100, completion_definition: card.querySelector("small")?.textContent?.trim() || "Define the evidence that proves this mission is complete." });
+}
 function applyMissionRows(rows) {
   // During startup one module can briefly receive an empty response while the
   // authenticated operations module already has the durable rows. Never let
@@ -235,7 +248,7 @@ function wireMissionDetailsDialog(dialog) {
 function openMissionLinkEditor(event) {
   event.preventDefault();
   const detailsDialog = event.target.closest("#mission-details-dialog") || missionDetails;
-  const mission = missions.find((item) => String(item.id) === String(detailsDialog?.dataset?.missionId));
+  const mission = missionForId(detailsDialog?.dataset?.missionId);
   if (!mission) return;
   if (!missionEditor || !missionEditor.isConnected) missionEditor = buildMissionEditor();
   const launch = () => {
@@ -368,8 +381,12 @@ function openMissionDetails(mission) {
     : '<p class="mission-details-empty">No operation is attached yet. Schedule one from this mission or link it when creating an operation.</p>';
   if (dialog.open) dialog.close();
   setTimeout(() => {
-    try { if (!dialog.open) dialog.showModal(); }
-    catch (error) { console.warn("Mission details could not open", error); }
+    try {
+      if (!dialog.open) dialog.showModal();
+    } catch (error) {
+      console.warn("Mission details modal could not open; using visible dialog fallback", error);
+      dialog.setAttribute("open", "");
+    }
   }, 0);
 }
 
@@ -405,12 +422,11 @@ async function openEditorFromMissionCard(mission) {
 }
 
 window.AEGIS_OPEN_MISSION_DETAILS = (id) => {
-  const mission = missionRowsForLookup().find((item) => String(item.id) === String(id));
+  const mission = missionForId(id);
   openMissionDetails(mission);
 };
 window.AEGIS_OPEN_MISSION_EDITOR = (id) => {
-  const rows = missionRowsForLookup();
-  const mission = rows.find((item) => String(item.id) === String(id));
+  const mission = missionForId(id);
   void openEditorFromMissionCard(mission);
 };
 
@@ -936,14 +952,14 @@ function bindDialogs() {
   missionEditor = editor;
   const openMission = (id) => {
     if (!session) return alert("Sign in before opening a mission.");
-    const mission = missions.find((item) => String(item.id) === String(id));
+    const mission = missionForId(id);
     if (mission) openEditor(editor, mission);
   };
   document.addEventListener("click", (event) => {
     if (event.target.closest("[data-schedule-mission]")) return;
     const card = event.target.closest(".mission-open");
     if (!card) return;
-    const mission = missions.find((item) => String(item.id) === String(card.dataset.missionId));
+    const mission = missionForId(card.dataset.missionId);
     if (card.dataset.missionLedgerCard === "true") openMissionDetails(mission);
     else openMission(card.dataset.missionId);
   });
@@ -1011,16 +1027,13 @@ document.addEventListener("click", (event) => {
 window.addEventListener("aegis:open-mission", (event) => {
   const id = event.detail?.id;
   if (!id) return;
-  const rows = missionRowsForLookup();
-  const mission = rows.find((item) => String(item.id) === String(id));
-  openMissionDetails(mission);
+  openMissionDetails(missionForId(id));
 });
 
 window.addEventListener("aegis:open-mission-details", (event) => {
   const id = event.detail?.id;
   if (!id) return;
-  const rows = missionRowsForLookup();
-  openMissionDetails(rows.find((item) => String(item.id) === String(id)));
+  openMissionDetails(missionForId(id));
 });
 
 window.addEventListener("aegis:missions-changed", (event) => {
