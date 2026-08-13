@@ -2520,6 +2520,7 @@ function wireCalendarPanels() {
 }
 
 let bootInFlight = false;
+let operationMaintenanceInFlight = false;
 async function boot() {
   if (bootInFlight) return;
   if (window.AEGIS_ACTIVE_VIEW && !["command", "missions"].includes(window.AEGIS_ACTIVE_VIEW)) return;
@@ -2574,7 +2575,8 @@ async function boot() {
 }
 
 async function runDeferredOperationMaintenance() {
-  if (!currentUser) return;
+  if (!currentUser || operationMaintenanceInFlight) return;
+  operationMaintenanceInFlight = true;
   try {
     await loadMissions();
     await loadCurrentBook();
@@ -2591,6 +2593,8 @@ async function runDeferredOperationMaintenance() {
     renderCalendar();
   } catch (error) {
     console.warn("Deferred operation maintenance skipped", error);
+  } finally {
+    operationMaintenanceInFlight = false;
   }
 }
 
