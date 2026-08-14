@@ -1873,7 +1873,14 @@ async function ensureTodayOperations(records = []) {
 
   const hasTodayPlan = (planned) => records.some((operation) => {
     const sameTitle = String(operation.title || "").trim().toLowerCase() === planned.title.toLowerCase();
-    if (!sameTitle) return false;
+    if (!sameTitle) {
+      // Special handling for gym operations: consolidate any gym operation on today
+      // rather than requiring exact title match, so "Gym - Logs" + "Gym - Legs" don't both appear
+      const plannedIsGym = /^gym\s*[-—]?\s*/i.test(planned.title);
+      const operationIsGym = /^gym\s*[-—]?\s*/i.test(operation.title || "");
+      if (!plannedIsGym || !operationIsGym) return false;
+      // Both are gym operations, so check if they're on the same day
+    }
     if (planned.is_daily && (operation.is_daily || scheduleMode(operation) === "daily")) return true;
     const operationDay = dateOnly(operation.operation_date);
     const scheduledDay = dateOnly(operation.scheduled_date);

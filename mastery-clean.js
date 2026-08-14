@@ -4,6 +4,22 @@ const config = window.AEGIS_CONFIG || {};
 const db = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const root = document.querySelector("#mastery");
 window.addEventListener("aegis:mastery-changed", () => window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "mastery" } })));
+
+// Performance: Debounce render to prevent multiple rapid renders
+let renderTimer = null;
+const debounceRender = (fn, delay = 100) => {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(fn, delay);
+};
+
+// Cache commonly accessed DOM elements
+const cacheDOM = () => ({
+  root,
+  entryDialog: () => document.querySelector("#mastery-clean-dialog"),
+  systemDialog: () => document.querySelector("#mastery-system-dialog"),
+  capabilityDialog: () => document.querySelector("#capability-dialog"),
+  fitnessDialog: () => document.querySelector("#mastery-fitness-dialog"),
+});
 const mindTypes = ["Book", "Quote", "Trading Note", "Psychology", "Space", "Philosophy", "Business", "Stoicism", "Leadership", "Communication", "History", "Systems Thinking"];
 // Body is deliberately broad enough to hold the full capability campaign, without
 // confusing a rehabilitation log with a sport, combat session, or outdoor skill.
@@ -263,8 +279,19 @@ function render() {
   const categoryCards = `<div class="mastery-category-grid">${types.map(type => { const count = type === "Gym" ? trainingSessions.length : entries.filter(entry => entry.category === type).length; const countLabel = type === "Gym" ? "sessions captured" : type === "Book" ? "books and reading notes" : isLocked(type) ? "complete Recovery to unlock" : "entries captured"; return `<button class="mastery-category ${type === activeType ? "active" : ""} ${isLocked(type) ? "locked" : ""}" data-mastery-clean-type="${type}"><small>${type.toUpperCase()}${isLocked(type) ? " · LOCKED" : ""}</small><strong>${count}</strong><small>${countLabel}</small></button>`; }).join("")}</div>`;
   const specialContent = activeType === "Gym" ? `${trainingProgressOverview()}${trainingSessions.slice(0, 12).map(trainingCard).join("")}` : activeType === "Health" ? healthCard() : "";
   const content = isCurrentLocked ? `<div class="mastery-lock"><h3>${activeType} locked</h3><p>Unlocks after Recovery is completed and you confirm archiving the Recovery section.</p></div>` : (specialContent || visible.map(entryCard).join("") || `<div class="mastery-empty">Nothing logged here yet. Capture the first useful item.</div>`);
-  root.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Capture knowledge worth using, produce focused work, and train only what your foundation supports.</p></div><div class="mastery-tabs"><button class="mastery-tab ${lane === "mind" ? "active" : ""}" data-mastery-clean-lane="mind">Mind</button><button class="mastery-tab ${lane === "body" ? "active" : ""}" data-mastery-clean-lane="body">Body</button></div>${laneInputDock()}${categoryCards}${lane === "mind" ? capabilityPanel() : ""}${systemsPanel()}<div class="mastery-toolbar"><h3>${typeLabel(activeType)}</h3></div><div class="mastery-list">${content}</div>`;
-  setTimeout(() => { cleanRendering = false; }, 0);
+  // Render critical content first, defer heavy panels
+  root.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Capture knowledge worth using, produce focused work, and train only what your foundation supports.</p></div><div class="mastery-tabs"><button class="mastery-tab ${lane === "mind" ? "active" : ""}" data-mastery-clean-lane="mind">Mind</button><button class="mastery-tab ${lane === "body" ? "active" : ""}" data-mastery-clean-lane="body">Body</button></div>${laneInputDock()}${categoryCards}${lane === "mind" ? "" : ""}<div class="mastery-deferred-panels"></div><div class="mastery-toolbar"><h3>${typeLabel(activeType)}</h3></div><div class="mastery-list">${content}</div>`;
+  // Render heavy panels after critical content via requestAnimationFrame
+  requestAnimationFrame(() => {
+    const deferredPanel = root.querySelector(".mastery-deferred-panels");
+    if (deferredPanel) {
+      let panelHtml = "";
+      if (lane === "mind") panelHtml += capabilityPanel();
+      panelHtml += systemsPanel();
+      deferredPanel.innerHTML = panelHtml;
+      cleanRendering = false;
+    }
+  });
 }
 
 function fieldsFor(type) {
@@ -751,7 +778,7 @@ async function generateChallenge(kind) {
   const available = pool.filter(item => !recent.includes(item[0]));
   const [title, category, difficulty, xp_reward, brief] = (available.length ? available : pool)[Math.floor(Math.random() * (available.length ? available.length : pool.length))];
   const record = kind === "mind" ? { lane: "mind", challenge_type: "research", title, category, difficulty, xp_reward, status: "generated", instructions: `Research “${title}” for 30 minutes using no AI. Focus: ${brief} Then explain it aloud for at least 30 seconds and write your own summary.`, research_minutes: 30 } : { lane: "body", challenge_type: "body_activity", title, category, difficulty, xp_reward, status: "generated", instructions: brief, research_minutes: null };
-  if (!db) { challenges.unshift({ ...record, id: crypto.randomUUID(), created_at: new Date().toISOString() }); render(); return; }
+  if (!db) { challenges.unshift({ ...record, id: crypto.randomUUID(), created_at: new Date().toISOString() }); debounceRender(render); return; }
   const { error } = await db.from("mastery_challenges").insert(record); if (error) return alert(`Could not create transmission: ${error.message}`);
   await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
 }
@@ -773,7 +800,7 @@ async function readApiResponse(response, routeName) {
 
 async function actOnChallenge(id, action) {
   const challenge = challenges.find(item => item.id === id); if (!challenge) return;
-  if (!db) { challenges = challenges.filter(item => action === "clear" ? item.id !== id : true).map(item => item.id === id ? { ...item, status: action === "accept" ? "accepted" : "denied" } : item); render(); return; }
+  if (!db) { challenges = challenges.filter(item => action === "clear" ? item.id !== id : true).map(item => item.id === id ? { ...item, status: action === "accept" ? "accepted" : "denied" } : item); debounceRender(render); return; }
   if (action === "clear") { const { error } = await db.from("mastery_challenges").delete().eq("id", id); if (error) return alert(error.message); }
   else { const patch = action === "accept" ? { status: "accepted", accepted_at: new Date().toISOString() } : { status: "denied", denied_at: new Date().toISOString() }; const { error } = await db.from("mastery_challenges").update(patch).eq("id", id); if (error) return alert(error.message); }
   await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
@@ -782,7 +809,7 @@ async function actOnChallenge(id, action) {
 async function clearLaneQueue(kind) {
   const queued = challenges.filter(item => item.lane === kind && !item.completed_at && ["generated", "accepted"].includes(item.status || "generated"));
   if (!queued.length || !confirm(`Clear ${queued.length} uncompleted ${kind} transmission${queued.length === 1 ? "" : "s"}? Completed work remains in your Mastery archive.`)) return;
-  if (!db) { challenges = challenges.filter(item => !queued.some(target => target.id === item.id)); render(); return; }
+  if (!db) { challenges = challenges.filter(item => !queued.some(target => target.id === item.id)); debounceRender(render); return; }
   const { error } = await db.from("mastery_challenges").delete().in("id", queued.map(item => item.id));
   if (error) return alert(error.message);
   await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
@@ -831,12 +858,12 @@ async function load() {
     await loadCapabilities();
     const recovery = (missionResult.data || []).find(mission => mission.category === "Recovery"); const recoveryComplete = recovery && (recovery.completed || (recovery.completion_type === "units" && Number(recovery.completed_count) >= Number(recovery.target_count)));
     recoveryReady = Boolean(recoveryComplete && localStorage.getItem("aegis-recovery-archived") === "yes");
-  } render();
+  } debounceRender(render, 50);
 }
 
 document.addEventListener("click", event => {
   const laneButton = event.target.closest("[data-mastery-clean-lane]"), typeButton = event.target.closest("[data-mastery-clean-type]"), inputButton = event.target.closest("[data-mastery-clean-input]");
-  if (laneButton) { lane = laneButton.dataset.masteryCleanLane; activeType = lane === "mind" ? "Book" : "Health"; saveView(); render(); return; }
+  if (laneButton) { lane = laneButton.dataset.masteryCleanLane; activeType = lane === "mind" ? "Book" : "Health"; saveView(); debounceRender(render); return; }
   const editEntry = event.target.closest("[data-mastery-edit-entry]");
   if (editEntry) { const entry = entries.find(item => String(item.id) === String(editEntry.dataset.masteryEditEntry)); if (entry) { lane = bodyTypes.includes(entry.category) ? "body" : "mind"; activeType = entry.category; saveView(); openDialog(entry); } return; }
   const deleteEntry = event.target.closest("[data-mastery-delete-entry]");
@@ -850,7 +877,7 @@ document.addEventListener("click", event => {
   const editFood = event.target.closest("[data-mastery-edit-food]");
   if (editFood) { const food = foodLogs.find(item => String(item.id) === String(editFood.dataset.masteryEditFood)); if (food) { lane = "body"; activeType = "Health"; saveView(); openFitnessDialog("Health", food, "food"); } return; }
   if (inputButton) { const next = inputButton.dataset.masteryCleanInput; if (!isLocked(next)) { activeType = next; saveView(); openDialog(); } return; }
-  if (typeButton) { const next = typeButton.dataset.masteryCleanType; if (!isLocked(next)) { activeType = next; saveView(); render(); } return; }
+  if (typeButton) { const next = typeButton.dataset.masteryCleanType; if (!isLocked(next)) { activeType = next; saveView(); debounceRender(render); } return; }
   const capabilityAdd = event.target.closest("[data-capability-add]"); if (capabilityAdd) return openCapabilityDialog("add", capabilityAdd.dataset.capabilityAdd);
   const capabilityLog = event.target.closest("[data-capability-log]"); if (capabilityLog) { const skill = capabilities.find((item) => String(item.id) === String(capabilityLog.dataset.capabilityLog)); if (skill) return openCapabilityDialog("log", skill.skill_type, skill); }
   if (event.target.closest("[data-mastery-clean-add]")) return openDialog();
