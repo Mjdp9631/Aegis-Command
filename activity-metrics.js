@@ -181,12 +181,21 @@ export function disciplineXp(operations = [], occurrences = [], startedAt) {
   return { xp: Math.max(0, ledger.reduce((total, entry) => total + entry.change, 0)), ledger: ledger.sort((a, b) => b.label.localeCompare(a.label)) };
 }
 
+export const PROJECT_COMPLETION_XP = Object.freeze({ Minor: 20, Standard: 60, Major: 120, Flagship: 250 });
+
+const projectCompletionXp = (project) => {
+  const stored = Number(project?.xp_reward);
+  if (Number.isFinite(stored) && stored >= 0) return stored;
+  return PROJECT_COMPLETION_XP[project?.effort_band] || PROJECT_COMPLETION_XP.Standard;
+};
+
 export function enterpriseXp(projects = [], contentItems = [], financialFoundation = null, startedAt) {
   const ledger = [];
   projects.filter((project) => isOnOrAfter(evidenceDay(project), startedAt)).forEach((project) => {
     const label = evidenceDay(project);
-    ledger.push({ label, detail: `Started project: ${project.title || "project"}`, change: 5 });
-    if (project.status === "Complete") ledger.push({ label, detail: `Completed project: ${project.title || "project"}`, change: 30 });
+    if (project.status === "Complete" && project.project_mode !== "Ongoing system") {
+      ledger.push({ label, detail: `Completed ${project.effort_band || "Standard"} project: ${project.title || "project"}`, change: projectCompletionXp(project) });
+    }
   });
   contentItems.filter((item) => isOnOrAfter(evidenceDay(item), startedAt) && item.status === "Published").forEach((item) => ledger.push({ label: evidenceDay(item), detail: `Published ${item.platform || "content"}: ${item.title || "item"}`, change: 8 }));
   if (financialFoundation && isOnOrAfter(evidenceDay(financialFoundation), startedAt)) {
