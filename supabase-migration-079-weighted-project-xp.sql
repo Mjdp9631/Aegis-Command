@@ -29,6 +29,37 @@ create unique index if not exists business_projects_user_source_mission_idx
   on public.business_projects (user_id, source_mission_id)
   where source_mission_id is not null;
 
+-- A project step is a sequenced operation. Only the first incomplete step is
+-- active at a time, so the operation queue stays focused instead of filling
+-- with an entire project plan at once.
+create table if not exists public.business_project_steps (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  project_id uuid not null references public.business_projects(id) on delete cascade,
+  title text not null check (char_length(title) between 1 and 240),
+  position integer not null check (position > 0),
+  status text not null default 'Pending' check (status in ('Pending', 'Ongoing', 'Complete')),
+  operation_id uuid references public.operations(id) on delete set null,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (project_id, position)
+);
+
+create unique index if not exists business_project_steps_operation_idx
+  on public.business_project_steps (operation_id)
+  where operation_id is not null;
+create index if not exists business_project_steps_project_position_idx
+  on public.business_project_steps (project_id, position);
+
+alter table public.business_project_steps enable row level security;
+drop policy if exists "Business project steps are private" on public.business_project_steps;
+create policy "Business project steps are private" on public.business_project_steps
+  for all to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+grant select, insert, update, delete on table public.business_project_steps to authenticated;
+
 -- Legacy projects were all worth 5 XP to start and 30 XP to complete. Replace
 -- that flat score with a default Standard milestone reward. Starting work no
 -- longer earns XP; a finite project earns it only when complete.
