@@ -1702,35 +1702,42 @@ async function reconcileMeasuredMissionCounts() {
   if (updates.length) window.dispatchEvent(new CustomEvent("aegis:missions-refresh", { detail: { source: "operations-hub-reconcile" } }));
 }
 
-// Older Supabase deployments may have the operations table trigger but not
-// the full progress-event repair path. On a newly completed operation, check
-// the idempotency event first; only repair the mission when that event is
-// absent, so this cannot create duplicate progress on a healthy deployment.
-async function repairMissionProgressFromCompletion(operation) {
+// A completion advances every mission explicitly linked to its operation
+// family. The link table is queried here instead of relying on a display-copy
+// of the operation, so the rule is always simply: Complete = +1.
+async function advanceLinkedMissionsFromCompletion(operation, countsBeforeCompletion = new Map()) {
   if (!client || !currentUser || normalizedStatus(operation) !== "Complete") return;
-  // Family pathways can be available before an older Supabase deployment has
-  // its matching progress trigger. Keep this repair active for that gap. The
-  // durable progress-event check below makes it a no-op when the database has
-  // already recorded the completion, so it cannot double-count a healthy
-  // deployment.
-  // loadOperationMissionLinks() replaces the operation array with freshly
-  // mapped records. A calendar/queue click still holds the old display copy,
-  // so resolve its durable parent from the refreshed array before reading the
-  // linked mission IDs.
   const durableOperationId = operation._series?.id || operation._occurrence?.operation_id || operation.id;
   const linkedOperation = operations.find((item) => String(item.id) === String(durableOperationId)) || operation._series || operation;
-  const linkedMissions = operationMissionIds(linkedOperation).map((id) => missions.find((mission) => String(mission.id) === String(id))).filter(Boolean);
-  const measuredMissions = linkedMissions.filter((mission) => String(mission.completion_type || "").toLowerCase() === "units");
-  if (!measuredMissions.length) return;
-  const eventQuery = client.from("mission_progress_events").select("id").eq("user_id", currentUser.id).limit(1);
-  if (operation._occurrence?.id) eventQuery.eq("occurrence_id", operation._occurrence.id);
-  else if (operation.id && !String(operation.id).startsWith("local-")) eventQuery.eq("operation_id", operation.id);
-  else return;
-  const { data: events, error: eventError } = await eventQuery;
-  if (!eventError && events?.length) return;
-  for (const mission of measuredMissions) {
+  const familyKey = operationFamilyKey(linkedOperation);
+  let missionIds = [];
+  const { data: familyLinks, error: familyError } = await client.from("operation_family_mission_links")
+    .select("operation_family_key,mission_id")
+    .eq("user_id", currentUser.id);
+  if (!familyError) {
+    const canonicalFamily = canonicalOperationFamilyKey(familyKey);
+    missionIds = (familyLinks || [])
+      .filter((link) => String(link.operation_family_key) === familyKey
+        || canonicalOperationFamilyKey(link.operation_family_key) === canonicalFamily)
+      .map((link) => link.mission_id);
+  } else if (durableOperationId) {
+    const { data: operationLinks } = await client.from("operation_mission_links")
+      .select("mission_id")
+      .eq("user_id", currentUser.id)
+      .eq("operation_id", durableOperationId);
+    missionIds = (operationLinks || []).map((link) => link.mission_id);
+  }
+  if (!missionIds.length) missionIds = operationMissionIds(linkedOperation);
+  const uniqueMissionIds = [...new Set(missionIds.map(String))];
+  let updated = false;
+  for (const missionId of uniqueMissionIds) {
+    const mission = missions.find((item) => String(item.id) === missionId);
+    if (!mission || String(mission.completion_type || "").toLowerCase() !== "units") continue;
     const target = Math.max(1, Number(mission.target_count || 1));
     const current = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
+    const previous = Number(countsBeforeCompletion.get(String(mission.id)));
+    // A healthy database trigger may have already applied this exact click.
+    if (Number.isFinite(previous) && current > previous) continue;
     if (current >= target) continue;
     const next = Math.min(target, current + 1);
     const { data, error } = await client.from("missions")
@@ -1742,56 +1749,10 @@ async function repairMissionProgressFromCompletion(operation) {
     if (!error && data) {
       const index = missions.findIndex((item) => String(item.id) === String(data.id));
       if (index >= 0) missions[index] = data;
+      updated = true;
     }
   }
-}
-
-// If a completion happened after its measured mission was last edited but no
-// database progress event exists, it was missed by an older pathway trigger.
-// Backfill it once. This deliberately preserves any older manual count: work
-// completed before the mission's last edit is assumed to already be included.
-async function backfillMissedLinkedCompletionProgress() {
-  if (!client || !currentUser || !missions.length) return;
-  for (const operation of operationInstances()) {
-    if (normalizedStatus(operation) !== "Complete") continue;
-    const linkedMissionIds = operationMissionIds(operation);
-    if (!linkedMissionIds.length) continue;
-    const completedAt = Date.parse(
-      operation._occurrence?.updated_at
-      || operation.updated_at
-      || operation.local_updated_at
-      || `${dateOnly(operation.completed_on || operation.scheduled_date)}T23:59:59.999Z`,
-    );
-    if (!Number.isFinite(completedAt)) continue;
-    const eventQuery = client.from("mission_progress_events").select("id").eq("user_id", currentUser.id).limit(1);
-    if (operation._occurrence?.id) eventQuery.eq("occurrence_id", operation._occurrence.id);
-    else if (operation.id && !String(operation.id).startsWith("local-")) eventQuery.eq("operation_id", operation.id);
-    else continue;
-    const { data: events, error: eventError } = await eventQuery;
-    // If the evidence table is unavailable, leave the count alone rather than
-    // risking a repeat recovery on every refresh.
-    if (eventError || events?.length) continue;
-    for (const missionId of linkedMissionIds) {
-      const mission = missions.find((item) => String(item.id) === String(missionId));
-      if (!mission || String(mission.completion_type || "").toLowerCase() !== "units") continue;
-      const missionEditedAt = Date.parse(mission.updated_at || mission.created_at || 0);
-      if (!Number.isFinite(missionEditedAt) || completedAt <= missionEditedAt) continue;
-      const target = Math.max(1, Number(mission.target_count || 1));
-      const current = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
-      if (current >= target) continue;
-      const next = Math.min(target, current + 1);
-      const { data, error } = await client.from("missions")
-        .update({ completed_count: next, completed: next >= target, progress: Math.round((next / target) * 100), updated_at: new Date().toISOString() })
-        .eq("id", mission.id)
-        .eq("user_id", currentUser.id)
-        .select()
-        .maybeSingle();
-      if (!error && data) {
-        const index = missions.findIndex((item) => String(item.id) === String(data.id));
-        if (index >= 0) missions[index] = data;
-      }
-    }
-  }
+  if (updated) window.dispatchEvent(new CustomEvent("aegis:missions-refresh", { detail: { source: "operations-hub" } }));
 }
 
 async function changeGatedStatus(key) {
@@ -1825,6 +1786,9 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
   const currentStatus = displayStatus(operation, selectedDay || operatingDayKey());
   const wasComplete = normalizedStatus(operation) === "Complete" || currentStatus === "Complete";
   const nextCompleted = next === "Complete";
+  const missionCountsBeforeCompletion = nextCompleted && !wasComplete
+    ? new Map(missions.map((mission) => [String(mission.id), Number(mission.completed_count || 0)]))
+    : new Map();
   const series = operation._series || operation;
   let seriesNeedsPersistence = false;
   Object.assign(operation, { status: next, completed: nextCompleted, status_override: true });
@@ -1893,7 +1857,7 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
   if (currentUser) {
     await loadMissions();
     await loadOperationMissionLinks();
-    if (next === "Complete" && !wasComplete) await repairMissionProgressFromCompletion(operation);
+    if (next === "Complete" && !wasComplete) await advanceLinkedMissionsFromCompletion(operation, missionCountsBeforeCompletion);
     operations = await seedIfEmpty();
     await loadOperationMissionLinks();
     await loadOccurrences();
@@ -1925,6 +1889,9 @@ async function cycleStatus(key, forcedStatus = null) {
   const index = cycle.indexOf(currentStatus);
   const next = forcedStatus || cycle[(index + 1) % cycle.length];
   const wasComplete = currentStatus === "Complete";
+  const missionCountsBeforeCompletion = next === "Complete" && !wasComplete
+    ? new Map(missions.map((mission) => [String(mission.id), Number(mission.completed_count || 0)]))
+    : new Map();
   Object.assign(operation, { status: next, completed: next === "Complete" });
   if (sourceOperation !== operation) Object.assign(sourceOperation, { status: next, completed: next === "Complete" });
   if (next === "Ongoing") {
@@ -1979,7 +1946,7 @@ async function cycleStatus(key, forcedStatus = null) {
   if (currentUser) {
     await loadMissions();
     await loadOperationMissionLinks();
-    if (next === "Complete" && !wasComplete) await repairMissionProgressFromCompletion(operation);
+    if (next === "Complete" && !wasComplete) await advanceLinkedMissionsFromCompletion(operation, missionCountsBeforeCompletion);
     operations = await seedIfEmpty();
     await loadOperationMissionLinks();
     await loadOccurrences();
@@ -2740,7 +2707,6 @@ function scheduleOperationHydration() {
       await loadOperationMissionLinks();
       await syncDailyReadingOperation();
       await loadOccurrences();
-      await backfillMissedLinkedCompletionProgress();
       await reconcileMeasuredMissionCounts();
       subscribeToOperationSync();
       saveCachedOperations();
