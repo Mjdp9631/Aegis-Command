@@ -327,6 +327,7 @@ const starterOperations = () => {
     ["Read one chapter", "Self Mastery"],
     ["Journal", "Self Mastery"],
     ["Today's focus", "Self Mastery"],
+    ["Complete evening debrief", "Self Mastery"],
   ].map(([title, category]) => title === "Pre-market analysis"
     ? preMarketOperationForToday()
     : ({ title, category, completed: false, scheduled_date: operatingDayKey(), scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, schedule_mode: "daily", status: "Queued" }))
@@ -1265,8 +1266,12 @@ function queueOperations() {
     if (isDailyOperation(operation)) return operationDay === start;
     return !scheduled && (!operationDay || operationDay === start);
   });
+  // Tomorrow's routine belongs in the calendar, not in a second copy of the
+  // daily queue. Reserve this short list for dated commitments that happen
+  // once (appointments, meetings, and other deliberate future operations).
   const upcoming = displayOperations.filter((operation) => {
     if (normalizedStatus(operation) === "Complete") return false;
+    if (Boolean(operation.is_daily) || ["daily", "weekly"].includes(scheduleMode(operation))) return false;
     const next = nextScheduledDate(operation, start, false);
     return Boolean(next && next >= start && next <= end);
   });
