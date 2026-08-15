@@ -10,14 +10,13 @@
 .evolution-room { position: relative; isolation: isolate; min-height: clamp(360px, 40vw, 600px); overflow: hidden; border: 1px solid rgba(177, 205, 228, .24); border-radius: 12px; background: linear-gradient(90deg, rgba(1, 4, 9, .18), transparent 50%), url("assets/generated/aegis-evolution-room.webp") center / cover no-repeat; box-shadow: inset 0 0 48px rgba(0, 0, 0, .45); }
 .evolution-room::before { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; background: linear-gradient(90deg, rgba(2, 7, 12, .18), transparent 45%, rgba(2, 7, 12, .2)), linear-gradient(0deg, rgba(0,0,0,.26), transparent 30%); }
 .evolution-room::after { content: ""; position: absolute; z-index: 10; inset: 0; pointer-events: none; border: 1px solid rgba(228, 173, 99, .14); border-radius: inherit; box-shadow: inset 0 0 36px rgba(0, 0, 0, .5); }
-.evolution-fridge-door { position: absolute; z-index: 6; left: 34.6%; top: 33%; width: 11.6%; height: 39%; border-radius: 4px; background: linear-gradient(90deg, rgba(197, 216, 225, .22), rgba(65, 72, 75, .36)); transform-origin: left center; opacity: 0; box-shadow: inset -10px 0 16px rgba(0,0,0,.25); }
-.evolution-room[data-activity="fridge"] .evolution-fridge-door { opacity: .78; animation: fridge-open 1.1s cubic-bezier(.2,.8,.2,1) both; }
 
 .evolution-avatar, .evolution-walker { position: absolute; z-index: 5; left: var(--avatar-left); bottom: var(--avatar-bottom); width: min(19%, 192px); aspect-ratio: 1; background-image: var(--avatar-image); background-position: var(--sprite-x) var(--sprite-y); background-repeat: no-repeat; background-size: var(--avatar-size); filter: drop-shadow(0 12px 8px rgba(0,0,0,.55)); transform: translateX(-50%) scale(var(--avatar-scale)); transform-origin: bottom center; }
 .evolution-avatar { transition: opacity .24s ease; animation: evolution-idle 4s ease-in-out infinite; }
-.evolution-avatar[hidden] { display: block; opacity: 0; animation: none; }
-.evolution-avatar[data-action="fridge"] { animation: fridge-reach 1.1s steps(3, end) infinite alternate; }
-.evolution-avatar[data-action="fridge"] { width: min(12%, 150px); aspect-ratio: .5; }
+.evolution-avatar[hidden] { display: none; }
+.evolution-avatar[data-action="reset"] { width: min(29%, 350px); aspect-ratio: .787; animation: couch-idle 2.4s steps(3, end) infinite alternate; }
+.evolution-avatar[data-action="fridge"] { width: min(25%, 306px); aspect-ratio: .72; animation: fridge-reach 1.5s steps(3, end) infinite alternate; }
+.evolution-avatar[data-action="journal"], .evolution-avatar[data-action="charts"], .evolution-avatar[data-action="systems"] { width: min(33%, 400px); aspect-ratio: .778; animation: desk-loop 1.8s steps(3, end) infinite alternate; }
 .evolution-walker { --walker-left: 20%; --walker-bottom: 4%; --walker-flip: 1; z-index: 7; left: var(--walker-left); bottom: var(--walker-bottom); width: min(12%, 150px); aspect-ratio: .5; background-image: url("assets/generated/aegis-character-walk.webp"); background-size: 400% 100%; background-position: 0 0; opacity: 0; transform: translateX(-50%) scaleX(var(--walker-flip)); transition: left 2.32s linear, bottom 2.32s linear, opacity .14s linear; pointer-events: none; }
 .evolution-walker[data-moving="true"] { opacity: 1; animation: walk-cycle .48s steps(4, end) infinite; }
 .evolution-walker[data-moving="false"] { opacity: 0; animation: none; }
@@ -29,7 +28,8 @@
 
 @keyframes evolution-idle { 0%,100% { filter: drop-shadow(0 12px 8px rgba(0,0,0,.55)); } 50% { filter: drop-shadow(0 15px 10px rgba(0,0,0,.65)) brightness(1.035); } }
 @keyframes walk-cycle { to { background-position: 100% 0; } }
+@keyframes couch-idle { 0% { background-position: 0 0; } 50% { background-position: 50% 0; } 100% { background-position: 100% 0; } }
 @keyframes fridge-reach { 0% { background-position: 0 0; } 50% { background-position: 50% 0; } 100% { background-position: 100% 0; } }
-@keyframes fridge-open { from { transform: perspective(180px) rotateY(0); } to { transform: perspective(180px) rotateY(-58deg); box-shadow: -12px 1px 18px rgba(255, 231, 166, .35); } }
-@media (prefers-reduced-motion: reduce) { .evolution-avatar, .evolution-walker, .evolution-room[data-activity="fridge"] .evolution-fridge-door { animation: none; transition: none; } }
+@keyframes desk-loop { 0% { background-position: 0 0; } 50% { background-position: 50% 0; } 100% { background-position: 100% 0; } }
+@media (prefers-reduced-motion: reduce) { .evolution-avatar, .evolution-walker { animation: none; transition: none; } }
 @media (max-width: 620px) { .character-evolution-heading { flex-direction: column; gap: 13px; } .character-evolution-readout { justify-items: start; text-align: left; } .evolution-room { min-height: 275px; } .evolution-avatar { width: 26%; } .evolution-walker { width: 28%; } .evolution-strengths { left: 11px; right: auto; bottom: 9px; max-width: calc(100% - 22px); overflow: hidden; } .evolution-strengths span { font-size: 7px; } .evolution-status { left: 10px; top: 10px; } }
