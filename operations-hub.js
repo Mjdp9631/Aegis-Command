@@ -142,12 +142,14 @@ const operationCategoryForTitle = (title = "") => {
   if (/trade|trading|pre-market|pre market|chart|backtest|risk limit|market plan/.test(name)) return "Trading";
   if (/business|ccfx|content|project|enterprise|publish|deep-work|deep work/.test(name)) return "Business";
   if (/dentist|doctor appointment|appointment|lunch|errand|grocery|tax|bill|commute/.test(name)) return "Life Admin";
-  if (/read one chapter|read chapter|chapter|conquer the morning|^journal$|mission debrief|tomorrow'?s focus|meditat|mobility practice/.test(name)) return "Self Mastery";
+  if (/read one chapter|read chapter|chapter|conquer the morning|^journal$|mission debrief|today'?s focus|tomorrow'?s focus|meditat|mobility practice/.test(name)) return "Self Mastery";
   return "";
 };
-const isTomorrowFocusOperation = (operation) => /tomorrow'?s focus/i.test(String(operation?.title || ""))
+// Keep legacy "Tomorrow's Focus" records in the same focused treatment, but
+// name the operation for the day it is actually meant to be completed.
+const isTomorrowFocusOperation = (operation) => /(?:today|tomorrow)'?s focus/i.test(String(operation?.title || ""))
   || (Boolean(operation?.is_daily) && /^complete evening mission debrief$/i.test(String(operation?.title || "").trim()));
-const operationDisplayTitle = (operation) => isTomorrowFocusOperation(operation) ? "Tomorrow's Focus" : String(operation?.title || "Operation");
+const operationDisplayTitle = (operation) => isTomorrowFocusOperation(operation) ? "Today's focus" : String(operation?.title || "Operation");
 const operationPriority = (operation) => isTomorrowFocusOperation(operation) ? "High" : operation?.priority || priorityFor(operationCategory(operation));
 const operationCategory = (operation, mission = null) => {
   const titleCategory = operationCategoryForTitle(operation?.title);
@@ -320,7 +322,7 @@ const starterOperations = () => {
     ["Conquer the morning", "Self Mastery"],
     ["Read one chapter", "Self Mastery"],
     ["Journal", "Self Mastery"],
-    ["Tomorrow's Focus", "Self Mastery"],
+    ["Today's focus", "Self Mastery"],
   ].map(([title, category]) => title === "Pre-market analysis"
     ? preMarketOperationForToday()
     : ({ title, category, completed: false, scheduled_date: operatingDayKey(), scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, schedule_mode: "daily", status: "Queued" }))
@@ -899,7 +901,7 @@ function isCompleteToday(operation) {
 
 function checklistFor(operation) {
   if (isTomorrowFocusOperation(operation)) return [
-    "Review the Tomorrow's Focus directive from the prior evening debrief.",
+    "Review today's focus directive from the prior evening debrief.",
     "Make it the first meaningful block before reactive work takes over.",
     "Mark complete only once the focus has been deliberately scheduled or started.",
   ];
@@ -1928,15 +1930,15 @@ async function ensureTodayOperations(records = []) {
     ["Conquer the morning", "Self Mastery", "Begin the day with one deliberate first action, protect the first block from avoidable distraction, and execute the morning standard before reactive work."],
     ["Read one chapter", "Self Mastery", readingBrief()],
     ["Journal", "Self Mastery", "Write the facts, name what is within your control, and record one lesson or next right action."],
-    ["Tomorrow's Focus", "Self Mastery", "Review the prior evening debrief's Tomorrow's Focus directive, make it the first meaningful block, and mark complete once it is scheduled or started."],
-  ].map(([title, category, brief]) => ({ title, category, brief, priority: title === "Tomorrow's Focus" ? "High" : priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: activeDay, scheduled_date: activeDay, metric_key: title === "Read one chapter" ? "chapters_read" : title === "Journal" ? "mastery.entry" : null }));
+    ["Today's focus", "Self Mastery", "Review the prior evening debrief's Today's focus directive, make it the first meaningful block, and mark complete once it is scheduled or started."],
+  ].map(([title, category, brief]) => ({ title, category, brief, priority: title === "Today's focus" ? "High" : priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: activeDay, scheduled_date: activeDay, metric_key: title === "Read one chapter" ? "chapters_read" : title === "Journal" ? "mastery.entry" : null }));
   const preMarket = preMarketOperationForToday();
   if (preMarket) daily.unshift(preMarket);
   daily.push(gymOperationForToday());
 
   const hasTodayPlan = (planned) => records.some((operation) => {
     const sameTitle = String(operation.title || "").trim().toLowerCase() === planned.title.toLowerCase()
-      || (planned.title === "Tomorrow's Focus" && isTomorrowFocusOperation(operation));
+      || (planned.title === "Today's focus" && isTomorrowFocusOperation(operation));
     if (!sameTitle) {
       // Special handling for gym operations: consolidate any gym operation on today
       // rather than requiring exact title match, so "Gym - Logs" + "Gym - Legs" don't both appear
