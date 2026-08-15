@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=activity-counters-v3";
+import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=trading-note-xp-v3";
 import { effectiveOperations } from "./operation-state.js?v=shared-operation-state-v2";
 
 const config = window.AEGIS_CONFIG || {};
