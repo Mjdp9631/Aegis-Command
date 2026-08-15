@@ -47,7 +47,7 @@ const projectMeta = (project) => {
 function render() {
   const activeProjects = projects.filter((project) => project.status === "Active").length;
   const readyContent = content.filter((item) => item.status === "Ready").length;
-  const published = content.filter((item) => item.status === "Published").length;
+  const published = content.filter((item) => item.status === "Published").length + projects.filter((project) => project.status === "Complete").length;
   const reserves = Number(financialFoundation?.liquid_reserves || 0);
   const expenses = Number(financialFoundation?.monthly_expenses || 0);
   const runway = expenses > 0 ? (reserves / expenses).toFixed(1) : "—";
@@ -65,20 +65,24 @@ function render() {
       return `<article><div><strong>${escape(project.title)}</strong><small>${escape(project.project_type || "Real-world project")} · ${escape(project.priority)} · ${Number(project.progress || 0)}% · ${stepsLabel}</small><small>${escape(projectMeta(project))}</small>${lineage}${project.next_action ? `<small>NEXT: ${escape(project.next_action)}</small>` : ""}${project.status === "Complete" && project.completion_evidence ? `<small>PROOF: ${escape(project.completion_evidence)}</small>` : ""}</div><div class="enterprise-project-actions">${project._missionOnly ? "" : `<button class="enterprise-upgrade" type="button" data-enterprise-upgrade="${escape(project.id)}">Upgrade</button>`}<span class="enterprise-status ${String(project.status || "").toLowerCase()}">${escape(project.status)}</span></div></article>`;
     }).join("")
     : '<p class="enterprise-empty">Open a finite project that creates a useful asset, capability, or service.</p>';
-  $("#enterprise").innerHTML = `<div class="section-intro"><p class="eyebrow amber">BUSINESS / SPECIAL PROJECTS</p><h2>Build assets that compound.</h2><p>Every Special Project has a Business mission; ordinary missions stay in Missions. Its ordered steps become the operations that advance it.</p></div><div class="metric-grid enterprise-metrics"><article class="metric"><p>ACTIVE PROJECTS</p><strong>${activeProjects}</strong><small>Few priorities. Clean execution.</small></article><article class="metric"><p>READY TO PUBLISH</p><strong>${readyContent}</strong><small>Content waiting for release</small></article><article class="metric"><p>PUBLISHED</p><strong>${published}</strong><small>Evidence of consistent output</small></article><article class="metric"><p>RUNWAY</p><strong>${runway}${runway === "—" ? "" : " mo"}</strong><small>Liquid reserves ÷ monthly expenses</small></article></div><div class="content-grid enterprise-grid"><section class="panel"><div class="panel-head"><div><p class="eyebrow">01 - SPECIAL PROJECTS</p><h3>Finish useful milestones.</h3></div><button class="primary compact" data-enterprise-action="project">+ New project</button></div><div class="enterprise-list">${projectList}</div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">02 - FINANCIAL FOUNDATION</p><h3>Protect the mission.</h3></div><button class="primary compact" data-enterprise-action="finance">${financialFoundation ? "Edit foundation" : "Set foundation"}</button></div>${finance}</section><section class="panel"><div class="panel-head"><div><p class="eyebrow">03 - CONTENT PIPELINE</p><h3>Signal, not noise.</h3></div><button class="primary compact" data-enterprise-action="content">+ New content</button></div><div class="enterprise-list">${content.length ? content.map((item) => `<article><div><strong>${escape(item.title)}</strong><small>${escape(item.platform)} - ${escape(item.status)}</small></div><span class="enterprise-status ${String(item.status || "").toLowerCase()}">${escape(item.status)}</span></article>`).join("") : '<p class="enterprise-empty">One clear idea is enough to start the pipeline.</p>'}</div></section></div>`;
+  $("#enterprise").innerHTML = `<div class="section-intro"><p class="eyebrow amber">BUSINESS / SPECIAL PROJECTS</p><h2>Build assets that compound.</h2><p>Every Special Project has a Business mission; ordinary missions stay in Missions. Its ordered steps become the operations that advance it.</p></div><div class="metric-grid enterprise-metrics"><article class="metric"><p>ACTIVE PROJECTS</p><strong>${activeProjects}</strong><small>Few priorities. Clean execution.</small></article><article class="metric"><p>READY TO PUBLISH</p><strong>${readyContent}</strong><small>Content waiting for release</small></article><article class="metric"><p>PUBLISHED</p><strong>${published}</strong><small>Released content + completed projects</small></article><article class="metric"><p>RUNWAY</p><strong>${runway}${runway === "—" ? "" : " mo"}</strong><small>Liquid reserves ÷ monthly expenses</small></article></div><div class="content-grid enterprise-grid"><section class="panel"><div class="panel-head"><div><p class="eyebrow">01 - SPECIAL PROJECTS</p><h3>Finish useful milestones.</h3></div><button class="primary compact" data-enterprise-action="project">+ New project</button></div><div class="enterprise-list">${projectList}</div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">02 - FINANCIAL FOUNDATION</p><h3>Protect the mission.</h3></div><button class="primary compact" data-enterprise-action="finance">${financialFoundation ? "Edit foundation" : "Set foundation"}</button></div>${finance}</section><section class="panel"><div class="panel-head"><div><p class="eyebrow">03 - CONTENT PIPELINE</p><h3>Signal, not noise.</h3></div><button class="primary compact" data-enterprise-action="content">+ New content</button></div><div class="enterprise-list">${content.length ? content.map((item) => `<article><div><strong>${escape(item.title)}</strong><small>${escape(item.platform)} - ${escape(item.status)}</small></div><span class="enterprise-status ${String(item.status || "").toLowerCase()}">${escape(item.status)}</span></article>`).join("") : '<p class="enterprise-empty">One clear idea is enough to start the pipeline.</p>'}</div></section></div>`;
 }
 
 async function load() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [projectResult, stepResult, contentResult, foundationResult, missionResult] = await Promise.all([
+  let [projectResult, stepResult, contentResult, foundationResult, missionResult] = await Promise.all([
     supabase.from("business_projects").select("*").order("logged_on", { ascending: false }),
     supabase.from("business_project_steps").select("*").order("project_id").order("position"),
     supabase.from("content_items").select("*").order("logged_on", { ascending: false }),
     supabase.from("financial_foundations").select("*").maybeSingle(),
     supabase.from("missions").select("*").order("created_at", { ascending: false }),
   ]);
+  if (projectResult.error) {
+    projectResult = await supabase.from("business_projects").select("*").order("created_at", { ascending: false });
+    if (projectResult.error) projectResult = await supabase.from("business_projects").select("*");
+  }
   if (projectResult.error || contentResult.error) return;
   projectSteps = stepResult.error ? [] : stepResult.data || [];
   const storedProjects = (projectResult.data || []).map((project) => {
@@ -90,7 +94,7 @@ async function load() {
   });
   const missionOnlyProjects = (missionResult.error ? [] : missionResult.data || [])
     .filter((mission) => String(mission.category || "").toLowerCase() === "business" || isLegacyAegisTitle(mission.title))
-    .filter((mission) => !storedProjects.some((project) => String(project.source_mission_id || "") === String(mission.id)))
+    .filter((mission) => !storedProjects.some((project) => String(project.source_mission_id || "") === String(mission.id) || (isLegacyAegisTitle(mission.title) && isLegacyAegisTitle(project.title))))
     .map(missionProject);
   projects = [...storedProjects, ...missionOnlyProjects];
   content = contentResult.data || [];
