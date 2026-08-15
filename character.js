@@ -10,6 +10,7 @@ let xpCampaign = null;
 let xpCampaignError = null;
 let directorReviews = [];
 let evolutionRoutineTimer = null;
+let evolutionMoveTimer = null;
 const quarterKey = () => `${new Date().getFullYear()}-Q${Math.floor(new Date().getMonth() / 3) + 1}`;
 
 function missionProgress(mission) {
@@ -81,7 +82,7 @@ function characterFocus(metrics, recovery) {
 }
 
 const evolutionActions = [
-  { id: "reset", label: "Resetting in the lounge", sprite: 0, left: 14, bottom: 11, scale: 1.05 },
+  { id: "reset", label: "Resetting in the lounge", sprite: 0, left: 31, bottom: 11, scale: 1.05 },
   { id: "journal", label: "Writing the next plan", sprite: 1, left: 46, bottom: 13, scale: .92 },
   { id: "study", label: "Studying in the library", sprite: 2, left: 76, bottom: 14, scale: .9 },
   { id: "train", label: "Training on the floor", sprite: 3, left: 31, bottom: 10, scale: 1.13 },
@@ -89,11 +90,12 @@ const evolutionActions = [
   { id: "pullups", label: "Building the body", sprite: 5, left: 88, bottom: 4, scale: 1.08 },
   { id: "systems", label: "Building systems", sprite: 6, left: 70, bottom: 10, scale: .94 },
   { id: "sentinel", label: "Running the command bay", sprite: 7, left: 52, bottom: 7, scale: 1.02 },
+  { id: "fridge", label: "Refueling at the fridge", sprite: 1, left: 13, bottom: 10, scale: .82 },
 ];
 
 const evolutionStageConfig = [
-  { level: 0, name: "SURVIVAL", description: "A fixed room. The first job is simply to get moving.", routine: [0, 0, 1] },
-  { level: 3, name: "FOUNDATION", description: "The room clears. Planning begins to replace drift.", routine: [0, 1, 1, 2] },
+  { level: 0, name: "SURVIVAL", description: "A fixed room. The first job is simply to get moving.", routine: [0, 8, 0, 1] },
+  { level: 3, name: "FOUNDATION", description: "The room clears. Planning begins to replace drift.", routine: [0, 8, 1, 2] },
   { level: 6, name: "MOMENTUM", description: "Books, training, and deliberate routines start to occupy the room.", routine: [1, 2, 3, 4] },
   { level: 10, name: "OPERATOR", description: "The workspace becomes a tool for focus, fitness, and clean execution.", routine: [2, 3, 4, 4, 5] },
   { level: 15, name: "BUILDER", description: "A serious body, library, and trading desk share the same mission space.", routine: [3, 4, 5, 6] },
@@ -118,11 +120,12 @@ function characterEvolution(levels) {
   const strengths = [
     ["MIND", levels.mind], ["BODY", levels.body], ["TRADING", levels.trading], ["BUSINESS", levels.ccfx], ["DISCIPLINE", levels.discipline],
   ].sort((a, b) => b[1] - a[1]).slice(0, 3);
-  return `<section class="character-evolution panel" data-evolution-stage="${stageIndex}"><div class="character-evolution-heading"><div><p class="eyebrow amber">CHARACTER EVOLUTION / PASSIVE VISUAL</p><h3>Watch the environment catch up to the work.</h3><p>${escape(stage.description)} It is visual only: no buttons, no new workload, and no change to the Character System itself.</p></div><div class="character-evolution-readout"><span>CURRENT CHAPTER</span><strong>${stage.name}</strong><small>Average system level: ${averageLevel}</small></div></div><div class="evolution-room" data-evolution-room data-stage="${stageIndex}" data-routine="${escape(JSON.stringify(routine))}"><div class="evolution-ceiling" aria-hidden="true"></div><div class="evolution-window" aria-hidden="true"></div><div class="evolution-library" aria-hidden="true"></div><div class="evolution-desk" aria-hidden="true"></div><div class="evolution-training-rig" aria-hidden="true"></div><div class="evolution-lounge" aria-hidden="true"></div><div class="evolution-floor-grid" aria-hidden="true"></div><div class="evolution-avatar" data-evolution-avatar style="${evolutionSpriteStyle(initial)}" aria-hidden="true"></div><div class="evolution-status"><span>ROUTINE IN PROGRESS</span><b data-evolution-activity>${escape(initial.label)}</b></div><div class="evolution-strengths">${strengths.map(([label, level]) => `<span>${label}<b>LV ${level}</b></span>`).join("")}</div></div></section>`;
+  return `<section class="character-evolution panel" data-evolution-stage="${stageIndex}"><div class="character-evolution-heading"><div><p class="eyebrow amber">CHARACTER EVOLUTION / PASSIVE VISUAL</p><h3>Watch the environment catch up to the work.</h3><p>${escape(stage.description)} It is visual only: no buttons, no new workload, and no change to the Character System itself.</p></div><div class="character-evolution-readout"><span>CURRENT CHAPTER</span><strong>${stage.name}</strong><small>Average system level: ${averageLevel}</small></div></div><div class="evolution-room" data-evolution-room data-stage="${stageIndex}" data-routine="${escape(JSON.stringify(routine))}"><div class="evolution-ceiling" aria-hidden="true"></div><div class="evolution-window" aria-hidden="true"></div><div class="evolution-fridge" aria-hidden="true"></div><div class="evolution-library" aria-hidden="true"></div><div class="evolution-desk" aria-hidden="true"></div><div class="evolution-training-rig" aria-hidden="true"></div><div class="evolution-lounge" aria-hidden="true"></div><div class="evolution-floor-grid" aria-hidden="true"></div><div class="evolution-avatar" data-evolution-avatar style="${evolutionSpriteStyle(initial)}" aria-hidden="true"></div><div class="evolution-status"><span>ROUTINE IN PROGRESS</span><b data-evolution-activity>${escape(initial.label)}</b></div><div class="evolution-strengths">${strengths.map(([label, level]) => `<span>${label}<b>LV ${level}</b></span>`).join("")}</div></div></section>`;
 }
 
 function bindCharacterEvolution() {
   if (evolutionRoutineTimer) window.clearInterval(evolutionRoutineTimer);
+  if (evolutionMoveTimer) window.clearTimeout(evolutionMoveTimer);
   const room = document.querySelector("[data-evolution-room]");
   if (!room) return;
   const avatar = room.querySelector("[data-evolution-avatar]");
@@ -130,13 +133,19 @@ function bindCharacterEvolution() {
   let routine = [];
   try { routine = JSON.parse(room.dataset.routine || "[]"); } catch { return; }
   if (!avatar || !activity || routine.length < 2) return;
-  let position = 0;
-  evolutionRoutineTimer = window.setInterval(() => {
-    position = (position + 1) % routine.length;
-    const action = routine[position];
+  const activate = (action, initial = false) => {
+    if (evolutionMoveTimer) window.clearTimeout(evolutionMoveTimer);
+    avatar.dataset.moving = initial ? "false" : "true";
     avatar.style.cssText = evolutionSpriteStyle(action);
     activity.textContent = action.label;
     room.dataset.activity = action.id;
+    if (!initial) evolutionMoveTimer = window.setTimeout(() => { avatar.dataset.moving = "false"; }, 1600);
+  };
+  let position = 0;
+  activate(routine[position], true);
+  evolutionRoutineTimer = window.setInterval(() => {
+    position = (position + 1) % routine.length;
+    activate(routine[position]);
   }, 6500);
 }
 
@@ -195,7 +204,7 @@ function render({ operations, occurrences, trades, missions, projects, contentIt
   localStorage.setItem("aegis-character-levels", JSON.stringify(levels));
   window.dispatchEvent(new CustomEvent("aegis:character-levels-changed", { detail: levels }));
   const launch = !xpCampaign ? `<section class="panel xp-launch-panel"><p class="eyebrow amber">CAMPAIGN CALIBRATION</p><h3>XP is paused.</h3><p class="body-copy">Nothing logged before activation will count. When you are ready, start the five-year campaign and the ledger will begin from that moment forward.</p>${xpCampaignError ? `<p class="body-copy">${escape(xpCampaignError)}</p>` : `<button class="primary compact" type="button" id="start-xp-campaign">Start campaign tracking</button>`}</section>` : "";
-  $("#character").innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p><div class="character-intro-actions"><button class="ghost compact" type="button" id="export-system-data">Export system data</button><small>Private JSON backup of records available to this account.</small></div></div>${launch}${characterFocus(metrics, recovery)}${characterEvolution(levels)}${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
+  $("#character").innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p><div class="character-intro-actions"><button class="ghost compact" type="button" id="export-system-data">Export system data</button><small>Private JSON backup of records available to this account.</small></div></div>${launch}${characterFocus(metrics, recovery)}${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>${characterEvolution(levels)}`;
   bindCharacterFocusHover();
   bindCharacterEvolution();
 }

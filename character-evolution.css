@@ -13,13 +13,18 @@
 .evolution-ceiling { position: absolute; inset: 0 0 auto; height: 14%; background: linear-gradient(180deg, rgba(0, 0, 0, .56), transparent); border-bottom: 1px solid var(--room-line); }
 .evolution-floor-grid { position: absolute; z-index: -1; left: -8%; right: -8%; bottom: -27%; height: 60%; transform: perspective(230px) rotateX(58deg); transform-origin: bottom; background: repeating-linear-gradient(90deg, rgba(118, 169, 210, .09) 0 1px, transparent 1px 10%), repeating-linear-gradient(0deg, rgba(118, 169, 210, .08) 0 1px, transparent 1px 13%); border-top: 1px solid var(--room-line); opacity: .75; }
 .evolution-window { position: absolute; top: 13%; left: 8%; width: 23%; height: 48%; border: 2px solid rgba(153, 182, 208, .32); background: linear-gradient(140deg, rgba(92, 143, 186, .16), rgba(5, 12, 22, .56)), repeating-linear-gradient(90deg, transparent 0 31%, rgba(177, 205, 228, .24) 32% 34%, transparent 35% 65%, rgba(177, 205, 228, .24) 66% 68%, transparent 69%); box-shadow: 0 0 28px rgba(64, 153, 234, .08); }
+.evolution-window::after { content:""; position:absolute; inset: 12% 12%; opacity: 0; background: linear-gradient(74deg, transparent 47%, rgba(8, 13, 19, .86) 48% 50%, transparent 51%), linear-gradient(133deg, transparent 48%, rgba(8, 13, 19, .86) 49% 51%, transparent 52%), linear-gradient(28deg, transparent 48%, rgba(8, 13, 19, .86) 49% 50%, transparent 51%); transition: opacity .8s ease; }
+.evolution-fridge { position:absolute; left: 2.5%; bottom: 17%; width: 9%; height: 35%; border: 2px solid rgba(169, 190, 204, .46); border-radius: 4px 4px 2px 2px; background: linear-gradient(90deg, #25323b, #0c1218); box-shadow: 0 10px 14px rgba(0,0,0,.42); }
+.evolution-fridge::before { content:""; position:absolute; left: 9%; right: 9%; top: 35%; border-top: 2px solid rgba(181, 205, 222, .36); }
+.evolution-fridge::after { content:""; position:absolute; right: 11%; top: 12%; height: 20%; border-right: 2px solid rgba(234, 240, 244, .55); transform-origin: right center; transition: transform .65s ease, box-shadow .65s ease; }
 .evolution-library { position: absolute; right: 8%; top: 14%; width: 18%; height: 44%; border: 1px solid rgba(203, 161, 102, .23); background: repeating-linear-gradient(0deg, transparent 0 22%, rgba(228, 173, 99, .23) 23% 25%), repeating-linear-gradient(90deg, rgba(12, 17, 20, .9) 0 13%, rgba(99, 68, 38, .8) 14% 17%, rgba(26, 47, 57, .9) 18% 25%); box-shadow: inset 0 0 18px rgba(0,0,0,.55); }
 .evolution-desk { position: absolute; left: 42%; bottom: 18%; width: 25%; height: 19%; border: 1px solid rgba(139, 184, 221, .26); border-bottom: 8px solid #10151b; border-radius: 7px 7px 2px 2px; background: linear-gradient(145deg, #1a252d, #0b1116); box-shadow: 0 12px 12px rgba(0,0,0,.35); }
 .evolution-desk::after { content:""; position:absolute; width: 27%; aspect-ratio: 1.55; left: 37%; bottom: 70%; border: 2px solid rgba(102, 190, 255, .63); background: linear-gradient(140deg, rgba(56, 155, 225, .46), rgba(7, 18, 30, .95)); box-shadow: 0 0 12px rgba(67, 175, 255, .24); }
 .evolution-training-rig { position: absolute; right: 27%; bottom: 15%; width: 11%; height: 42%; border: 4px solid rgba(169, 184, 192, .38); border-bottom: 0; border-radius: 7px 7px 0 0; opacity: .56; }
 .evolution-training-rig::after { content:""; position:absolute; left: 12%; right: 12%; top: 24%; border-top: 4px solid rgba(229, 179, 100, .58); }
-.evolution-lounge { position: absolute; left: 11%; bottom: 11%; width: 25%; height: 16%; border: 1px solid rgba(148, 117, 89, .38); border-bottom: 7px solid #17120f; border-radius: 14px 14px 4px 4px; background: linear-gradient(180deg, #42342c, #201814); box-shadow: 0 10px 15px rgba(0,0,0,.4); }
+.evolution-lounge { position: absolute; left: 23%; bottom: 11%; width: 21%; height: 16%; border: 1px solid rgba(148, 117, 89, .38); border-bottom: 7px solid #17120f; border-radius: 14px 14px 4px 4px; background: linear-gradient(180deg, #42342c, #201814); box-shadow: 0 10px 15px rgba(0,0,0,.4); }
 .evolution-avatar { position: absolute; z-index: 5; left: var(--avatar-left); bottom: var(--avatar-bottom); width: min(24%, 220px); aspect-ratio: 1; background-image: url("assets/generated/aegis-character-habit-sprite.webp"); background-position: var(--sprite-x) var(--sprite-y); background-repeat: no-repeat; background-size: 400% 200%; filter: drop-shadow(0 10px 10px rgba(0,0,0,.44)); transform: translateX(-50%) scale(var(--avatar-scale)); transform-origin: bottom center; transition: left 1.15s cubic-bezier(.2,.8,.2,1), bottom 1.15s cubic-bezier(.2,.8,.2,1), transform 1.15s cubic-bezier(.2,.8,.2,1), opacity .28s ease; animation: evolution-breathe 4.2s ease-in-out infinite; will-change: left, bottom, transform; }
+.evolution-avatar[data-moving="true"] { animation: evolution-walk .28s steps(2, end) infinite; filter: drop-shadow(0 13px 10px rgba(0,0,0,.55)) brightness(1.06); }
 .evolution-status { position: absolute; z-index: 9; left: 17px; top: 14px; display: grid; gap: 5px; padding: 9px 11px; border-left: 2px solid var(--room-accent); background: rgba(6, 12, 19, .62); backdrop-filter: blur(5px); }
 .evolution-status b { color: #f4f7fa; font-size: 12px; }
 .evolution-strengths { position: absolute; z-index: 9; right: 15px; bottom: 12px; display: flex; gap: 6px; }
@@ -28,10 +33,15 @@
 
 .evolution-room[data-stage="0"] { --room-sky:#211b14; --room-deep:#15100e; --room-floor:#302519; --room-line:rgba(148, 109, 64, .16); --room-accent:#a17a4d; }
 .evolution-room[data-stage="0"] .evolution-window, .evolution-room[data-stage="1"] .evolution-window { opacity: .46; filter: saturate(.55); }
+.evolution-room[data-stage="0"] .evolution-window::after { opacity: .95; }
 .evolution-room[data-stage="0"] .evolution-library { opacity: .19; }
 .evolution-room[data-stage="0"] .evolution-desk { opacity: .36; transform: rotate(-2deg); }
 .evolution-room[data-stage="0"] .evolution-training-rig { opacity: .1; }
 .evolution-room[data-stage="0"] .evolution-lounge { transform: scale(1.18); }
+.evolution-room[data-stage="0"]::before { background: radial-gradient(circle at 20% 70%, rgba(93, 69, 42, .48) 0 2px, transparent 3px), radial-gradient(circle at 44% 21%, rgba(111, 78, 48, .36) 0 3px, transparent 4px), linear-gradient(90deg, transparent 49.8%, var(--room-line) 50%, transparent 50.2%), linear-gradient(0deg, transparent 49.8%, var(--room-line) 50%, transparent 50.2%); background-size: 23% 26%, 31% 37%, 16.667% 25%, 16.667% 25%; opacity: .72; }
+.evolution-room[data-stage="0"] .evolution-fridge { filter: saturate(.32) brightness(.68); }
+.evolution-room[data-activity="fridge"] .evolution-fridge::after { transform: perspective(80px) rotateY(-42deg); box-shadow: -10px 0 17px rgba(228, 213, 158, .46); }
+.evolution-room[data-activity="fridge"] .evolution-fridge { box-shadow: 0 0 18px rgba(237, 222, 167, .2), 0 10px 14px rgba(0,0,0,.42); }
 .evolution-room[data-stage="1"] { --room-sky:#192027; --room-deep:#121417; --room-floor:#21231f; --room-accent:#be9561; }
 .evolution-room[data-stage="2"] { --room-sky:#10212b; --room-deep:#0b161c; --room-floor:#11232e; --room-accent:#cf9c56; }
 .evolution-room[data-stage="3"] { --room-sky:#0e2432; --room-deep:#081520; --room-floor:#0a2937; --room-accent:#73c0f3; }
@@ -48,5 +58,6 @@
 .evolution-room[data-stage="7"] .evolution-training-rig { border-color: rgba(228,173,99,.7); opacity: .9; }
 
 @keyframes evolution-breathe { 0%,100% { filter: drop-shadow(0 10px 10px rgba(0,0,0,.44)); } 50% { filter: drop-shadow(0 14px 13px rgba(0,0,0,.58)) brightness(1.035); } }
+@keyframes evolution-walk { 0%,100% { transform: translateX(-50%) translateY(0) scale(var(--avatar-scale)); } 50% { transform: translateX(-50%) translateY(-7px) scale(var(--avatar-scale)); } }
 @media (prefers-reduced-motion: reduce) { .evolution-avatar { animation: none; transition: none; } }
 @media (max-width: 620px) { .character-evolution-heading { flex-direction: column; gap: 13px; } .character-evolution-readout { justify-items: start; text-align: left; } .evolution-room { min-height: 255px; } .evolution-strengths { left: 11px; right: auto; bottom: 9px; max-width: calc(100% - 22px); overflow: hidden; } .evolution-strengths span { font-size: 7px; } .evolution-avatar { width: 34%; } .evolution-status { left: 10px; top: 10px; } }
