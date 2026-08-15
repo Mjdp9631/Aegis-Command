@@ -1740,6 +1740,54 @@ async function repairMissionProgressFromCompletion(operation) {
   }
 }
 
+// If a completion happened after its measured mission was last edited but no
+// database progress event exists, it was missed by an older pathway trigger.
+// Backfill it once. This deliberately preserves any older manual count: work
+// completed before the mission's last edit is assumed to already be included.
+async function backfillMissedLinkedCompletionProgress() {
+  if (!client || !currentUser || !missions.length) return;
+  for (const operation of operationInstances()) {
+    if (normalizedStatus(operation) !== "Complete") continue;
+    const linkedMissionIds = operationMissionIds(operation);
+    if (!linkedMissionIds.length) continue;
+    const completedAt = Date.parse(
+      operation._occurrence?.updated_at
+      || operation.updated_at
+      || operation.local_updated_at
+      || `${dateOnly(operation.completed_on || operation.scheduled_date)}T23:59:59.999Z`,
+    );
+    if (!Number.isFinite(completedAt)) continue;
+    const eventQuery = client.from("mission_progress_events").select("id").eq("user_id", currentUser.id).limit(1);
+    if (operation._occurrence?.id) eventQuery.eq("occurrence_id", operation._occurrence.id);
+    else if (operation.id && !String(operation.id).startsWith("local-")) eventQuery.eq("operation_id", operation.id);
+    else continue;
+    const { data: events, error: eventError } = await eventQuery;
+    // If the evidence table is unavailable, leave the count alone rather than
+    // risking a repeat recovery on every refresh.
+    if (eventError || events?.length) continue;
+    for (const missionId of linkedMissionIds) {
+      const mission = missions.find((item) => String(item.id) === String(missionId));
+      if (!mission || String(mission.completion_type || "").toLowerCase() !== "units") continue;
+      const missionEditedAt = Date.parse(mission.updated_at || mission.created_at || 0);
+      if (!Number.isFinite(missionEditedAt) || completedAt <= missionEditedAt) continue;
+      const target = Math.max(1, Number(mission.target_count || 1));
+      const current = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
+      if (current >= target) continue;
+      const next = Math.min(target, current + 1);
+      const { data, error } = await client.from("missions")
+        .update({ completed_count: next, completed: next >= target, progress: Math.round((next / target) * 100), updated_at: new Date().toISOString() })
+        .eq("id", mission.id)
+        .eq("user_id", currentUser.id)
+        .select()
+        .maybeSingle();
+      if (!error && data) {
+        const index = missions.findIndex((item) => String(item.id) === String(data.id));
+        if (index >= 0) missions[index] = data;
+      }
+    }
+  }
+}
+
 async function changeGatedStatus(key) {
   const operation = findOperation(key);
   if (!operation || morningGate(operation)?.state !== "expired") return;
@@ -2684,6 +2732,7 @@ function scheduleOperationHydration() {
       await loadOperationMissionLinks();
       await syncDailyReadingOperation();
       await loadOccurrences();
+      await backfillMissedLinkedCompletionProgress();
       await reconcileMeasuredMissionCounts();
       subscribeToOperationSync();
       saveCachedOperations();
