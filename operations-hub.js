@@ -2657,8 +2657,13 @@ function scheduleOperationHydration() {
       hydrationScheduled = false;
     }
   };
-  // Always yield a frame after sign-in before any cloud history is read.
-  window.setTimeout(() => { void run(); }, 0);
+  // Hydration is intentionally opportunistic: the interactive post-login
+  // frame wins over refreshing historical data by a few moments.
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(() => { void run(); }, { timeout: 2500 });
+  } else {
+    window.setTimeout(() => { void run(); }, 250);
+  }
 }
 
 async function boot() {
