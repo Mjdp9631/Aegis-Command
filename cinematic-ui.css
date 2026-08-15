@@ -332,17 +332,13 @@ main { background: linear-gradient(90deg, rgba(4, 10, 17, .08), rgba(4, 10, 17, 
   box-shadow: inset 0 0 16px rgba(72,205,148,.08);
 }
 #missions.active .mission-card-list {
-  max-height: min(610px, calc(100vh - 360px));
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 2px 8px 12px 0;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(89,180,255,.55) transparent;
+  /* Keep Mission Control in normal document flow. The old viewport-limited
+     nested scroller trapped wheel and touch scrolling on some browsers. */
+  max-height: none;
+  overflow: visible;
+  overscroll-behavior: auto;
+  padding: 2px 0 12px;
 }
-#missions.active .mission-card-list::-webkit-scrollbar { width: 5px; }
-#missions.active .mission-card-list::-webkit-scrollbar-track { background: transparent; }
-#missions.active .mission-card-list::-webkit-scrollbar-thumb { background: rgba(89,180,255,.55); border-radius: 99px; }
 
 /* Recovery stays quieter and clinical; Mastery becomes a library/workshop console; Character remains a vault. */
 #recovery.active .content-grid { margin-top: 0; }
