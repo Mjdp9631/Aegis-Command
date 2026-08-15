@@ -1713,7 +1713,13 @@ async function repairMissionProgressFromCompletion(operation) {
   // durable progress-event check below makes it a no-op when the database has
   // already recorded the completion, so it cannot double-count a healthy
   // deployment.
-  const linkedMissions = operationMissionIds(operation).map((id) => missions.find((mission) => String(mission.id) === String(id))).filter(Boolean);
+  // loadOperationMissionLinks() replaces the operation array with freshly
+  // mapped records. A calendar/queue click still holds the old display copy,
+  // so resolve its durable parent from the refreshed array before reading the
+  // linked mission IDs.
+  const durableOperationId = operation._series?.id || operation._occurrence?.operation_id || operation.id;
+  const linkedOperation = operations.find((item) => String(item.id) === String(durableOperationId)) || operation._series || operation;
+  const linkedMissions = operationMissionIds(linkedOperation).map((id) => missions.find((mission) => String(mission.id) === String(id))).filter(Boolean);
   const measuredMissions = linkedMissions.filter((mission) => String(mission.completion_type || "").toLowerCase() === "units");
   if (!measuredMissions.length) return;
   const eventQuery = client.from("mission_progress_events").select("id").eq("user_id", currentUser.id).limit(1);
