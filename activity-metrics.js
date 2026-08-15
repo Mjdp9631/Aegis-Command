@@ -204,7 +204,7 @@ export function enterpriseXp(projects = [], contentItems = [], financialFoundati
   return { xp: ledger.reduce((total, entry) => total + entry.change, 0), ledger: ledger.sort((a, b) => b.label.localeCompare(a.label)) };
 }
 
-export function masteryXp(entries = [], challenges = [], trainingSessions = [], capabilityLogs = [], startedAt) {
+export function masteryXp(entries = [], challenges = [], trainingSessions = [], capabilityLogs = [], capabilityBenchmarkRewards = [], startedAt) {
   const ledgerFor = (awards) => entries.filter((entry) => isOnOrAfter(evidenceDay(entry), startedAt) && awards[entry.category]).map((entry) => ({
     label: evidenceDay(entry),
     detail: `${entry.category}: ${entry.title || "entry"} · base evidence XP`,
@@ -236,6 +236,12 @@ export function masteryXp(entries = [], challenges = [], trainingSessions = [], 
     const practiceDay = campaignDay(log.practiced_on || log.created_at);
     mindLedger.push({ label: new Date(`${practiceDay}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `${skillType}: ${skillTitle} · practice evidence`, change, evidenceKey: `capability|${log.id || practiceDay}|${skillTitle}` });
   });
+  capabilityBenchmarkRewards.filter((reward) => isOnOrAfter(reward.created_at, startedAt)).forEach((reward) => {
+    const benchmark = reward.capability_benchmarks || {};
+    const skill = benchmark.capability_skills || {};
+    const day = campaignDay(reward.created_at);
+    mindLedger.push({ label: new Date(`${day}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }), detail: `${skill.skill_type || "Capability"}: ${skill.title || "skill"} · ${benchmark.level || "benchmark"} tier`, change: Number(reward.xp_reward || benchmark.xp_reward || 0), evidenceKey: `capability-benchmark|${reward.id || `${reward.benchmark_id}|${reward.operation_id}`}` });
+  });
   const uniqueBodyLedger = new Map();
   bodyLedger.forEach((entry) => {
     const key = entry.evidenceKey || `${entry.label}|${entry.detail}|${entry.change}`;
@@ -254,7 +260,7 @@ export function characterMetrics(data = {}, startedAt) {
   const discipline = disciplineXp(data.operations, data.occurrences, startedAt);
   const trading = tradingXp(data.trades, data.masteryEntries, startedAt);
   const ccfx = enterpriseXp(data.projects, data.contentItems, data.financialFoundation, startedAt);
-  const mastery = masteryXp(data.masteryEntries, data.masteryChallenges, data.trainingSessions, data.capabilityLogs, startedAt);
+  const mastery = masteryXp(data.masteryEntries, data.masteryChallenges, data.trainingSessions, data.capabilityLogs, data.capabilityBenchmarkRewards, startedAt);
   const totalXp = discipline.xp + trading.xp + ccfx.xp + mastery.mind.xp + mastery.body.xp;
   return { discipline, trading, ccfx, mastery, totalXp };
 }

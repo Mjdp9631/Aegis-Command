@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=project-xp-rebalance-v5";
+import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=capability-benchmarks-v1";
 
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
@@ -126,8 +126,8 @@ async function exportSystemData(button) {
   button.textContent = "Export system data";
 }
 
-function render({ operations, occurrences, trades, missions, projects, contentItems, masteryEntries, masteryChallenges, trainingSessions, capabilityLogs, financialFoundation }) {
-  const metrics = characterMetrics({ operations, occurrences, trades, projects, contentItems, masteryEntries, masteryChallenges, trainingSessions, capabilityLogs, financialFoundation }, xpCampaign?.started_at);
+function render({ operations, occurrences, trades, missions, projects, contentItems, masteryEntries, masteryChallenges, trainingSessions, capabilityLogs, capabilityBenchmarkRewards, financialFoundation }) {
+  const metrics = characterMetrics({ operations, occurrences, trades, projects, contentItems, masteryEntries, masteryChallenges, trainingSessions, capabilityLogs, capabilityBenchmarkRewards, financialFoundation }, xpCampaign?.started_at);
   const { discipline, trading, ccfx, mastery } = metrics;
   const recovery = missions.find((mission) => mission.category === "Recovery");
   const levels = { discipline: levelFromXp(discipline.xp).level, trading: levelFromXp(trading.xp).level, ccfx: levelFromXp(ccfx.xp).level, mind: levelFromXp(mastery.mind.xp).level, body: levelFromXp(mastery.body.xp).level };
@@ -142,7 +142,7 @@ async function load() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [operationsResult, occurrenceResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, campaignResult, reviewResult, challengeResult, capabilityLogsResult, financialFoundationResult] = await Promise.all([
+  const [operationsResult, occurrenceResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, campaignResult, reviewResult, challengeResult, capabilityLogsResult, capabilityBenchmarkRewardsResult, financialFoundationResult] = await Promise.all([
     supabase.from("operations").select("id, title, scheduled_date, operation_date, completed_on, completed, status, schedule_mode, scheduled_time, mission_id"),
     supabase.from("operation_occurrences").select("id, operation_id, occurrence_date, completed_on, completed, status, scheduled_time"),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }),
@@ -155,12 +155,13 @@ async function load() {
     supabase.from("director_reviews").select("*").order("updated_at", { ascending: false }).limit(4),
     supabase.from("mastery_challenges").select("*").order("completed_at", { ascending: false }).limit(100),
     supabase.from("capability_skill_logs").select("*, capability_skills(skill_type, title)").order("practiced_on", { ascending: false }),
+    supabase.from("capability_benchmark_completion_ledger").select("*, capability_benchmarks(level, xp_reward, capability_skills(skill_type, title))").order("created_at", { ascending: false }),
     supabase.from("financial_foundations").select("*").maybeSingle()
   ]);
   xpCampaign = campaignResult.data || null;
   directorReviews = reviewResult.data || [];
   xpCampaignError = campaignResult.error ? "XP campaign setup is awaiting its one-time database migration." : null;
-  render({ operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], trades: tradesResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], capabilityLogs: capabilityLogsResult.data || [], financialFoundation: financialFoundationResult.data || null });
+  render({ operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], trades: tradesResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], capabilityLogs: capabilityLogsResult.data || [], capabilityBenchmarkRewards: capabilityBenchmarkRewardsResult.data || [], financialFoundation: financialFoundationResult.data || null });
 }
 
 document.addEventListener("click", async (event) => {
