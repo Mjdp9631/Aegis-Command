@@ -329,14 +329,15 @@ const starterOperations = () => {
     .concat(gymOperationForToday());
 };
 
-const gymSplitForToday = () => {
+const gymSplitForDay = (operationDay = operatingDayKey()) => {
   // Monday through Sunday: Legs, Push, Pull, Rest, Lower Body, Upper Body, Rest.
   const split = ["Rest", "Legs", "Push", "Pull", "Rest", "Lower Body", "Upper Body"];
-  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short" }).format(dateForKey(operatingDayKey()));
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short" }).format(dateForKey(operationDay));
   return split[["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday)];
 };
-const gymOperationForToday = () => {
-  const split = gymSplitForToday();
+const gymSplitForToday = () => gymSplitForDay(operatingDayKey());
+const gymOperationForDay = (operationDay = operatingDayKey()) => {
+  const split = gymSplitForDay(operationDay);
   const isRest = split === "Rest";
   return {
     title: isRest ? "Recovery — rest and reset" : `Gym — ${split}`,
@@ -346,13 +347,14 @@ const gymOperationForToday = () => {
     completed: false,
     is_daily: true,
     schedule_mode: "daily",
-    operation_date: operatingDayKey(),
-    scheduled_date: operatingDayKey(),
+    operation_date: operationDay,
+    scheduled_date: operationDay,
     brief: isRest
       ? "Protect recovery: light mobility only if it feels good, hydrate, sleep on time, and do not turn rest into a missed plan."
       : `Complete the ${split} session selected in Self Mastery. Log every exercise with weight, reps, and sets so AEGIS can evaluate progressive improvement.`,
   };
 };
+const gymOperationForToday = () => gymOperationForDay(operatingDayKey());
 
 let operations = [];
 let operationOccurrences = [];
@@ -531,6 +533,34 @@ function dedupeOperationInstances(items) {
     }
   });
   return [...unique.values()];
+}
+
+const normalizedOperationTitle = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const isAutoDailyFitnessOperation = (operation) => {
+  const series = operation?._series || operation;
+  if (!Boolean(series?.is_daily) && scheduleMode(series) !== "daily") return false;
+  return /^(?:gym\b|recovery\b.*\brest\b.*\breset\b)/i.test(String(series?.title || ""));
+};
+
+// Old versions wrote each gym split as an open-ended daily template. Keep the
+// expected split for each calendar day and hide the stale templates, preserving
+// their saved records without letting them create multiple workouts per day.
+function keepExpectedDailyFitnessOperation(items, fallbackDay = operatingDayKey()) {
+  const groups = new Map();
+  items.forEach((operation) => {
+    if (!isAutoDailyFitnessOperation(operation)) return;
+    const day = dateOnly(operation.scheduled_date || operation._occurrence?.occurrence_date || operation.operation_date) || fallbackDay;
+    const group = groups.get(day) || [];
+    group.push(operation);
+    groups.set(day, group);
+  });
+  const keep = new Set();
+  groups.forEach((group, day) => {
+    const expectedTitle = normalizedOperationTitle(gymOperationForDay(day).title);
+    const expected = group.find((operation) => normalizedOperationTitle(operation.title) === expectedTitle);
+    keep.add(expected || group[0]);
+  });
+  return items.filter((operation) => !isAutoDailyFitnessOperation(operation) || keep.has(operation));
 }
 
 function duplicateScheduledOperation(candidate) {
@@ -1218,7 +1248,7 @@ function queueOperations() {
   const horizon = dateForKey(start);
   horizon.setUTCDate(horizon.getUTCDate() + 14);
   const end = dayKey(horizon);
-  const displayOperations = dedupeOperationInstances(operationInstances());
+  const displayOperations = keepExpectedDailyFitnessOperation(dedupeOperationInstances(operationInstances()), start);
   const today = displayOperations.filter((operation) => {
     if (normalizedStatus(operation) === "Complete" && !isCompleteToday(operation)) return false;
     const scheduled = dateOnly(operation.scheduled_date);
@@ -2492,7 +2522,7 @@ function renderCalendar() {
   const agenda = $("#calendar-agenda-list");
   const needsScheduling = $("#calendar-needs-scheduling");
   if (!grid) return;
-  const displayOperations = dedupeOperationInstances(operationInstances());
+  const displayOperations = keepExpectedDailyFitnessOperation(dedupeOperationInstances(operationInstances()));
   if (label) label.textContent = monthTitle(cursor);
   const year = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric" }).format(cursor));
   const month = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "numeric" }).format(cursor)) - 1;
