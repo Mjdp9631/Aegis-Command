@@ -7,10 +7,30 @@ const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => 
 const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 const PROJECT_XP = Object.freeze({ Minor: 10, Standard: 25, Major: 50, Flagship: 100 });
 let projects = [], projectSteps = [], content = [], financialFoundation = null;
-let attemptedAegisRecoveryFor = null;
 
 const isLegacyAegisTitle = (title) => ["created aegis", "create aegis"].includes(String(title || "").trim().toLowerCase());
 const projectPriority = (priority) => ({ "do now": "Do now", delegate: "Delegate", eliminate: "Eliminate" }[String(priority || "").trim().toLowerCase()] || "Schedule");
+const missionProject = (mission) => {
+  const aegis = isLegacyAegisTitle(mission.title);
+  const complete = Boolean(mission.completed) || Number(mission.progress || 0) >= 100;
+  return {
+    id: `mission:${mission.id}`,
+    source_mission_id: mission.id,
+    title: mission.title,
+    status: complete ? "Complete" : "Active",
+    priority: projectPriority(mission.priority),
+    project_type: "Mission-backed project",
+    project_mode: "Milestone",
+    effort_band: aegis ? "Flagship" : "Standard",
+    estimated_hours: aegis ? 120 : null,
+    xp_reward: aegis ? 100 : 25,
+    progress: Math.max(0, Math.min(100, Number(mission.progress || 0))),
+    outcome: mission.completion_definition || mission.description || null,
+    next_action: mission.completion_definition || null,
+    completion_evidence: complete ? mission.completion_definition || "Mission completed." : null,
+    _missionOnly: true,
+  };
+};
 
 const projectReward = (project) => {
   if (project?.project_mode === "Ongoing system") return 0;
@@ -42,10 +62,10 @@ function render() {
       const stepsLabel = steps.length ? `${completeSteps}/${steps.length} steps` : "No step list";
       const parent = project.parent_project_id ? projectsById.get(String(project.parent_project_id)) : null;
       const lineage = parent ? `<small class="enterprise-lineage">UPGRADE OF: ${escape(parent.title)}</small>` : "";
-      return `<article><div><strong>${escape(project.title)}</strong><small>${escape(project.project_type || "Real-world project")} · ${escape(project.priority)} · ${Number(project.progress || 0)}% · ${stepsLabel}</small><small>${escape(projectMeta(project))}</small>${lineage}${project.next_action ? `<small>NEXT: ${escape(project.next_action)}</small>` : ""}${project.status === "Complete" && project.completion_evidence ? `<small>PROOF: ${escape(project.completion_evidence)}</small>` : ""}</div><div class="enterprise-project-actions"><button class="enterprise-upgrade" type="button" data-enterprise-upgrade="${escape(project.id)}">Upgrade</button><span class="enterprise-status ${String(project.status || "").toLowerCase()}">${escape(project.status)}</span></div></article>`;
+      return `<article><div><strong>${escape(project.title)}</strong><small>${escape(project.project_type || "Real-world project")} · ${escape(project.priority)} · ${Number(project.progress || 0)}% · ${stepsLabel}</small><small>${escape(projectMeta(project))}</small>${lineage}${project.next_action ? `<small>NEXT: ${escape(project.next_action)}</small>` : ""}${project.status === "Complete" && project.completion_evidence ? `<small>PROOF: ${escape(project.completion_evidence)}</small>` : ""}</div><div class="enterprise-project-actions">${project._missionOnly ? "" : `<button class="enterprise-upgrade" type="button" data-enterprise-upgrade="${escape(project.id)}">Upgrade</button>`}<span class="enterprise-status ${String(project.status || "").toLowerCase()}">${escape(project.status)}</span></div></article>`;
     }).join("")
     : '<p class="enterprise-empty">Open a finite project that creates a useful asset, capability, or service.</p>';
-  $("#enterprise").innerHTML = `<div class="section-intro"><p class="eyebrow amber">BUSINESS / SPECIAL PROJECTS</p><h2>Build assets that compound.</h2><p>Trading is the craft. Real projects and financial resilience are the enterprise.</p></div><div class="metric-grid enterprise-metrics"><article class="metric"><p>ACTIVE PROJECTS</p><strong>${activeProjects}</strong><small>Few priorities. Clean execution.</small></article><article class="metric"><p>READY TO PUBLISH</p><strong>${readyContent}</strong><small>Content waiting for release</small></article><article class="metric"><p>PUBLISHED</p><strong>${published}</strong><small>Evidence of consistent output</small></article><article class="metric"><p>RUNWAY</p><strong>${runway}${runway === "—" ? "" : " mo"}</strong><small>Liquid reserves ÷ monthly expenses</small></article></div><div class="content-grid enterprise-grid"><section class="panel"><div class="panel-head"><div><p class="eyebrow">01 - SPECIAL PROJECTS</p><h3>Finish useful milestones.</h3></div><button class="primary compact" data-enterprise-action="project">+ New project</button></div><div class="enterprise-list">${projectList}</div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">02 - FINANCIAL FOUNDATION</p><h3>Protect the mission.</h3></div><button class="primary compact" data-enterprise-action="finance">${financialFoundation ? "Edit foundation" : "Set foundation"}</button></div>${finance}</section><section class="panel"><div class="panel-head"><div><p class="eyebrow">03 - CONTENT PIPELINE</p><h3>Signal, not noise.</h3></div><button class="primary compact" data-enterprise-action="content">+ New content</button></div><div class="enterprise-list">${content.length ? content.map((item) => `<article><div><strong>${escape(item.title)}</strong><small>${escape(item.platform)} - ${escape(item.status)}</small></div><span class="enterprise-status ${String(item.status || "").toLowerCase()}">${escape(item.status)}</span></article>`).join("") : '<p class="enterprise-empty">One clear idea is enough to start the pipeline.</p>'}</div></section></div>`;
+  $("#enterprise").innerHTML = `<div class="section-intro"><p class="eyebrow amber">BUSINESS / SPECIAL PROJECTS</p><h2>Build assets that compound.</h2><p>Every Special Project has a Business mission; ordinary missions stay in Missions. Its ordered steps become the operations that advance it.</p></div><div class="metric-grid enterprise-metrics"><article class="metric"><p>ACTIVE PROJECTS</p><strong>${activeProjects}</strong><small>Few priorities. Clean execution.</small></article><article class="metric"><p>READY TO PUBLISH</p><strong>${readyContent}</strong><small>Content waiting for release</small></article><article class="metric"><p>PUBLISHED</p><strong>${published}</strong><small>Evidence of consistent output</small></article><article class="metric"><p>RUNWAY</p><strong>${runway}${runway === "—" ? "" : " mo"}</strong><small>Liquid reserves ÷ monthly expenses</small></article></div><div class="content-grid enterprise-grid"><section class="panel"><div class="panel-head"><div><p class="eyebrow">01 - SPECIAL PROJECTS</p><h3>Finish useful milestones.</h3></div><button class="primary compact" data-enterprise-action="project">+ New project</button></div><div class="enterprise-list">${projectList}</div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">02 - FINANCIAL FOUNDATION</p><h3>Protect the mission.</h3></div><button class="primary compact" data-enterprise-action="finance">${financialFoundation ? "Edit foundation" : "Set foundation"}</button></div>${finance}</section><section class="panel"><div class="panel-head"><div><p class="eyebrow">03 - CONTENT PIPELINE</p><h3>Signal, not noise.</h3></div><button class="primary compact" data-enterprise-action="content">+ New content</button></div><div class="enterprise-list">${content.length ? content.map((item) => `<article><div><strong>${escape(item.title)}</strong><small>${escape(item.platform)} - ${escape(item.status)}</small></div><span class="enterprise-status ${String(item.status || "").toLowerCase()}">${escape(item.status)}</span></article>`).join("") : '<p class="enterprise-empty">One clear idea is enough to start the pipeline.</p>'}</div></section></div>`;
 }
 
 async function load() {
@@ -57,43 +77,24 @@ async function load() {
     supabase.from("business_project_steps").select("*").order("project_id").order("position"),
     supabase.from("content_items").select("*").order("logged_on", { ascending: false }),
     supabase.from("financial_foundations").select("*").maybeSingle(),
-    supabase.from("missions").select("id,title,priority,created_at,completed_at").ilike("title", "%aegis%"),
+    supabase.from("missions").select("*").order("created_at", { ascending: false }),
   ]);
   if (projectResult.error || contentResult.error) return;
   projectSteps = stepResult.error ? [] : stepResult.data || [];
-  projects = (projectResult.data || []).map((project) => {
+  const storedProjects = (projectResult.data || []).map((project) => {
     const steps = projectSteps.filter((step) => String(step.project_id) === String(project.id));
     if (!steps.length) return project;
     const completeSteps = steps.filter((step) => step.status === "Complete").length;
     const next = steps.find((step) => step.status !== "Complete");
     return { ...project, progress: Math.round((completeSteps / steps.length) * 100), next_action: next?.title || null };
   });
+  const missionOnlyProjects = (missionResult.error ? [] : missionResult.data || [])
+    .filter((mission) => String(mission.category || "").toLowerCase() === "business" || isLegacyAegisTitle(mission.title))
+    .filter((mission) => !storedProjects.some((project) => String(project.source_mission_id || "") === String(mission.id)))
+    .map(missionProject);
+  projects = [...storedProjects, ...missionOnlyProjects];
   content = contentResult.data || [];
   financialFoundation = foundationResult.error ? null : foundationResult.data || null;
-  const aegisMission = (missionResult.data || []).find((mission) => isLegacyAegisTitle(mission.title));
-  const hasAegisProject = projects.some((project) => isLegacyAegisTitle(project.title));
-  if (aegisMission && !hasAegisProject && attemptedAegisRecoveryFor !== aegisMission.id) {
-    attemptedAegisRecoveryFor = aegisMission.id;
-    const { error: recoveryError } = await supabase.from("business_projects").insert({
-      user_id: sessionData.session.user.id,
-      title: aegisMission.title,
-      status: "Complete",
-      priority: projectPriority(aegisMission.priority),
-      project_type: "Aegis system",
-      progress: 100,
-      outcome: "Aegis Command v1 is deployed and usable as a live personal command system.",
-      next_action: "Operate and improve Aegis through separately scoped releases.",
-      logged_on: easternDateKey(new Date(aegisMission.completed_at || aegisMission.created_at || Date.now())),
-      source_mission_id: aegisMission.id,
-      project_mode: "Milestone",
-      effort_band: "Flagship",
-      estimated_hours: 120,
-      completion_evidence: "Aegis Command v1 was built, deployed, and made usable as a live command system.",
-      xp_reward: 100,
-    });
-    if (!recoveryError) return load();
-    console.warn("Could not recover legacy Aegis project", recoveryError.message);
-  }
   render();
 }
 
@@ -108,7 +109,7 @@ async function createProjectStepOperation(project, step) {
   const { data, error } = await supabase.from("operations").insert({
     user_id: userId, title: projectStepOperationTitle(project, step), category: "Business", priority: projectOperationPriority(project.priority),
     status: "Queued", completed: false, scheduled_date: easternDateKey(), operation_date: easternDateKey(), schedule_mode: "one_time",
-    is_daily: false, allow_unlinked: true, brief: `Project step ${step.position}: ${step.title}`,
+    is_daily: false, mission_id: project.source_mission_id || null, allow_unlinked: !project.source_mission_id, brief: `Project step ${step.position}: ${step.title}`,
   }).select().single();
   if (error) throw error;
   const { error: stepError } = await supabase.from("business_project_steps").update({ operation_id: data.id, updated_at: new Date().toISOString() }).eq("id", step.id);
@@ -192,13 +193,33 @@ function buildDialogs() {
     const steps = projectStepsFromInput($("#project-steps").value);
     if (!title || !steps.length) return alert("Add at least one ordered project step.");
     const effortBand = $("#project-effort-band").value;
-    const { data: project, error } = await supabase.from("business_projects").insert({
-      logged_on: $("#project-logged-on").value || easternDateKey(), title, project_type: $("#project-type").value, project_mode: projectMode,
-      effort_band: effortBand, estimated_hours: Number($("#project-estimated-hours").value) || null, xp_reward: projectMode === "Ongoing system" ? 0 : PROJECT_XP[effortBand],
-      status: "Active", priority: $("#project-priority").value, progress: 0, outcome: $("#project-outcome").value.trim(), next_action: steps[0],
-      due_on: $("#project-due").value || null, parent_project_id: $("#project-parent-id").value || null,
+    const loggedOn = $("#project-logged-on").value || easternDateKey();
+    const priority = $("#project-priority").value;
+    const outcome = $("#project-outcome").value.trim();
+    const { data: mission, error: missionError } = await supabase.from("missions").insert({
+      title,
+      category: "Business",
+      priority,
+      completion_type: "units",
+      completion_definition: outcome,
+      unit_label: "project step",
+      target_count: steps.length,
+      completed_count: 0,
+      completed: false,
+      progress: 0,
+      description: `Special Project · ${$("#project-type").value} · ${projectMode}`,
     }).select().single();
-    if (error) return alert(error.message);
+    if (missionError) return alert(`Project mission could not be created: ${missionError.message}`);
+    const { data: project, error } = await supabase.from("business_projects").insert({
+      logged_on: loggedOn, title, project_type: $("#project-type").value, project_mode: projectMode,
+      effort_band: effortBand, estimated_hours: Number($("#project-estimated-hours").value) || null, xp_reward: projectMode === "Ongoing system" ? 0 : PROJECT_XP[effortBand],
+      status: "Active", priority, progress: 0, outcome, next_action: steps[0], due_on: $("#project-due").value || null,
+      parent_project_id: $("#project-parent-id").value || null, source_mission_id: mission.id,
+    }).select().single();
+    if (error) {
+      await supabase.from("missions").delete().eq("id", mission.id);
+      return alert(error.message);
+    }
     const { data: savedSteps, error: stepError } = await supabase.from("business_project_steps").insert(steps.map((step, index) => ({ project_id: project.id, title: step, position: index + 1 }))).select();
     if (stepError) return alert(stepError.message);
     try { await createProjectStepOperation(project, savedSteps.find((step) => step.position === 1)); }
