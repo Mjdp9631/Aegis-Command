@@ -82,15 +82,15 @@ function characterFocus(metrics, recovery) {
 }
 
 const evolutionActions = [
-  { id: "reset", label: "Resetting in the lounge", sprite: 0, left: 20, bottom: 4, scale: .72 },
-  { id: "journal", label: "Writing the next plan", sprite: 1, left: 58, bottom: 5, scale: .64 },
+  { id: "reset", label: "Resetting in the lounge", sprite: 0, left: 20, bottom: 2, scale: 1 },
+  { id: "journal", label: "Writing the next plan", sprite: 1, left: 59, bottom: 2, scale: 1 },
   { id: "study", label: "Studying in the library", sprite: 2, left: 79, bottom: 5, scale: .62 },
   { id: "train", label: "Training on the floor", sprite: 3, left: 52, bottom: 3, scale: .82 },
-  { id: "charts", label: "Reviewing the charts", sprite: 4, left: 59, bottom: 3, scale: .66 },
+  { id: "charts", label: "Reviewing the charts", sprite: 4, left: 59, bottom: 2, scale: 1 },
   { id: "pullups", label: "Building the body", sprite: 5, left: 87, bottom: 3, scale: .76 },
-  { id: "systems", label: "Building systems", sprite: 6, left: 62, bottom: 4, scale: .64 },
+  { id: "systems", label: "Building systems", sprite: 6, left: 62, bottom: 2, scale: 1 },
   { id: "sentinel", label: "Running the command bay", sprite: 7, left: 60, bottom: 3, scale: .7 },
-  { id: "fridge", label: "Refueling at the fridge", sprite: 0, left: 37, bottom: 4, scale: .61 },
+  { id: "fridge", label: "Refueling at the fridge", sprite: 0, left: 37, bottom: 2, scale: 1 },
 ];
 
 const evolutionStageConfig = [
@@ -105,7 +105,9 @@ const evolutionStageConfig = [
 ];
 
 function evolutionSpriteStyle(action) {
-  if (action.id === "fridge") return `--avatar-image:url('assets/generated/aegis-character-fridge.webp');--avatar-size:300% 100%;--sprite-x:0%;--sprite-y:0%;--avatar-left:${action.left}%;--avatar-bottom:${action.bottom}%;--avatar-scale:${action.scale};`;
+  if (action.id === "reset") return `--avatar-image:url('assets/generated/aegis-character-couch-frames.webp');--avatar-size:300% 100%;--sprite-x:0%;--sprite-y:0%;--avatar-left:${action.left}%;--avatar-bottom:${action.bottom}%;--avatar-scale:${action.scale};`;
+  if (action.id === "fridge") return `--avatar-image:url('assets/generated/aegis-character-fridge-frames.webp');--avatar-size:300% 100%;--sprite-x:0%;--sprite-y:0%;--avatar-left:${action.left}%;--avatar-bottom:${action.bottom}%;--avatar-scale:${action.scale};`;
+  if (["journal", "charts", "systems"].includes(action.id)) return `--avatar-image:url('assets/generated/aegis-character-desk-frames.webp');--avatar-size:300% 100%;--sprite-x:0%;--sprite-y:0%;--avatar-left:${action.left}%;--avatar-bottom:${action.bottom}%;--avatar-scale:${action.scale};`;
   const column = action.sprite % 4;
   const row = Math.floor(action.sprite / 4);
   const x = ["0%", "33.333%", "66.667%", "100%"][column];
@@ -125,7 +127,7 @@ function characterEvolution(levels) {
   const strengths = [
     ["MIND", levels.mind], ["BODY", levels.body], ["TRADING", levels.trading], ["BUSINESS", levels.ccfx], ["DISCIPLINE", levels.discipline],
   ].sort((a, b) => b[1] - a[1]).slice(0, 3);
-  return `<section class="character-evolution panel" data-evolution-stage="${stageIndex}"><div class="character-evolution-heading"><div><p class="eyebrow amber">CHARACTER EVOLUTION / PASSIVE VISUAL</p><h3>Watch the environment catch up to the work.</h3><p>${escape(stage.description)} It is visual only: no buttons, no new workload, and no change to the Character System itself.</p></div><div class="character-evolution-readout"><span>CURRENT CHAPTER</span><strong>${stage.name}</strong><small>Average system level: ${averageLevel}</small></div></div><div class="evolution-room" data-evolution-room data-stage="${stageIndex}" data-routine="${escape(JSON.stringify(routine))}"><div class="evolution-fridge-door" aria-hidden="true"></div><div class="evolution-walker" data-evolution-walker aria-hidden="true"></div><div class="evolution-avatar" data-evolution-avatar data-action="${initial.id}" style="${evolutionSpriteStyle(initial)}" aria-hidden="true"></div><div class="evolution-status"><span>ROUTINE IN PROGRESS</span><b data-evolution-activity>${escape(initial.label)}</b></div><div class="evolution-strengths">${strengths.map(([label, level]) => `<span>${label}<b>LV ${level}</b></span>`).join("")}</div></div></section>`;
+  return `<section class="character-evolution panel" data-evolution-stage="${stageIndex}"><div class="character-evolution-heading"><div><p class="eyebrow amber">CHARACTER EVOLUTION / PASSIVE VISUAL</p><h3>Watch the environment catch up to the work.</h3><p>${escape(stage.description)} It is visual only: no buttons, no new workload, and no change to the Character System itself.</p></div><div class="character-evolution-readout"><span>CURRENT CHAPTER</span><strong>${stage.name}</strong><small>Average system level: ${averageLevel}</small></div></div><div class="evolution-room" data-evolution-room data-stage="${stageIndex}" data-routine="${escape(JSON.stringify(routine))}"><div class="evolution-walker" data-evolution-walker aria-hidden="true"></div><div class="evolution-avatar" data-evolution-avatar data-action="${initial.id}" style="${evolutionSpriteStyle(initial)}" aria-hidden="true"></div><div class="evolution-status"><span>ROUTINE IN PROGRESS</span><b data-evolution-activity>${escape(initial.label)}</b></div><div class="evolution-strengths">${strengths.map(([label, level]) => `<span>${label}<b>LV ${level}</b></span>`).join("")}</div></div></section>`;
 }
 
 function bindCharacterEvolution() {
