@@ -1197,28 +1197,26 @@ function bindDialogs() {
       dialog.showModal();
     }
   });
-  document.addEventListener("click", async (event) => {
+  document.addEventListener("click", (event) => {
     const button = event.target.closest('[data-action="log-recovery"]');
     if (!button) return;
     event.preventDefault();
-    // This is delegated so it still works when the Recovery tab is routed or
-    // rebuilt after the module initially loads. Read the current auth state at
-    // click time instead of relying on a stale module-local snapshot.
-    if (client) {
-      const result = await client.auth.getSession();
-      session = result.data?.session || null;
-    }
-    if (!session) return alert("Sign in before logging recovery.");
+    // Opening a local dialog must not depend on a token refresh completing.
+    // Authentication is checked again on Save, where it actually matters.
     const dialog = $("#recovery-dialog");
     if (!dialog) return;
     $("#recovery-logged-on").value = easternDateKey();
+    const status = $("#recovery-save-status");
+    if (status) status.textContent = "";
     if (!dialog.open) dialog.showModal();
   });
   $("#recovery-dialog form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!client) return alert("Recovery logging is unavailable until the secure connection is ready.");
     const sessionResult = await client.auth.getSession();
-    session = sessionResult.data?.session || null;
+    // During a background token refresh Supabase can briefly return no session
+    // even though its auth callback already gave this module a valid one.
+    session = sessionResult.data?.session || session;
     if (!session) return alert("Sign in before saving recovery.");
     const pain = Number($("#recovery-pain").value);
     const swelling = Number($("#recovery-swelling").value);
