@@ -120,7 +120,7 @@ const recoverySafeChallenges = [
 
 let lane = localStorage.getItem("aegis-mastery-lane") === "body" ? "body" : "mind";
 let activeType = localStorage.getItem("aegis-mastery-type") || (lane === "body" ? "Health" : "Book");
-let entries = [], deepWork = [], challenges = [], trainingSessions = [], trainingSets = [], weightLogs = [], foodLogs = [], capabilities = [], capabilityLogs = [], capabilityBenchmarks = [];
+let entries = [], deepWork = [], challenges = [], trainingSessions = [], trainingSets = [], weightLogs = [], foodLogs = [], capabilities = [], capabilityLogs = [], capabilityBenchmarks = [], capabilityRecommendations = [];
 let recoveryReady = false, cleanRendering = false;
 
 const capabilityDefaults = [
@@ -146,6 +146,12 @@ const capabilityCampaignTemplates = [
   { type: "Adversarial", title: "Crisis communication", description: "Deliver concise, accurate communication when stakes and emotions are elevated.", benchmarks: [["Novice", "Learn a concise crisis-message framework and produce five accurate practice statements.", 14], ["Competent", "Complete timed role-play drills with feedback and a documented correction loop.", 35], ["Proficient", "Complete formal training or pass a realistic multi-party communication simulation.", 75], ["Master", "Lead a complex simulation with clear decisions, accurate updates, and an audited debrief.", 120]] },
 ];
 const capabilityLevels = ["Novice", "Competent", "Proficient", "Master"];
+const capabilityRecommendationTemplates = [
+  ...capabilityCampaignTemplates,
+  { type: "Practical", family: "learn-language", title: "Learn a new language", description: "Build useful real-world ability through deliberate study and conversation.", variants: ["Japanese", "Spanish", "French", "Korean", "Mandarin", "Arabic", "German", "Portuguese"], benchmarks: [["Novice", "Complete a structured beginner unit and introduce yourself without notes.", 6], ["Competent", "Complete 30 guided lessons and sustain a ten-minute conversation on familiar topics.", 24], ["Proficient", "Pass an intermediate assessment or complete 100 hours of deliberate study with speaking evidence.", 60], ["Master", "Use the language independently in demanding real-world conversation or pass an advanced certification.", 130]] },
+  { type: "Practical", family: "learn-sport", title: "Learn a new sport", description: "Build safe, repeatable technical ability in a chosen sport.", variants: ["Tennis", "Basketball", "Swimming", "Golf", "Pickleball", "Rock climbing", "Table tennis", "Soccer"], benchmarks: [["Novice", "Complete a beginner lesson or course and demonstrate safe fundamental technique.", 10], ["Competent", "Complete ten purposeful practice sessions and play in a structured recreational setting.", 28], ["Proficient", "Receive coached assessment and perform consistently in competitive or demanding play.", 60], ["Master", "Demonstrate advanced technique under pressure and maintain a deliberate improvement practice.", 105]] },
+  { type: "Practical", family: "learn-instrument", title: "Learn a new instrument", description: "Develop musical fluency through technique, repertoire, and performance.", variants: ["Piano", "Guitar", "Drums", "Violin", "Bass", "Saxophone", "Trumpet"], benchmarks: [["Novice", "Complete a beginner method unit and perform one short piece cleanly.", 8], ["Competent", "Learn and perform five pieces using consistent technique and timing.", 26], ["Proficient", "Complete intermediate repertoire or a graded performance assessment.", 58], ["Master", "Perform advanced repertoire reliably in front of others or achieve an advanced certification.", 110]] },
+];
 const capabilityPracticeXp = (skillType, pressure = "Low") => (skillType === "Adversarial" ? 12 : 10) + (pressure === "High" ? 3 : pressure === "Moderate" ? 1 : 0);
 const capabilityRefreshDue = (skill) => skill.status !== "Complete" && skill.last_practiced_on && Date.now() - new Date(`${skill.last_practiced_on}T23:59:59`).getTime() > 30 * 86400000;
 
@@ -235,10 +241,16 @@ function laneInputDock() {
   return `<section class="mastery-input-dock"><div><p class="eyebrow ${lane === "mind" ? "blue-text" : "green-text"}">${lane.toUpperCase()} INPUT ACCESS</p><small>Log any ${lane === "mind" ? "Mind" : "Body"} evidence from here. AEGIS files it under the correct category automatically.</small></div><div class="mastery-input-actions">${types.map(type => `<button type="button" class="mastery-input-action ${isLocked(type) ? "locked" : ""}" data-mastery-clean-input="${escapeHtml(type)}" ${isLocked(type) ? "disabled title=\"Complete Recovery to unlock\"" : ""}>+ ${escapeHtml(typeLabel(type))}${isLocked(type) ? " · LOCKED" : ""}</button>`).join("")}</div></section>`;
 }
 
+function capabilityRecommendationMarkup(type) {
+  const recommendations = capabilityRecommendations.filter((item) => item.skill_type === type && item.status === "Pending");
+  if (!recommendations.length) return "";
+  return `<div class="capability-recommendations">${recommendations.map((item) => { const variants = Array.isArray(item.variant_options) ? item.variant_options : []; const started = new Set(capabilities.filter((skill) => skill.family_key === item.family_key).map((skill) => String(skill.variant_key || "__default__").toLowerCase())); const available = variants.filter((variant) => !started.has(String(variant).toLowerCase())); const template = Array.isArray(item.benchmark_template) ? item.benchmark_template : []; return `<article class="capability-recommendation" data-capability-recommendation-details="${escapeHtml(item.id)}"><p class="eyebrow blue-text">AI RECOMMENDATION · PENDING</p><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.description || "Review the benchmark campaign.")}</p>${variants.length ? `<label>Choose variant<select data-capability-variant="${escapeHtml(item.id)}">${variants.map((variant) => `<option value="${escapeHtml(variant)}"${started.has(String(variant).toLowerCase()) ? " disabled" : ""}>${escapeHtml(variant)}${started.has(String(variant).toLowerCase()) ? " — already started" : ""}</option>`).join("")}</select></label>` : ""}<small>${template.map((benchmark) => `${escapeHtml(benchmark[0])} +${Number(benchmark[2] || 0)} XP`).join(" · ")}</small><div><button class="primary compact" type="button" data-capability-accept="${escapeHtml(item.id)}" ${variants.length && !available.length ? "disabled" : ""}>Accept campaign</button><button class="ghost compact" type="button" data-capability-deny="${escapeHtml(item.id)}">Deny</button></div></article>`; }).join("")}</div>`;
+}
+
 function capabilityPanel() {
   const groups = ["Practical", "Adversarial"].map((type) => {
     const items = capabilities.filter((skill) => skill.skill_type === type);
-    return `<div class="capability-group"><div class="capability-group-head"><span class="eyebrow ${type === "Practical" ? "blue-text" : "amber"}">${type.toUpperCase()} SKILLS</span><div><button class="ghost compact" type="button" data-capability-generate="${type}">✦ AI skill</button><button class="ghost compact" type="button" data-capability-add="${type}">+ Add skill</button></div></div>${items.length ? items.map((skill) => { const benchmarks = capabilityBenchmarks.filter((benchmark) => String(benchmark.skill_id) === String(skill.id)).sort((a, b) => a.sort_order - b.sort_order); const done = benchmarks.filter((benchmark) => benchmark.completed).length; const next = benchmarks.find((benchmark) => !benchmark.completed); const totalXp = benchmarks.filter((benchmark) => benchmark.completed).reduce((sum, benchmark) => sum + Number(benchmark.xp_reward || 0), 0); return `<article class="capability-row"><div><strong>${escapeHtml(skill.title)}</strong><small>${escapeHtml(skill.description || "Define the next useful practice.")}</small>${benchmarks.length ? `<small class="capability-campaign-meta">${done}/${benchmarks.length} benchmarks complete · ${totalXp} cumulative XP earned</small><p><b>${next ? `NEXT — ${next.level}:` : "CAMPAIGN COMPLETE:"}</b> ${escapeHtml(next?.requirement || "All mastery benchmarks are complete.")}${next ? ` · +${Number(next.xp_reward || 0)} XP` : ""}</p>` : '<small class="capability-campaign-meta">Legacy skill — create a new benchmark campaign to track tier progress.</small>'}${skill.latest_note ? `<p>${escapeHtml(skill.latest_note)}</p>` : ""}</div><div class="capability-actions"><span class="enterprise-status ${String(skill.status || "Planned").toLowerCase()}">${escapeHtml(skill.status || "Planned")}</span>${capabilityRefreshDue(skill) ? '<span class="capability-refresh">Refresh</span>' : ""}<button class="primary compact" type="button" data-capability-log="${escapeHtml(skill.id)}">Log practice</button></div></article>`; }).join("") : '<p class="mastery-empty">No tracks yet. Generate a recommendation or create one.</p>'}</div>`;
+    return `<div class="capability-group"><div class="capability-group-head"><span class="eyebrow ${type === "Practical" ? "blue-text" : "amber"}">${type.toUpperCase()} SKILLS</span><div><button class="ghost compact" type="button" data-capability-generate="${type}">✦ Generate skill</button><button class="ghost compact" type="button" data-capability-add="${type}">+ Add skill</button></div></div>${capabilityRecommendationMarkup(type)}${items.length ? items.map((skill) => { const benchmarks = capabilityBenchmarks.filter((benchmark) => String(benchmark.skill_id) === String(skill.id)).sort((a, b) => a.sort_order - b.sort_order); const done = benchmarks.filter((benchmark) => benchmark.completed).length; const next = benchmarks.find((benchmark) => !benchmark.completed); const totalXp = benchmarks.filter((sum) => sum.completed).reduce((sum, benchmark) => sum + Number(benchmark.xp_reward || 0), 0); return `<article class="capability-row"><div><strong>${escapeHtml(skill.title)}</strong><small>${escapeHtml(skill.description || "Define the next useful practice.")}</small>${benchmarks.length ? `<small class="capability-campaign-meta">${done}/${benchmarks.length} benchmarks complete · ${totalXp} cumulative XP earned</small><p><b>${next ? `NEXT — ${next.level}:` : "CAMPAIGN COMPLETE:"}</b> ${escapeHtml(next?.requirement || "All mastery benchmarks are complete.")}${next ? ` · +${Number(next.xp_reward || 0)} XP` : ""}</p>` : '<small class="capability-campaign-meta">Legacy skill — create a new benchmark campaign to track tier progress.</small>'}${skill.latest_note ? `<p>${escapeHtml(skill.latest_note)}</p>` : ""}</div><div class="capability-actions"><span class="enterprise-status ${String(skill.status || "Planned").toLowerCase()}">${escapeHtml(skill.status || "Planned")}</span>${skill.status === "Paused" ? `<button class="primary compact" type="button" data-capability-continue="${escapeHtml(skill.id)}">Continue</button>` : (next ? `<button class="ghost compact" type="button" data-capability-pause="${escapeHtml(skill.id)}">Pause</button>` : "")}${capabilityRefreshDue(skill) ? '<span class="capability-refresh">Refresh</span>' : ""}<button class="primary compact" type="button" data-capability-log="${escapeHtml(skill.id)}">Log practice</button></div></article>`; }).join("") : '<p class="mastery-empty">No tracks yet. Generate a recommendation or create one.</p>'}</div>`;
   }).join("");
   return `<section class="mastery-capabilities panel"><div class="panel-head"><div><p class="eyebrow blue-text">CAPABILITY DEVELOPMENT</p><h3>Practical and adversarial skills</h3><p class="body-copy">Choose an AI-guided campaign or create your own. Each custom-weighted benchmark becomes the next operation; completion unlocks the next level and stacks its XP.</p></div></div>${groups}</section>`;
 }
@@ -348,6 +360,71 @@ function suggestedCapabilityBenchmarks(title, skillType) {
   ];
 }
 
+const capabilityFamilyKey = (template) => template.family || `skill-${String(template.title || "capability").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`;
+
+async function createCapabilityRecommendation(skillType) {
+  if (!db) return alert("Connect your private system database before generating a skill.");
+  const userId = await currentUserId();
+  if (!userId) return alert("Your session has expired. Please sign in again.");
+  const candidates = capabilityRecommendationTemplates.filter((template) => {
+    if (template.type !== skillType || capabilityRecommendations.some((recommendation) => recommendation.family_key === capabilityFamilyKey(template) && recommendation.status === "Pending")) return false;
+    const started = capabilities.filter((skill) => skill.family_key === capabilityFamilyKey(template)).map((skill) => String(skill.variant_key || "__default__").toLowerCase());
+    return template.variants ? template.variants.some((variant) => !started.includes(String(variant).toLowerCase())) : !started.includes("__default__");
+  });
+  if (!candidates.length) return alert(`Every available ${skillType.toLowerCase()} recommendation has already been started. Continue an existing skill or create a custom one.`);
+  const template = candidates[Math.floor(Math.random() * candidates.length)];
+  const { error } = await db.from("capability_recommendations").insert({ user_id: userId, skill_type: template.type, family_key: capabilityFamilyKey(template), title: template.title, description: template.description, variant_options: template.variants || [], benchmark_template: template.benchmarks });
+  if (error) return alert(`${error.message} Run migration 084 if this is a new feature.`);
+  await load(); window.dispatchEvent(new Event("aegis:mastery-changed"));
+}
+
+async function acceptCapabilityRecommendation(recommendation, variant = "") {
+  if (!db) return;
+  const userId = await currentUserId();
+  if (!userId) return alert("Your session has expired. Please sign in again.");
+  const options = Array.isArray(recommendation.variant_options) ? recommendation.variant_options : [];
+  const selectedVariant = options.length ? String(variant || "").trim() : "__default__";
+  if (options.length && !selectedVariant) return alert("Choose a variant before accepting this campaign.");
+  if (capabilities.some((skill) => skill.family_key === recommendation.family_key && String(skill.variant_key || "__default__").toLowerCase() === selectedVariant.toLowerCase())) return alert("You already started that variant. Continue it from your saved capability list.");
+  const title = options.length ? `${recommendation.title} — ${selectedVariant}` : recommendation.title;
+  const { data: skill, error } = await db.from("capability_skills").insert({ user_id: userId, skill_type: recommendation.skill_type, title, description: recommendation.description || "", status: "Active", family_key: recommendation.family_key, variant_key: selectedVariant }).select().single();
+  if (error || !skill) return alert(error?.message || "Could not accept this capability campaign.");
+  const template = Array.isArray(recommendation.benchmark_template) ? recommendation.benchmark_template : [];
+  const { data: benchmarks, error: benchmarkError } = await db.from("capability_benchmarks").insert(template.map(([level, requirement, xp], index) => ({ user_id: userId, skill_id: skill.id, level, sort_order: index + 1, requirement, xp_reward: Number(xp) }))).select();
+  if (benchmarkError || !benchmarks?.length) return alert(benchmarkError?.message || "Could not create the benchmark path.");
+  const first = benchmarks.sort((a, b) => a.sort_order - b.sort_order)[0];
+  const { data: operation, error: operationError } = await db.from("operations").insert({ user_id: userId, title: `${skill.title} — ${first.level} benchmark`, category: "Self Mastery", brief: `${first.requirement}\n\nCapability campaign: complete this benchmark to unlock the next level and earn +${first.xp_reward} XP.`, status: "Queued", completed: false, scheduled_date: easternDateKey(), operation_date: easternDateKey(), is_daily: false, allow_unlinked: true, operation_family_key: `capability-${String(skill.id).replace(/-/g, "")}-${first.sort_order}` }).select().single();
+  if (operationError || !operation) return alert(operationError?.message || "Could not create the first benchmark operation.");
+  const { error: linkError } = await db.from("capability_benchmarks").update({ operation_id: operation.id }).eq("id", first.id);
+  if (linkError) return alert(linkError.message);
+  const { error: recommendationError } = await db.from("capability_recommendations").update({ status: "Accepted", selected_variant: selectedVariant, decided_at: new Date().toISOString() }).eq("id", recommendation.id);
+  if (recommendationError) return alert(recommendationError.message);
+  await load(); window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "capability" } }));
+}
+
+async function pauseCapabilityCampaign(skill) {
+  const next = capabilityBenchmarks.filter((benchmark) => String(benchmark.skill_id) === String(skill.id) && !benchmark.completed).sort((a, b) => a.sort_order - b.sort_order)[0];
+  if (next?.operation_id) await db.from("operations").delete().eq("id", next.operation_id);
+  const { error } = await db.from("capability_skills").update({ status: "Paused", updated_at: new Date().toISOString() }).eq("id", skill.id);
+  if (error) return alert(error.message);
+  await load(); window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "capability" } }));
+}
+
+async function continueCapabilityCampaign(skill) {
+  const { error } = await db.rpc("aegis_resume_capability_skill", { p_skill_id: skill.id });
+  if (error) return alert(`${error.message} Run migration 084 if this is a new feature.`);
+  await load(); window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "capability" } }));
+}
+
+function openCapabilityRecommendation(recommendation) {
+  const dialog = document.createElement("dialog");
+  const benchmarks = Array.isArray(recommendation.benchmark_template) ? recommendation.benchmark_template : [];
+  dialog.innerHTML = `<form method="dialog" class="dialog-card"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow blue-text">AI CAPABILITY RECOMMENDATION</p><h2>${escapeHtml(recommendation.title)}</h2><p class="body-copy">${escapeHtml(recommendation.description || "Review the proposed path.")}</p><div class="capability-recommendation-benchmarks">${benchmarks.map(([level, requirement, xp]) => `<article><b>${escapeHtml(level)} · +${Number(xp)} XP</b><p>${escapeHtml(requirement)}</p></article>`).join("")}</div></form>`;
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.showModal();
+}
+
 function openCapabilityDialog(mode, skillType = "Practical", skill = null, template = null) {
   const dialog = document.querySelector("#capability-dialog");
   if (!dialog) return;
@@ -422,6 +499,8 @@ async function loadCapabilities() {
   capabilityLogs = logs.error ? [] : logs.data || [];
   const benchmarkResult = await db.from("capability_benchmarks").select("*").order("sort_order");
   capabilityBenchmarks = benchmarkResult.error ? [] : benchmarkResult.data || [];
+  const recommendationResult = await db.from("capability_recommendations").select("*").eq("status", "Pending").order("created_at", { ascending: false });
+  capabilityRecommendations = recommendationResult.error ? [] : recommendationResult.data || [];
 }
 
 function openDialog(existing = null) {
@@ -912,7 +991,7 @@ async function load() {
   } debounceRender(render, 50);
 }
 
-document.addEventListener("click", event => {
+document.addEventListener("click", async event => {
   const laneButton = event.target.closest("[data-mastery-clean-lane]"), typeButton = event.target.closest("[data-mastery-clean-type]"), inputButton = event.target.closest("[data-mastery-clean-input]");
   if (laneButton) { lane = laneButton.dataset.masteryCleanLane; activeType = lane === "mind" ? "Book" : "Health"; saveView(); debounceRender(render); return; }
   const editEntry = event.target.closest("[data-mastery-edit-entry]");
@@ -930,7 +1009,12 @@ document.addEventListener("click", event => {
   if (inputButton) { const next = inputButton.dataset.masteryCleanInput; if (!isLocked(next)) { activeType = next; saveView(); openDialog(); } return; }
   if (typeButton) { const next = typeButton.dataset.masteryCleanType; if (!isLocked(next)) { activeType = next; saveView(); debounceRender(render); } return; }
   const capabilityAdd = event.target.closest("[data-capability-add]"); if (capabilityAdd) return openCapabilityDialog("add", capabilityAdd.dataset.capabilityAdd);
-  const capabilityGenerate = event.target.closest("[data-capability-generate]"); if (capabilityGenerate) { const type = capabilityGenerate.dataset.capabilityGenerate; const available = capabilityCampaignTemplates.filter((template) => template.type === type && !capabilities.some((skill) => skill.skill_type === type && skill.title.toLowerCase() === template.title.toLowerCase())); const template = (available.length ? available : capabilityCampaignTemplates.filter((item) => item.type === type))[Math.floor(Math.random() * (available.length || capabilityCampaignTemplates.filter((item) => item.type === type).length))]; return openCapabilityDialog("add", type, null, template); }
+  const capabilityGenerate = event.target.closest("[data-capability-generate]"); if (capabilityGenerate) return createCapabilityRecommendation(capabilityGenerate.dataset.capabilityGenerate);
+  const recommendationAccept = event.target.closest("[data-capability-accept]"); if (recommendationAccept) { const recommendation = capabilityRecommendations.find((item) => String(item.id) === String(recommendationAccept.dataset.capabilityAccept)); const variant = document.querySelector(`[data-capability-variant="${recommendationAccept.dataset.capabilityAccept}"]`)?.value || ""; if (recommendation) return acceptCapabilityRecommendation(recommendation, variant); }
+  const recommendationDeny = event.target.closest("[data-capability-deny]"); if (recommendationDeny) { const { error } = await db.from("capability_recommendations").update({ status: "Denied", decided_at: new Date().toISOString() }).eq("id", recommendationDeny.dataset.capabilityDeny); if (error) return alert(error.message); await load(); return; }
+  const recommendationDetails = event.target.closest("[data-capability-recommendation-details]"); if (recommendationDetails && !event.target.closest("button,select")) { const recommendation = capabilityRecommendations.find((item) => String(item.id) === String(recommendationDetails.dataset.capabilityRecommendationDetails)); if (recommendation) return openCapabilityRecommendation(recommendation); }
+  const capabilityPause = event.target.closest("[data-capability-pause]"); if (capabilityPause) { const skill = capabilities.find((item) => String(item.id) === String(capabilityPause.dataset.capabilityPause)); if (skill) return pauseCapabilityCampaign(skill); }
+  const capabilityContinue = event.target.closest("[data-capability-continue]"); if (capabilityContinue) { const skill = capabilities.find((item) => String(item.id) === String(capabilityContinue.dataset.capabilityContinue)); if (skill) return continueCapabilityCampaign(skill); }
   const capabilityLog = event.target.closest("[data-capability-log]"); if (capabilityLog) { const skill = capabilities.find((item) => String(item.id) === String(capabilityLog.dataset.capabilityLog)); if (skill) return openCapabilityDialog("log", skill.skill_type, skill); }
   if (event.target.closest("[data-mastery-clean-add]")) return openDialog();
   if (event.target.closest("[data-mastery-deep-work]")) return openSystemDialog("deep-work");
