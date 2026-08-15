@@ -1399,17 +1399,11 @@ function renderQueue() {
         <b class="${priorityClass(priority)}">${esc(priority)}</b>
       </article>`;
     }).join("");
-    if (!active.today.length && !active.upcoming.length) {
-      targets.forEach((target) => {
-        target.innerHTML = '<p class="empty-operations">No operations for today or the next seven days. Schedule the next deliberate move from Mission Control.</p>';
-        target.dataset.aegisQueueMounted = "true";
-      });
-      return;
-    }
     const markup = `
       <div class="operation-table-head operation-table-v2"><span>STATUS</span><span>OPERATION</span><span>SCHEDULE</span><span>CATEGORY</span><span>PRIORITY</span></div>
-      ${rows(active.today, true)}
-      ${active.upcoming.length ? `<p class="operations-upcoming-label">UPCOMING / NEXT 14 DAYS</p>${rows(active.upcoming)}` : ""}`;
+      ${active.today.length ? rows(active.today, true) : '<p class="empty-operations">No operations scheduled for today.</p>'}
+      <p class="operations-upcoming-label">UPCOMING / NEXT 14 DAYS</p>
+      ${active.upcoming.length ? rows(active.upcoming) : '<p class="empty-operations">No upcoming one-time commitments scheduled.</p>'}`;
     targets.forEach((target) => {
       target.innerHTML = markup;
       target.dataset.aegisQueueMounted = "true";
