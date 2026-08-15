@@ -2580,6 +2580,7 @@ function wireCalendarPanels() {
 }
 
 let bootInFlight = false;
+let hubStarted = false;
 let maintenanceScheduled = false;
 
 function scheduleOperationMaintenance() {
@@ -2675,6 +2676,10 @@ document.addEventListener("click", (event) => {
   openCalendar();
 }, true);
 const startHub = () => {
+  // The hub owns private operational data. Do not mount or paint it behind
+  // the sign-in gate, even when a previous session left a local cache behind.
+  if (hubStarted || !window.AEGIS_AUTH_RESOLVED || !window.AEGIS_AUTH_SESSION) return;
+  hubStarted = true;
   window.AEGIS_OPERATIONS_HUB_ACTIVE = true;
   setInterval(refreshMorningCountdown, 1000);
   ensurePermanentMissionCalendar();
@@ -2697,11 +2702,17 @@ const startHub = () => {
 };
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startHub, { once: true });
 else startHub();
-window.addEventListener("aegis:auth-ready", boot);
+window.addEventListener("aegis:auth-ready", (event) => {
+  if (!event.detail?.session) return;
+  startHub();
+});
 // A full refresh and a route transition each recreate parts of the Command
 // Center.  These last-resort paints make the queue independent of render
 // order, while the durable Supabase rows remain the source of truth.
-window.addEventListener("load", () => setTimeout(() => { renderQueue(); renderCalendar(); }, 0), { once: true });
+window.addEventListener("load", () => {
+  if (!window.AEGIS_AUTH_SESSION) return;
+  setTimeout(() => { renderQueue(); renderCalendar(); }, 0);
+}, { once: true });
 window.addEventListener("aegis:missions-refresh", async (event) => {
   if (event.detail?.source === "operations-hub") return;
   await loadMissions();

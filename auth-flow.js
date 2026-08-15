@@ -33,7 +33,10 @@ function ensureGate() {
 
 function syncGate(session) {
   ensureGate();
+  window.AEGIS_AUTH_RESOLVED = true;
+  window.AEGIS_AUTH_SESSION = session || null;
   document.body.classList.toggle("requires-auth", !session);
+  window.dispatchEvent(new CustomEvent("aegis:auth-ready", { detail: { session: session || null } }));
 }
 
 function renderAccessForm(session) {
@@ -121,6 +124,8 @@ document.addEventListener("click", async (event) => {
   message("#auth-message", error ? error.message : "Password saved. Direct login is now active.");
 }, { capture: true });
 
+window.AEGIS_AUTH_RESOLVED = false;
+window.AEGIS_AUTH_SESSION = null;
 ensureGate();
 if (supabase) {
   getSession().then(syncGate);
