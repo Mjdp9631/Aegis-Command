@@ -120,7 +120,7 @@ const recoverySafeChallenges = [
 
 let lane = localStorage.getItem("aegis-mastery-lane") === "body" ? "body" : "mind";
 let activeType = localStorage.getItem("aegis-mastery-type") || (lane === "body" ? "Health" : "Book");
-let entries = [], deepWork = [], challenges = [], trainingSessions = [], trainingSets = [], weightLogs = [], foodLogs = [], capabilities = [], capabilityLogs = [];
+let entries = [], deepWork = [], challenges = [], trainingSessions = [], trainingSets = [], weightLogs = [], foodLogs = [], capabilities = [], capabilityLogs = [], capabilityBenchmarks = [];
 let recoveryReady = false, cleanRendering = false;
 
 const capabilityDefaults = [
@@ -137,6 +137,15 @@ const capabilityDefaults = [
   ["Adversarial", "Deception resistance", "Recognize pressure tactics, false certainty, and incentives that distort judgment."],
   ["Adversarial", "Crisis communication", "Deliver concise, accurate communication when stakes and emotions are elevated."]
 ];
+const capabilityCampaignTemplates = [
+  { type: "Practical", title: "First aid & CPR", description: "Build calm, usable emergency response skill.", benchmarks: [["Novice", "Complete an accredited basic first-aid / CPR course and explain the response sequence.", 8], ["Competent", "Renew certification or complete a supervised scenario assessment with correct priorities.", 20], ["Proficient", "Complete an advanced first-aid module and run a timed multi-step response drill.", 45], ["Master", "Maintain current credentials and teach or lead a rigorous scenario review with documented corrections.", 80]] },
+  { type: "Practical", title: "Cybersecurity hygiene", description: "Protect accounts, devices, and identity with repeatable security practice.", benchmarks: [["Novice", "Secure primary accounts with a password manager, unique passwords, and MFA.", 10], ["Competent", "Complete a threat-model audit of your accounts and devices, then remediate the findings.", 25], ["Proficient", "Complete a recognized security fundamentals course or equivalent hands-on lab sequence.", 55], ["Master", "Build and maintain a documented personal security protocol that survives an adversarial review.", 95]] },
+  { type: "Practical", title: "Learning a language", description: "Build useful real-world language ability through active recall and conversation.", benchmarks: [["Novice", "Complete a structured beginner unit and hold a basic self-introduction without notes.", 6], ["Competent", "Complete 30 guided lessons and sustain a ten-minute conversation on familiar topics.", 24], ["Proficient", "Pass an intermediate assessment or complete 100 hours of deliberate study with recorded speaking evidence.", 60], ["Master", "Use the language independently in demanding real-world conversations or pass an advanced certification.", 130]] },
+  { type: "Adversarial", title: "Information verification under pressure", description: "Separate signal from manipulation, assumptions, and incomplete evidence.", benchmarks: [["Novice", "Use a written source-checking protocol on five claims and document the outcome.", 12], ["Competent", "Complete ten timed verification drills with source quality, uncertainty, and correction notes.", 30], ["Proficient", "Build a repeatable verification playbook and pass a difficult adversarial misinformation exercise.", 65], ["Master", "Lead or complete a high-stakes red-team review with no uncorrected material errors.", 115]] },
+  { type: "Adversarial", title: "Stress decision drill", description: "Make safe, documented decisions while time and information are constrained.", benchmarks: [["Novice", "Complete five short decision drills using a written decision framework.", 10], ["Competent", "Complete ten timed drills and review errors, assumptions, and missed information.", 32], ["Proficient", "Pass a scenario-based course or simulation with documented after-action improvement.", 70], ["Master", "Perform consistently in complex high-pressure simulations and mentor an after-action review.", 125]] },
+  { type: "Adversarial", title: "Crisis communication", description: "Deliver concise, accurate communication when stakes and emotions are elevated.", benchmarks: [["Novice", "Learn a concise crisis-message framework and produce five accurate practice statements.", 14], ["Competent", "Complete timed role-play drills with feedback and a documented correction loop.", 35], ["Proficient", "Complete formal training or pass a realistic multi-party communication simulation.", 75], ["Master", "Lead a complex simulation with clear decisions, accurate updates, and an audited debrief.", 120]] },
+];
+const capabilityLevels = ["Novice", "Competent", "Proficient", "Master"];
 const capabilityPracticeXp = (skillType, pressure = "Low") => (skillType === "Adversarial" ? 12 : 10) + (pressure === "High" ? 3 : pressure === "Moderate" ? 1 : 0);
 const capabilityRefreshDue = (skill) => skill.status !== "Complete" && skill.last_practiced_on && Date.now() - new Date(`${skill.last_practiced_on}T23:59:59`).getTime() > 30 * 86400000;
 
@@ -229,9 +238,9 @@ function laneInputDock() {
 function capabilityPanel() {
   const groups = ["Practical", "Adversarial"].map((type) => {
     const items = capabilities.filter((skill) => skill.skill_type === type);
-    return `<div class="capability-group"><div class="capability-group-head"><span class="eyebrow ${type === "Practical" ? "blue-text" : "amber"}">${type.toUpperCase()} SKILLS</span><button class="ghost compact" type="button" data-capability-add="${type}">+ Add skill</button></div>${items.length ? items.map((skill) => `<article class="capability-row"><div><strong>${escapeHtml(skill.title)}</strong><small>${escapeHtml(skill.description || "Define the next useful practice.")}</small><small>${Number(skill.practice_count || 0)} practice logs${skill.last_practiced_on ? ` · last ${escapeHtml(dateOnly(skill.last_practiced_on))}` : ""} · +${capabilityPracticeXp(type)} XP base${capabilityRefreshDue(skill) ? " · REFRESH DUE" : ""}</small>${skill.latest_note ? `<p>${escapeHtml(skill.latest_note)}</p>` : ""}</div><div class="capability-actions"><span class="enterprise-status ${String(skill.status || "Planned").toLowerCase()}">${escapeHtml(skill.status || "Planned")}</span>${capabilityRefreshDue(skill) ? '<span class="capability-refresh">Refresh</span>' : ""}<button class="primary compact" type="button" data-capability-log="${escapeHtml(skill.id)}">Log practice</button></div></article>`).join("") : '<p class="mastery-empty">No tracks yet.</p>'}</div>`;
+    return `<div class="capability-group"><div class="capability-group-head"><span class="eyebrow ${type === "Practical" ? "blue-text" : "amber"}">${type.toUpperCase()} SKILLS</span><div><button class="ghost compact" type="button" data-capability-generate="${type}">✦ AI skill</button><button class="ghost compact" type="button" data-capability-add="${type}">+ Add skill</button></div></div>${items.length ? items.map((skill) => { const benchmarks = capabilityBenchmarks.filter((benchmark) => String(benchmark.skill_id) === String(skill.id)).sort((a, b) => a.sort_order - b.sort_order); const done = benchmarks.filter((benchmark) => benchmark.completed).length; const next = benchmarks.find((benchmark) => !benchmark.completed); const totalXp = benchmarks.filter((benchmark) => benchmark.completed).reduce((sum, benchmark) => sum + Number(benchmark.xp_reward || 0), 0); return `<article class="capability-row"><div><strong>${escapeHtml(skill.title)}</strong><small>${escapeHtml(skill.description || "Define the next useful practice.")}</small>${benchmarks.length ? `<small class="capability-campaign-meta">${done}/${benchmarks.length} benchmarks complete · ${totalXp} cumulative XP earned</small><p><b>${next ? `NEXT — ${next.level}:` : "CAMPAIGN COMPLETE:"}</b> ${escapeHtml(next?.requirement || "All mastery benchmarks are complete.")}${next ? ` · +${Number(next.xp_reward || 0)} XP` : ""}</p>` : '<small class="capability-campaign-meta">Legacy skill — create a new benchmark campaign to track tier progress.</small>'}${skill.latest_note ? `<p>${escapeHtml(skill.latest_note)}</p>` : ""}</div><div class="capability-actions"><span class="enterprise-status ${String(skill.status || "Planned").toLowerCase()}">${escapeHtml(skill.status || "Planned")}</span>${capabilityRefreshDue(skill) ? '<span class="capability-refresh">Refresh</span>' : ""}<button class="primary compact" type="button" data-capability-log="${escapeHtml(skill.id)}">Log practice</button></div></article>`; }).join("") : '<p class="mastery-empty">No tracks yet. Generate a recommendation or create one.</p>'}</div>`;
   }).join("");
-  return `<section class="mastery-capabilities panel"><div class="panel-head"><div><p class="eyebrow blue-text">CAPABILITY DEVELOPMENT</p><h3>Practical and adversarial skills</h3><p class="body-copy">Build useful skills, then record the conditions and result of practice. These are not Body performance metrics.</p></div></div>${groups}</section>`;
+  return `<section class="mastery-capabilities panel"><div class="panel-head"><div><p class="eyebrow blue-text">CAPABILITY DEVELOPMENT</p><h3>Practical and adversarial skills</h3><p class="body-copy">Choose an AI-guided campaign or create your own. Each custom-weighted benchmark becomes the next operation; completion unlocks the next level and stacks its XP.</p></div></div>${groups}</section>`;
 }
 
 function healthCard() {
@@ -321,12 +330,17 @@ function buildDialogs() {
   document.body.append(fitnessDialog);
 }
 
-function openCapabilityDialog(mode, skillType = "Practical", skill = null) {
+function capabilityBenchmarkFields(template = null) {
+  const levels = template?.benchmarks || capabilityLevels.map((level, index) => [level, "", [5, 12, 30, 60][index]]);
+  return `<fieldset class="capability-benchmark-fields"><legend>Campaign benchmarks</legend><p>Define what proves each level. Weight XP by difficulty, risk, credential, and real-world usefulness; earned tiers stack.</p>${levels.map(([level, requirement, xp]) => `<div class="capability-benchmark-field"><label>${level} — proof of competence<textarea name="benchmark_${level.toLowerCase()}" required placeholder="Lessons, certificate, knowledge, or evidence required">${escapeHtml(requirement)}</textarea></label><label>${level} XP<input name="benchmark_${level.toLowerCase()}_xp" type="number" min="0" max="500" required value="${Number(xp)}" /></label></div>`).join("")}</fieldset>`;
+}
+
+function openCapabilityDialog(mode, skillType = "Practical", skill = null, template = null) {
   const dialog = document.querySelector("#capability-dialog");
   if (!dialog) return;
   const close = `<button class="dialog-close" type="button" data-capability-close>×</button>`;
   if (mode === "add") {
-    dialog.innerHTML = `<form class="dialog-card mastery-form" data-capability-mode="add"><div>${close}</div><p class="eyebrow blue-text">CAPABILITY TRACK</p><h2>Add a useful skill.</h2><label>Track <select name="skill_type"><option ${skillType === "Practical" ? "selected" : ""}>Practical</option><option ${skillType === "Adversarial" ? "selected" : ""}>Adversarial</option></select></label><label>Skill <input name="title" required placeholder="e.g. Learning a language" /></label><label>Definition <textarea name="description" required placeholder="What does useful competence look like?"></textarea></label><button class="primary" type="submit">Add skill</button></form>`;
+    dialog.innerHTML = `<form class="dialog-card mastery-form capability-campaign-form" data-capability-mode="add"><div>${close}</div><p class="eyebrow blue-text">${template ? "AI-GUIDED" : "CUSTOM"} CAPABILITY CAMPAIGN</p><h2>${template ? "Review the recommended path." : "Define the path to mastery."}</h2><p class="body-copy">What moves this skill from novice to competent, proficient, then master? Use meaningful proof—not just time spent.</p><label>Track <select name="skill_type"><option ${skillType === "Practical" ? "selected" : ""}>Practical</option><option ${skillType === "Adversarial" ? "selected" : ""}>Adversarial</option></select></label><label>Skill <input name="title" required placeholder="e.g. Learning a language" value="${escapeHtml(template?.title || "")}" /></label><label>Definition <textarea name="description" required placeholder="What does useful competence look like?">${escapeHtml(template?.description || "")}</textarea></label>${capabilityBenchmarkFields(template)}<button class="primary" type="submit">Launch capability campaign</button></form>`;
   } else {
     dialog.innerHTML = `<form class="dialog-card mastery-form" data-capability-mode="log" data-capability-id="${escapeHtml(skill.id)}"><div>${close}</div><p class="eyebrow ${skill.skill_type === "Practical" ? "blue-text" : "amber"}">${escapeHtml(skill.skill_type)} SKILL</p><h2>${escapeHtml(skill.title)}</h2><p class="body-copy">${escapeHtml(skill.description || "Record the conditions and result, not just the intention.")}</p><div class="two-col"><label>Practice date <input name="practiced_on" type="date" value="${easternDateKey()}" required /></label><label>Minutes <input name="duration_minutes" type="number" min="1" max="1440" /></label></div><label>Pressure <select name="pressure_level"><option>Low</option><option>Moderate</option><option>High</option></select></label><label>Result / evidence <textarea name="result" required placeholder="What did you practice, what happened, and what needs work next?"></textarea></label><label>Status <select name="status"><option>Active</option><option>Complete</option><option>Paused</option></select></label><button class="primary" type="submit">Save practice</button></form>`;
   }
@@ -343,8 +357,20 @@ async function saveCapability(event) {
   const userId = await currentUserId();
   if (!userId) return alert("Your session has expired. Please sign in again.");
   if (form.dataset.capabilityMode === "add") {
-    const { error } = await db.from("capability_skills").insert({ user_id: userId, skill_type: data.get("skill_type"), title: String(data.get("title") || "").trim(), description: String(data.get("description") || "").trim() });
-    if (error) return alert(error.message);
+    const title = String(data.get("title") || "").trim();
+    const skillType = String(data.get("skill_type") || "Practical");
+    const benchmarkRows = capabilityLevels.map((level, index) => ({ user_id: userId, level, sort_order: index + 1, requirement: String(data.get(`benchmark_${level.toLowerCase()}`) || "").trim(), xp_reward: Number(data.get(`benchmark_${level.toLowerCase()}_xp`)) }));
+    if (!title || benchmarkRows.some((row) => row.requirement.length < 3 || !Number.isFinite(row.xp_reward) || row.xp_reward < 0 || row.xp_reward > 500)) return alert("Define all four benchmarks and give each a valid custom XP weight.");
+    const { data: skill, error } = await db.from("capability_skills").insert({ user_id: userId, skill_type: skillType, title, description: String(data.get("description") || "").trim(), status: "Active" }).select().single();
+    if (error || !skill) return alert(error?.message || "Could not create this capability.");
+    const { data: benchmarks, error: benchmarkError } = await db.from("capability_benchmarks").insert(benchmarkRows.map((row) => ({ ...row, skill_id: skill.id }))).select();
+    if (benchmarkError || !benchmarks?.length) { await db.from("capability_skills").delete().eq("id", skill.id); return alert(benchmarkError?.message || "Run migration 083 before launching benchmark campaigns."); }
+    const first = benchmarks.sort((a, b) => a.sort_order - b.sort_order)[0];
+    const familyKey = `capability-${String(skill.id).replace(/-/g, "")}-${first.sort_order}`;
+    const { data: operation, error: operationError } = await db.from("operations").insert({ user_id: userId, title: `${skill.title} — ${first.level} benchmark`, category: "Self Mastery", brief: `${first.requirement}\n\nCapability campaign: complete this benchmark to unlock the next level and earn +${first.xp_reward} XP.`, status: "Queued", completed: false, scheduled_date: easternDateKey(), operation_date: easternDateKey(), is_daily: false, allow_unlinked: true, operation_family_key: familyKey }).select().single();
+    if (operationError || !operation) { await db.from("capability_benchmarks").delete().eq("skill_id", skill.id); await db.from("capability_skills").delete().eq("id", skill.id); return alert(operationError?.message || "Could not create the first benchmark operation."); }
+    const { error: linkError } = await db.from("capability_benchmarks").update({ operation_id: operation.id }).eq("id", first.id).eq("user_id", userId);
+    if (linkError) return alert(linkError.message);
   } else {
     const skill = capabilities.find((item) => String(item.id) === String(form.dataset.capabilityId));
     if (!skill) return;
@@ -360,7 +386,7 @@ async function saveCapability(event) {
 async function loadCapabilities() {
   if (!db) return;
   const skillResult = await db.from("capability_skills").select("*").order("skill_type").order("created_at");
-  if (skillResult.error) { capabilities = []; capabilityLogs = []; return; }
+  if (skillResult.error) { capabilities = []; capabilityLogs = []; capabilityBenchmarks = []; return; }
   capabilities = skillResult.data || [];
   if (!capabilities.length) {
     const { error } = await db.from("capability_skills").upsert(capabilityDefaults.map(([skill_type, title, description]) => ({ user_id: undefined, skill_type, title, description })), { onConflict: "user_id,skill_type,title", ignoreDuplicates: true });
@@ -371,6 +397,8 @@ async function loadCapabilities() {
   }
   const logs = await db.from("capability_skill_logs").select("*").order("practiced_on", { ascending: false }).limit(120);
   capabilityLogs = logs.error ? [] : logs.data || [];
+  const benchmarkResult = await db.from("capability_benchmarks").select("*").order("sort_order");
+  capabilityBenchmarks = benchmarkResult.error ? [] : benchmarkResult.data || [];
 }
 
 function openDialog(existing = null) {
@@ -879,6 +907,7 @@ document.addEventListener("click", event => {
   if (inputButton) { const next = inputButton.dataset.masteryCleanInput; if (!isLocked(next)) { activeType = next; saveView(); openDialog(); } return; }
   if (typeButton) { const next = typeButton.dataset.masteryCleanType; if (!isLocked(next)) { activeType = next; saveView(); debounceRender(render); } return; }
   const capabilityAdd = event.target.closest("[data-capability-add]"); if (capabilityAdd) return openCapabilityDialog("add", capabilityAdd.dataset.capabilityAdd);
+  const capabilityGenerate = event.target.closest("[data-capability-generate]"); if (capabilityGenerate) { const type = capabilityGenerate.dataset.capabilityGenerate; const available = capabilityCampaignTemplates.filter((template) => template.type === type && !capabilities.some((skill) => skill.skill_type === type && skill.title.toLowerCase() === template.title.toLowerCase())); const template = (available.length ? available : capabilityCampaignTemplates.filter((item) => item.type === type))[Math.floor(Math.random() * (available.length || capabilityCampaignTemplates.filter((item) => item.type === type).length))]; return openCapabilityDialog("add", type, null, template); }
   const capabilityLog = event.target.closest("[data-capability-log]"); if (capabilityLog) { const skill = capabilities.find((item) => String(item.id) === String(capabilityLog.dataset.capabilityLog)); if (skill) return openCapabilityDialog("log", skill.skill_type, skill); }
   if (event.target.closest("[data-mastery-clean-add]")) return openDialog();
   if (event.target.closest("[data-mastery-deep-work]")) return openSystemDialog("deep-work");
