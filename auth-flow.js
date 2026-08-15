@@ -35,7 +35,11 @@ function syncGate(session) {
   ensureGate();
   window.AEGIS_AUTH_RESOLVED = true;
   window.AEGIS_AUTH_SESSION = session || null;
-  document.body.classList.toggle("requires-auth", !session);
+  // Keep the gate in place while the private dashboard prepares its first
+  // useful frame. Removing it immediately made the login feel like a browser
+  // freeze even though the same startup work was already underway.
+  document.body.classList.add("requires-auth");
+  if (session) message("#gate-message", "Opening command center…");
   window.dispatchEvent(new CustomEvent("aegis:auth-ready", { detail: { session: session || null } }));
 }
 
@@ -127,6 +131,9 @@ document.addEventListener("click", async (event) => {
 window.AEGIS_AUTH_RESOLVED = false;
 window.AEGIS_AUTH_SESSION = null;
 ensureGate();
+window.addEventListener("aegis:operations-ready", () => {
+  if (window.AEGIS_AUTH_SESSION) document.body.classList.remove("requires-auth");
+});
 if (supabase) {
   getSession().then(syncGate);
   supabase.auth.onAuthStateChange((_event, session) => syncGate(session));

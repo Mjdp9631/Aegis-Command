@@ -2647,6 +2647,7 @@ async function boot() {
     announceOperationsLoaded();
     renderQueue();
     renderCalendar();
+    window.dispatchEvent(new CustomEvent("aegis:operations-ready"));
     scheduleOperationMaintenance();
   } catch (error) {
     console.warn("Operations hub recovered from a load error", error);
@@ -2656,6 +2657,7 @@ async function boot() {
     announceOperationsLoaded();
     renderQueue();
     renderCalendar();
+    window.dispatchEvent(new CustomEvent("aegis:operations-ready"));
   } finally {
     bootInFlight = false;
   }
