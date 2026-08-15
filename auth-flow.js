@@ -4,9 +4,8 @@ const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey
   ? createClient(config.supabaseUrl, config.supabaseAnonKey)
   : null;
-const username = String(config.loginUsername || "matin").trim();
+const username = String(config.loginUsername || "mat").trim();
 const loginEmail = String(config.loginEmail || "").trim();
-let manualAccessGranted = false;
 
 const dialog = () => document.querySelector("#auth-dialog");
 const form = () => dialog()?.querySelector("form");
@@ -34,7 +33,7 @@ function ensureGate() {
 
 function syncGate(session) {
   ensureGate();
-  const authorizedSession = session && manualAccessGranted ? session : null;
+  const authorizedSession = session || null;
   window.AEGIS_AUTH_RESOLVED = true;
   window.AEGIS_AUTH_SESSION = authorizedSession;
   document.body.classList.toggle("requires-auth", !authorizedSession);
@@ -71,7 +70,6 @@ async function openAccountAccess() {
 async function signOut() {
   const session = await getSession();
   if (!session || !window.confirm("Sign out of AEGIS Command?")) return;
-  manualAccessGranted = false;
   const { error } = await supabase.auth.signOut();
   if (error) return alert(error.message);
 }
@@ -81,7 +79,6 @@ async function signIn(submittedUsername, password) {
   if (submittedUsername.trim().toLowerCase() !== username.toLowerCase()) return "Credentials not recognized.";
   const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
   if (!error && data?.session) {
-    manualAccessGranted = true;
     syncGate(data.session);
   }
   return error?.message || "";
@@ -135,9 +132,9 @@ window.AEGIS_AUTH_RESOLVED = false;
 window.AEGIS_AUTH_SESSION = null;
 ensureGate();
 if (supabase) {
-  // A saved browser session must never bypass the command-center lock screen.
-  // Clear this device's stale token and wait for a deliberate password sign-in.
-  supabase.auth.signOut({ scope: "local" }).finally(() => syncGate(null));
+  // Supabase persists and refreshes the browser session. Restore it on reload
+  // so a valid signed-in user stays in Command Center until signing out.
+  getSession().then(syncGate).catch(() => syncGate(null));
   supabase.auth.onAuthStateChange((_event, session) => syncGate(session));
 } else {
   syncGate(null);
