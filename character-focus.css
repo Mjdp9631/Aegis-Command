@@ -24,6 +24,7 @@
 .character-hexagon-readout small { color: #b7c8da; font-size: 10px; }
 .character-focus-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .character-focus-stat { display: grid; gap: 6px; padding: 15px; border: 1px solid var(--line); border-radius: 9px; background: rgba(7, 13, 22, .58); }
+.character-focus-label { color: #9db1c9; font: 700 10px/1 "Space Mono", ui-monospace, monospace; letter-spacing: .12em; }
 .character-focus-stat b { color: var(--blue); font-size: 23px; letter-spacing: -.05em; line-height: 1; }
 .character-focus-stat small { min-height: 27px; color: #9db1c9; font-size: 10px; line-height: 1.35; }
 .character-focus-stat i { display: block; height: 3px; overflow: hidden; border-radius: 999px; background: #273141; }
