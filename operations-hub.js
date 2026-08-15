@@ -2597,37 +2597,18 @@ function wireCalendarPanels() {
 
 let bootInFlight = false;
 let hubStarted = false;
-let maintenanceScheduled = false;
 let hydrationScheduled = false;
+let hydrationTimer = null;
+let lastDashboardInteraction = Date.now();
+const HYDRATION_QUIET_MS = 12000;
 
-function scheduleOperationMaintenance() {
-  if (maintenanceScheduled || !client || !currentUser) return;
-  maintenanceScheduled = true;
-  const run = async () => {
-    try {
-      await syncOperationMissionLinks();
-      await ensureRecurringOccurrences();
-      await markExpiredOperationsMissed();
-      await reconcileRecurringCompletion();
-      await reconcileMeasuredMissionCounts();
-      saveCachedOperations();
-      saveCachedOccurrences();
-      renderQueue();
-      renderCalendar();
-    } catch (error) {
-      console.warn("Operations maintenance deferred after first paint", error);
-    } finally {
-      maintenanceScheduled = false;
-    }
-  };
-  // Let Chromium paint and accept input before database housekeeping begins.
-  // The timeout ensures it still runs on browsers without requestIdleCallback.
-  if (typeof window.requestIdleCallback === "function") {
-    window.requestIdleCallback(() => { void run(); }, { timeout: 1500 });
-  } else {
-    window.setTimeout(() => { void run(); }, 150);
-  }
+function noteDashboardInteraction() {
+  lastDashboardInteraction = Date.now();
 }
+
+["pointermove", "pointerdown", "wheel", "scroll", "keydown", "touchstart"].forEach((type) => {
+  window.addEventListener(type, noteDashboardInteraction, { passive: true });
+});
 
 function scheduleOperationHydration() {
   if (hydrationScheduled || !client || !currentUser) return;
@@ -2650,20 +2631,29 @@ function scheduleOperationHydration() {
       announceOperationsLoaded();
       renderQueue();
       renderCalendar();
-      scheduleOperationMaintenance();
     } catch (error) {
       console.warn("Operations hydration recovered from a load error", error);
     } finally {
       hydrationScheduled = false;
+      hydrationTimer = null;
     }
   };
-  // Hydration is intentionally opportunistic: the interactive post-login
-  // frame wins over refreshing historical data by a few moments.
-  if (typeof window.requestIdleCallback === "function") {
-    window.requestIdleCallback(() => { void run(); }, { timeout: 2500 });
-  } else {
-    window.setTimeout(() => { void run(); }, 250);
+
+  function queueHydrationWhenQuiet() {
+    if (hydrationTimer) window.clearTimeout(hydrationTimer);
+    const elapsed = Date.now() - lastDashboardInteraction;
+    const wait = Math.max(HYDRATION_QUIET_MS - elapsed, 0);
+    hydrationTimer = window.setTimeout(() => {
+      if (Date.now() - lastDashboardInteraction < HYDRATION_QUIET_MS) {
+        queueHydrationWhenQuiet();
+        return;
+      }
+      hydrationTimer = null;
+      void run();
+    }, wait);
   }
+  // Never start a history refresh while the user is exploring the dashboard.
+  queueHydrationWhenQuiet();
 }
 
 async function boot() {
