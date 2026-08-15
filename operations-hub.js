@@ -142,9 +142,13 @@ const operationCategoryForTitle = (title = "") => {
   if (/trade|trading|pre-market|pre market|chart|backtest|risk limit|market plan/.test(name)) return "Trading";
   if (/business|ccfx|content|project|enterprise|publish|deep-work|deep work/.test(name)) return "Business";
   if (/dentist|doctor appointment|appointment|lunch|errand|grocery|tax|bill|commute/.test(name)) return "Life Admin";
-  if (/read one chapter|read chapter|chapter|conquer the morning|^journal$|mission debrief|meditat|mobility practice/.test(name)) return "Self Mastery";
+  if (/read one chapter|read chapter|chapter|conquer the morning|^journal$|mission debrief|tomorrow'?s focus|meditat|mobility practice/.test(name)) return "Self Mastery";
   return "";
 };
+const isTomorrowFocusOperation = (operation) => /tomorrow'?s focus/i.test(String(operation?.title || ""))
+  || (Boolean(operation?.is_daily) && /^complete evening mission debrief$/i.test(String(operation?.title || "").trim()));
+const operationDisplayTitle = (operation) => isTomorrowFocusOperation(operation) ? "Tomorrow's Focus" : String(operation?.title || "Operation");
+const operationPriority = (operation) => isTomorrowFocusOperation(operation) ? "High" : operation?.priority || priorityFor(operationCategory(operation));
 const operationCategory = (operation, mission = null) => {
   const titleCategory = operationCategoryForTitle(operation?.title);
   if (titleCategory) return titleCategory;
@@ -316,7 +320,7 @@ const starterOperations = () => {
     ["Conquer the morning", "Self Mastery"],
     ["Read one chapter", "Self Mastery"],
     ["Journal", "Self Mastery"],
-    ["Complete evening mission debrief", "Self Mastery"],
+    ["Tomorrow's Focus", "Self Mastery"],
   ].map(([title, category]) => title === "Pre-market analysis"
     ? preMarketOperationForToday()
     : ({ title, category, completed: false, scheduled_date: operatingDayKey(), scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, schedule_mode: "daily", status: "Queued" }))
@@ -324,7 +328,8 @@ const starterOperations = () => {
 };
 
 const gymSplitForToday = () => {
-  const split = ["Rest", "Legs", "Push", "Pull", "Rest", "Upper Body", "Lower Body"];
+  // Monday through Sunday: Legs, Push, Pull, Rest, Lower Body, Upper Body, Rest.
+  const split = ["Rest", "Legs", "Push", "Pull", "Rest", "Lower Body", "Upper Body"];
   const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short" }).format(dateForKey(operatingDayKey()));
   return split[["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday)];
 };
@@ -427,6 +432,14 @@ function operationInstances() {
   });
   if (operationInstances.cacheKey === cacheKey && operationInstances.cache) return operationInstances.cache;
   const instances = [];
+  const occurrencesByOperation = new Map();
+  operationOccurrences.forEach((row) => {
+    const key = String(row?.operation_id || "");
+    if (!key) return;
+    const rows = occurrencesByOperation.get(key) || [];
+    rows.push(row);
+    occurrencesByOperation.set(key, rows);
+  });
   operations.forEach((operation) => {
     // A newly-created repeating operation is local until Supabase returns its
     // id. Do not collapse it into a one-time item during that short window;
@@ -435,19 +448,11 @@ function operationInstances() {
       instances.push(ongoingDisplayOperation(completedDisplayOperation(operation)));
       return;
     }
-    const rows = operationOccurrences.filter((row) => String(row.operation_id) === String(operation.id));
-    if (!rows.length) {
-      // If occurrence rows are temporarily unavailable, keep every date from
-      // the recurrence rule visible. Rendering only the first date made
-      // future PT and weekly operations appear to disappear after refresh.
-      // Durable occurrence rows cover the long calendar history. When they
-      // are temporarily unavailable, only materialize a short display
-      // horizon instead of expanding every daily series into 370 DOM/data
-      // rows on every repaint.
-      recurringDateKeys(operation, 45).forEach((date) => instances.push(ongoingDisplayOperation(completedDisplayOperation({ ...operation, id: `virtual:${operation.id}:${date}`, _series: operation, _occurrence: { occurrence_date: date, status_override: false }, scheduled_date: date, status: operation.status, completed: operation.completed }))));
-      return;
-    }
-    rows.forEach((row) => instances.push(ongoingDisplayOperation(completedDisplayOperation({
+    const rows = occurrencesByOperation.get(String(operation.id)) || [];
+    const materializedDates = new Set();
+    rows.forEach((row) => {
+      materializedDates.add(dateOnly(row.occurrence_date));
+      instances.push(ongoingDisplayOperation(completedDisplayOperation({
       ...operation,
       id: `occurrence:${row.id}`,
       _series: operation,
@@ -458,7 +463,23 @@ function operationInstances() {
       completed: Boolean(row.completed),
       completed_on: row.completed_on || null,
       status_override: Boolean(row.status_override),
-    }))));
+    })));
+    });
+    // A durable row is necessary only once a recurring instance is changed.
+    // Fill any unmaterialized dates at display time, so a large recurring
+    // insert can never block the first page paint after a refresh.
+    recurringDateKeys(operation, 45).forEach((date) => {
+      if (materializedDates.has(date)) return;
+      instances.push(ongoingDisplayOperation(completedDisplayOperation({
+        ...operation,
+        id: `virtual:${operation.id}:${date}`,
+        _series: operation,
+        _occurrence: { occurrence_date: date, status_override: false },
+        scheduled_date: date,
+        status: operation.status,
+        completed: operation.completed,
+      })));
+    });
   });
   operationInstances.cacheKey = cacheKey;
   operationInstances.cache = instances;
@@ -600,22 +621,35 @@ async function markExpiredOperationsMissed() {
   return true;
 }
 
-async function ensureRecurringOccurrences() {
+async function ensureRecurringOccurrences(days = 5) {
   if (!client || !currentUser || !operationOccurrences) return;
   const desired = [];
+  const horizon = Math.min(Math.max(Number(days) || 5, 1), 14);
   operations.filter((operation) => scheduleMode(operation) !== "one_time" && operation.id && !String(operation.id).startsWith("local-")).forEach((operation) => {
     // Keep only the visible planning horizon materialized. The parent schedule
     // remains durable and the display layer can derive future instances. A
     // long insert burst for every daily series creates realtime notifications
     // that can freeze the page during boot.
-    recurringDateKeys(operation, 14).forEach((date) => desired.push({ user_id: currentUser.id, operation_id: operation.id, occurrence_date: date, scheduled_time: operation.scheduled_time || null }));
+    recurringDateKeys(operation, horizon).forEach((date) => desired.push({ user_id: currentUser.id, operation_id: operation.id, occurrence_date: date, scheduled_time: operation.scheduled_time || null }));
   });
   if (!desired.length) return;
   const existing = new Set(operationOccurrences.map((row) => `${row.operation_id}|${dateOnly(row.occurrence_date)}`));
   const missing = desired.filter((row) => !existing.has(`${row.operation_id}|${row.occurrence_date}`));
   if (!missing.length) return;
-  const { data, error } = await client.from("operation_occurrences").insert(missing).select();
-  if (!error && data?.length) operationOccurrences = [...operationOccurrences, ...data];
+  // Keep each transaction small. Large insert bursts trigger a realtime event
+  // per row, which was enough to make Chromium offer an "unresponsive" prompt
+  // while the hub was still starting.
+  const inserted = [];
+  for (let index = 0; index < missing.length; index += 50) {
+    const { data, error } = await client.from("operation_occurrences").insert(missing.slice(index, index + 50)).select();
+    if (error) {
+      console.warn("Could not materialize recurring operations", error.message);
+      break;
+    }
+    if (data?.length) inserted.push(...data);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  if (inserted.length) operationOccurrences = [...operationOccurrences, ...inserted];
   saveCachedOccurrences();
 }
 
@@ -848,6 +882,11 @@ function isCompleteToday(operation) {
 }
 
 function checklistFor(operation) {
+  if (isTomorrowFocusOperation(operation)) return [
+    "Review the Tomorrow's Focus directive from the prior evening debrief.",
+    "Make it the first meaningful block before reactive work takes over.",
+    "Mark complete only once the focus has been deliberately scheduled or started.",
+  ];
   const supplied = String(operation.brief || operation.notes || "").trim();
   if (supplied) return supplied.split(/\n+/).map((item) => item.replace(/^[-•\s]+/, "").trim()).filter(Boolean);
   const name = String(operation.title || "").toLowerCase();
@@ -946,7 +985,7 @@ function resolveMission(operation, includeCompleted = false) {
   const phraseMatch = /pt session|orthopedic|acl rehab/.test(title) ? byPhrase(["orthopedic recovery", "pt sessions", "return to sports"])
     : /gym|legs|push|pull|upper body|lower body|rest and reset/.test(title) ? byPhrase(["training baseline", "recovery-safe"])
       : /review charts|trade review/.test(title) ? byPhrase(["evidence-based trade reviews", "process review"])
-        : /mission debrief|evening debrief/.test(title) ? byPhrase(["operating debrief rhythm", "operating baseline"])
+        : /mission debrief|evening debrief|tomorrow'?s focus/.test(title) ? byPhrase(["operating debrief rhythm", "operating baseline"])
           : /read one chapter|read chapter/.test(title) ? byPhrase(["learning rhythm", "chapters"])
             : /conquer the morning/.test(title) ? byPhrase(["morning discipline", "operating baseline", "daily rhythm"])
               : /^journal$|journal/.test(title) ? byPhrase(["journal", "operating debrief rhythm", "self mastery"])
@@ -1132,7 +1171,7 @@ function queueTargets() {
   }
 
 function isDailyOperation(operation) {
-  return Boolean(operation.is_daily) || /pre-market|review charts|conquer the morning|read one chapter|^journal$|mission debrief|daily|^gym|rest and reset/i.test(String(operation.title || ""));
+  return Boolean(operation.is_daily) || /pre-market|review charts|conquer the morning|read one chapter|^journal$|mission debrief|tomorrow'?s focus|daily|^gym|rest and reset/i.test(String(operation.title || ""));
 }
 
 function operationStateSignature(operation) {
@@ -1182,7 +1221,13 @@ function queueOperations() {
   const sort = (items) => items.slice().sort((a, b) => {
     const aDate = nextScheduledDate(a, start, true) || dateOnly(a.operation_date) || "9999-12-31";
     const bDate = nextScheduledDate(b, start, true) || dateOnly(b.operation_date) || "9999-12-31";
-    return aDate.localeCompare(bDate) || String(a.title).localeCompare(String(b.title));
+    const aFocus = isTomorrowFocusOperation(a) ? 0 : 1;
+    const bFocus = isTomorrowFocusOperation(b) ? 0 : 1;
+    const rank = { High: 0, Medium: 1, Low: 2 };
+    return aDate.localeCompare(bDate)
+      || aFocus - bFocus
+      || (rank[operationPriority(a)] ?? 3) - (rank[operationPriority(b)] ?? 3)
+      || operationDisplayTitle(a).localeCompare(operationDisplayTitle(b));
   });
   const uniqueItems = (items) => {
     return dedupeOperationInstances(items);
@@ -1239,10 +1284,11 @@ function emergencyQueueMarkup() {
   const rows = fallback.map((operation) => {
     const gate = morningGate(operation);
     const gateExpired = gate?.state === "expired";
-    const priority = operation.priority || priorityFor(operation.category);
-    return `<article class="operation operation-table-row operation-table-v2">
+    const priority = operationPriority(operation);
+    const focusClass = isTomorrowFocusOperation(operation) ? " operation-tomorrow-focus" : "";
+    return `<article class="operation operation-table-row operation-table-v2${focusClass}">
       ${statusControlMarkup(operation, operatingDayKey(), operation.title)}
-      <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.title)}">${esc(operation.title)}</button>
+      <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.title)}">${esc(operationDisplayTitle(operation))}</button>
       <button type="button" class="operation-schedule-control" data-hub-schedule="${esc(operation.title)}">+ Schedule</button>
       <span>${esc(operation.category || "Mission")}</span>
       <b class="${priorityClass(priority)}">${esc(priority)}</b>
@@ -1271,11 +1317,12 @@ function renderQueue() {
     const rows = (items, dayOf = false) => items.map((operation) => {
       const status = dayOf ? displayStatus(operation) : normalizedStatus(operation);
       const gate = morningGate(operation);
-      const priority = operation.priority || priorityFor(operation.category);
+      const priority = operationPriority(operation);
       const scheduled = dateOnly(operation.scheduled_date);
       const time = operation.scheduled_time ? ` · ${String(operation.scheduled_time).slice(0, 5)}` : "";
       const timing = scheduleLabel(operation, operatingDayKey());
       const doneClass = status === "Complete" ? " done operation-complete" : "";
+      const focusClass = isTomorrowFocusOperation(operation) ? " operation-tomorrow-focus" : "";
       const gateExpired = gate?.state === "expired";
       const gateNote = gateExpired
         ? '<small class="morning-window-note is-expired">9-hour window expired</small>'
@@ -1287,9 +1334,9 @@ function renderQueue() {
         : gate?.deadline
           ? `Conquer the morning window: ${formatRemaining(gate.remaining)} remaining.`
           : "";
-      return `<article class="operation operation-table-row operation-table-v2${doneClass}">
+      return `<article class="operation operation-table-row operation-table-v2${doneClass}${focusClass}">
         ${statusControlMarkup(operation, operatingDayKey(), operation.id || operation.title)}
-        <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.id || operation.title)}">${esc(operation.title)}${gateNote}</button>
+        <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.id || operation.title)}">${esc(operationDisplayTitle(operation))}${gateNote}</button>
         <button type="button" class="operation-schedule-control ${scheduled ? "is-scheduled" : ""}" data-hub-schedule="${esc(operation.id || operation.title)}">${esc(timing)}</button>
         <span>${esc(operation.category || "Mission")}</span>
         <b class="${priorityClass(priority)}">${esc(priority)}</b>
@@ -1357,7 +1404,7 @@ function showOperationDetail(key) {
   const checklist = checklistFor(operation).map((item, index) => `${index + 1}. ${item}`).join("\n");
   const missionList = linked;
   const advances = missionList.length ? `\n\nADVANCES:\n${missionList.map((item) => `• ${item.title}${item.completion_type === "units" ? ` (${Number(item.completed_count || 0)}/${Number(item.target_count || 0)} ${item.unit_label || "units"})` : ""}`).join("\n")}` : "";
-  window.alert(`${operation.title}${advances}\n\nDEFINITION OF DONE\n${checklist}`);
+  window.alert(`${operationDisplayTitle(operation)}${advances}\n\nDEFINITION OF DONE\n${checklist}`);
 }
 
 async function persist(operation) {
@@ -1865,14 +1912,15 @@ async function ensureTodayOperations(records = []) {
     ["Conquer the morning", "Self Mastery", "Begin the day with one deliberate first action, protect the first block from avoidable distraction, and execute the morning standard before reactive work."],
     ["Read one chapter", "Self Mastery", readingBrief()],
     ["Journal", "Self Mastery", "Write the facts, name what is within your control, and record one lesson or next right action."],
-    ["Complete evening mission debrief", "Self Mastery", "Read the Going to bed debrief, apply its priorities, and close the operating day honestly."],
-  ].map(([title, category, brief]) => ({ title, category, brief, priority: priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: activeDay, scheduled_date: activeDay, metric_key: title === "Read one chapter" ? "chapters_read" : title === "Journal" ? "mastery.entry" : null }));
+    ["Tomorrow's Focus", "Self Mastery", "Review the prior evening debrief's Tomorrow's Focus directive, make it the first meaningful block, and mark complete once it is scheduled or started."],
+  ].map(([title, category, brief]) => ({ title, category, brief, priority: title === "Tomorrow's Focus" ? "High" : priorityFor(category), status: "Queued", completed: false, is_daily: true, operation_date: activeDay, scheduled_date: activeDay, metric_key: title === "Read one chapter" ? "chapters_read" : title === "Journal" ? "mastery.entry" : null }));
   const preMarket = preMarketOperationForToday();
   if (preMarket) daily.unshift(preMarket);
   daily.push(gymOperationForToday());
 
   const hasTodayPlan = (planned) => records.some((operation) => {
-    const sameTitle = String(operation.title || "").trim().toLowerCase() === planned.title.toLowerCase();
+    const sameTitle = String(operation.title || "").trim().toLowerCase() === planned.title.toLowerCase()
+      || (planned.title === "Tomorrow's Focus" && isTomorrowFocusOperation(operation));
     if (!sameTitle) {
       // Special handling for gym operations: consolidate any gym operation on today
       // rather than requiring exact title match, so "Gym - Logs" + "Gym - Legs" don't both appear
@@ -1881,9 +1929,14 @@ async function ensureTodayOperations(records = []) {
       if (!plannedIsGym || !operationIsGym) return false;
       // Both are gym operations, so check if they're on the same day
     }
-    if (planned.is_daily && (operation.is_daily || scheduleMode(operation) === "daily")) return true;
     const operationDay = dateOnly(operation.operation_date);
     const scheduledDay = dateOnly(operation.scheduled_date);
+    // A prior day's daily record proves history, not that today's operation
+    // exists. Only today's dated row—or a durable recurring series that is
+    // actually scheduled today—may satisfy the daily plan.
+    if (planned.is_daily && (operation.is_daily || scheduleMode(operation) === "daily")) {
+      return operationDay === activeDay || scheduledDay === activeDay || isScheduledOn(operation, activeDay);
+    }
     // Only a row explicitly assigned to today can satisfy today's plan.  The
     // legacy system created undated daily rows, which caused old July work to
     // block the new day and produced an empty queue on later dates.
@@ -2527,6 +2580,37 @@ function wireCalendarPanels() {
 }
 
 let bootInFlight = false;
+let maintenanceScheduled = false;
+
+function scheduleOperationMaintenance() {
+  if (maintenanceScheduled || !client || !currentUser) return;
+  maintenanceScheduled = true;
+  const run = async () => {
+    try {
+      await syncOperationMissionLinks();
+      await ensureRecurringOccurrences();
+      await markExpiredOperationsMissed();
+      await reconcileRecurringCompletion();
+      await reconcileMeasuredMissionCounts();
+      saveCachedOperations();
+      saveCachedOccurrences();
+      renderQueue();
+      renderCalendar();
+    } catch (error) {
+      console.warn("Operations maintenance deferred after first paint", error);
+    } finally {
+      maintenanceScheduled = false;
+    }
+  };
+  // Let Chromium paint and accept input before database housekeeping begins.
+  // The timeout ensures it still runs on browsers without requestIdleCallback.
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(() => { void run(); }, { timeout: 1500 });
+  } else {
+    window.setTimeout(() => { void run(); }, 150);
+  }
+}
+
 async function boot() {
   if (bootInFlight) return;
   bootInFlight = true;
@@ -2549,13 +2633,8 @@ async function boot() {
   if (currentUser) {
     operations = await seedIfEmpty();
     await loadOperationMissionLinks();
-    await syncOperationMissionLinks();
     await syncDailyReadingOperation();
     await loadOccurrences();
-    await ensureRecurringOccurrences();
-    await markExpiredOperationsMissed();
-    await reconcileRecurringCompletion();
-    await reconcileMeasuredMissionCounts();
     subscribeToOperationSync();
   } else {
     operations = await ensureTodayOperations(local.length ? local : starterOperations());
@@ -2567,6 +2646,7 @@ async function boot() {
     announceOperationsLoaded();
     renderQueue();
     renderCalendar();
+    scheduleOperationMaintenance();
   } catch (error) {
     console.warn("Operations hub recovered from a load error", error);
     operations = cachedOperations();
@@ -2599,11 +2679,18 @@ const startHub = () => {
   setInterval(refreshMorningCountdown, 1000);
   ensurePermanentMissionCalendar();
   syncSystemDate();
-  // Keep one stable surface while auth and Supabase synchronize. Painting the
-  // local starter feed first made it flash over the durable queue milliseconds
-  // later, which looked like the operation box was changing by itself.
+  // Paint the last known queue immediately. Authentication and the cloud
+  // refresh can take a moment, but neither should leave a blank, frozen-feeling
+  // operations surface in front of the user.
   const host = ensureLiveQueueHost();
-  if (host && host.dataset.aegisQueueMounted !== "true") {
+  const local = cachedOperations();
+  if (local.length) {
+    operations = local;
+    operationOccurrences = cachedOccurrences();
+    operationsReady = true;
+    renderQueue();
+    renderCalendar();
+  } else if (host && host.dataset.aegisQueueMounted !== "true") {
     host.innerHTML = '<p class="empty-operations">Syncing today\'s operations…</p>';
   }
   boot().finally(() => setTimeout(() => { renderQueue(); renderCalendar(); }, 0));
