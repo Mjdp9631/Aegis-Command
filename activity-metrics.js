@@ -181,7 +181,7 @@ export function disciplineXp(operations = [], occurrences = [], startedAt) {
   return { xp: Math.max(0, ledger.reduce((total, entry) => total + entry.change, 0)), ledger: ledger.sort((a, b) => b.label.localeCompare(a.label)) };
 }
 
-export const PROJECT_COMPLETION_XP = Object.freeze({ Minor: 20, Standard: 60, Major: 120, Flagship: 250 });
+export const PROJECT_COMPLETION_XP = Object.freeze({ Minor: 10, Standard: 25, Major: 50, Flagship: 100 });
 
 const projectCompletionXp = (project) => {
   const stored = Number(project?.xp_reward);
