@@ -171,6 +171,14 @@ const operationFamilyKey = (operation) => {
   const category = operationCategory(operation).toLowerCase();
   return `${title}-${category.replace(/[^a-z0-9]+/g, "-")}`.replace(/-+/g, "-").replace(/^-+|-+$/g, "");
 };
+// The mission editor accepts both the durable family key and its normalized
+// equivalent, because older rows may have date/session wording in that key.
+// Operation completion must use the same lookup rules or a visibly linked
+// operation can fail to advance its mission.
+const canonicalOperationFamilyKey = (value) => String(value || "operation").toLowerCase().trim()
+  .replace(/\b20\d{2}[-/]\d{2}[-/]\d{2}\b/g, "")
+  .replace(/\b(?:session|sessions|chapter|chapters)\s*#?\s*\d+\b/g, "")
+  .replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
 const metricAliases = {
   pt_session: ["pt_session", "recovery.pt_session", "recovery.report"],
   chapters_read: ["chapters_read", "mastery.book", "mind.book"],
@@ -2051,11 +2059,22 @@ async function loadOperationMissionLinks() {
     const ids = links.get(key) || [];
     if (!ids.some((id) => String(id) === String(link.mission_id))) ids.push(link.mission_id);
     links.set(key, ids);
+    if (familyLinksAvailable) {
+      const canonicalKey = canonicalOperationFamilyKey(key);
+      const canonicalIds = links.get(canonicalKey) || [];
+      if (!canonicalIds.some((id) => String(id) === String(link.mission_id))) canonicalIds.push(link.mission_id);
+      links.set(canonicalKey, canonicalIds);
+    }
   });
   operations = operations.map((operation) => ({
     ...operation,
     mission_id: familyLinksAvailable || legacyLinksAvailable ? null : operation.mission_id,
-    linked_mission_ids: links.get(familyLinksAvailable ? operationFamilyKey(operation) : String(operation.id)) || (familyLinksAvailable ? [] : (operation.mission_id ? [operation.mission_id] : [])),
+    linked_mission_ids: (() => {
+      const familyKey = operationFamilyKey(operation);
+      return links.get(familyLinksAvailable ? familyKey : String(operation.id))
+        || (familyLinksAvailable ? links.get(canonicalOperationFamilyKey(familyKey)) : null)
+        || (familyLinksAvailable ? [] : (operation.mission_id ? [operation.mission_id] : []));
+    })(),
     operation_family_key: operationFamilyKey(operation),
     mission_link_mode: familyLinksAvailable ? "family" : (legacyLinksAvailable ? "legacy" : "operation"),
   }));
