@@ -9,6 +9,7 @@ const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => 
 let xpCampaign = null;
 let xpCampaignError = null;
 let directorReviews = [];
+let evolutionRoutineTimer = null;
 const quarterKey = () => `${new Date().getFullYear()}-Q${Math.floor(new Date().getMonth() / 3) + 1}`;
 
 function missionProgress(mission) {
@@ -79,6 +80,66 @@ function characterFocus(metrics, recovery) {
   return `<section class="character-focus panel"><div class="character-focus-heading"><p class="eyebrow blue-text">CHARACTER SYSTEMS / LIVE PROFILE</p><h3>The whole system at a glance.</h3><p>Hover or focus an axis to isolate that level. Each marker reflects evidence earned in its system.</p></div><div class="character-focus-layout"><div class="character-hexagon-wrap"><div class="character-hexagon"><svg viewBox="0 0 100 100" role="img" aria-label="Character level radar"><defs><radialGradient id="character-radar-level-fill" cx="50%" cy="50%" r="72%"><stop offset="0%" stop-color="#b9575b" stop-opacity=".84"></stop><stop offset="55%" stop-color="#a6aa72" stop-opacity=".7"></stop><stop offset="100%" stop-color="#55c794" stop-opacity=".66"></stop></radialGradient></defs><polygon class="character-radar-grid" points="50,7 87,28 87,72 50,93 13,72 13,28"></polygon><polygon class="character-radar-grid inner" points="50,22 74,36 74,64 50,78 26,64 26,36"></polygon><path class="character-radar-axis" d="M16 50H84M50 7V93M16 28L84 72M84 28L16 72"></path><path class="character-radar-brackets" d="M43 9h-5M38 9v5M57 9h5M62 9v5M88 40v-5h-5M88 60v5h-5M57 91h5v-5M43 91h-5v-5M12 60v5h5M12 40v-5h5"></path><polygon class="character-radar-data" points="${points}"></polygon>${axisMarkup}<circle class="character-radar-core-ring" cx="50" cy="50" r="5.5"></circle><circle class="character-radar-core" cx="50" cy="50" r="1.8"></circle></svg></div><div class="character-hexagon-readout"><span>CHARACTER LEVEL</span><strong>LV ${level.level}</strong><small>${Math.round(level.current)} / ${level.required} XP</small></div></div><div class="character-focus-stats">${focusStat("DISCIPLINE", metrics.discipline, "daily", "amber", "discipline")}${focusStat("TRADING", metrics.trading, "monthly", "blue", "trading")}${focusStat("BODY", metrics.mastery.body, "Body", "green", "body")}${focusStat("CCFX", metrics.ccfx, "CCFX", "amber", "ccfx")}${focusStat("MIND", metrics.mastery.mind, "Mind", "blue", "mind")}${recoveryFocusStat(recovery)}</div></div></section>`;
 }
 
+const evolutionActions = [
+  { id: "reset", label: "Resetting in the lounge", sprite: 0, left: 14, bottom: 11, scale: 1.05 },
+  { id: "journal", label: "Writing the next plan", sprite: 1, left: 46, bottom: 13, scale: .92 },
+  { id: "study", label: "Studying in the library", sprite: 2, left: 76, bottom: 14, scale: .9 },
+  { id: "train", label: "Training on the floor", sprite: 3, left: 31, bottom: 10, scale: 1.13 },
+  { id: "charts", label: "Reviewing the charts", sprite: 4, left: 56, bottom: 10, scale: .98 },
+  { id: "pullups", label: "Building the body", sprite: 5, left: 88, bottom: 4, scale: 1.08 },
+  { id: "systems", label: "Building systems", sprite: 6, left: 70, bottom: 10, scale: .94 },
+  { id: "sentinel", label: "Running the command bay", sprite: 7, left: 52, bottom: 7, scale: 1.02 },
+];
+
+const evolutionStageConfig = [
+  { level: 0, name: "SURVIVAL", description: "A fixed room. The first job is simply to get moving.", routine: [0, 0, 1] },
+  { level: 3, name: "FOUNDATION", description: "The room clears. Planning begins to replace drift.", routine: [0, 1, 1, 2] },
+  { level: 6, name: "MOMENTUM", description: "Books, training, and deliberate routines start to occupy the room.", routine: [1, 2, 3, 4] },
+  { level: 10, name: "OPERATOR", description: "The workspace becomes a tool for focus, fitness, and clean execution.", routine: [2, 3, 4, 4, 5] },
+  { level: 15, name: "BUILDER", description: "A serious body, library, and trading desk share the same mission space.", routine: [3, 4, 5, 6] },
+  { level: 21, name: "ARCHITECT", description: "The room becomes a command studio: training, study, systems, then repeat.", routine: [4, 5, 6, 6] },
+  { level: 28, name: "COMMANDER", description: "The command bay is deliberate in every detail—and so are its routines.", routine: [5, 6, 6, 7] },
+  { level: 36, name: "SENTINEL", description: "The final environment is earned through years of consistent evidence.", routine: [6, 7, 7, 5] },
+];
+
+function evolutionSpriteStyle(action) {
+  const column = action.sprite % 4;
+  const row = Math.floor(action.sprite / 4);
+  const x = ["0%", "33.333%", "66.667%", "100%"][column];
+  return `--sprite-x:${x};--sprite-y:${row ? "100%" : "0%"};--avatar-left:${action.left}%;--avatar-bottom:${action.bottom}%;--avatar-scale:${action.scale};`;
+}
+
+function characterEvolution(levels) {
+  const averageLevel = Math.round(Object.values(levels).reduce((sum, level) => sum + Number(level || 0), 0) / Math.max(1, Object.keys(levels).length));
+  const stageIndex = evolutionStageConfig.reduce((selected, stage, index) => averageLevel >= stage.level ? index : selected, 0);
+  const stage = evolutionStageConfig[stageIndex];
+  const routine = stage.routine.map((index) => evolutionActions[index]);
+  const initial = routine[0];
+  const strengths = [
+    ["MIND", levels.mind], ["BODY", levels.body], ["TRADING", levels.trading], ["BUSINESS", levels.ccfx], ["DISCIPLINE", levels.discipline],
+  ].sort((a, b) => b[1] - a[1]).slice(0, 3);
+  return `<section class="character-evolution panel" data-evolution-stage="${stageIndex}"><div class="character-evolution-heading"><div><p class="eyebrow amber">CHARACTER EVOLUTION / PASSIVE VISUAL</p><h3>Watch the environment catch up to the work.</h3><p>${escape(stage.description)} It is visual only: no buttons, no new workload, and no change to the Character System itself.</p></div><div class="character-evolution-readout"><span>CURRENT CHAPTER</span><strong>${stage.name}</strong><small>Average system level: ${averageLevel}</small></div></div><div class="evolution-room" data-evolution-room data-stage="${stageIndex}" data-routine="${escape(JSON.stringify(routine))}"><div class="evolution-ceiling" aria-hidden="true"></div><div class="evolution-window" aria-hidden="true"></div><div class="evolution-library" aria-hidden="true"></div><div class="evolution-desk" aria-hidden="true"></div><div class="evolution-training-rig" aria-hidden="true"></div><div class="evolution-lounge" aria-hidden="true"></div><div class="evolution-floor-grid" aria-hidden="true"></div><div class="evolution-avatar" data-evolution-avatar style="${evolutionSpriteStyle(initial)}" aria-hidden="true"></div><div class="evolution-status"><span>ROUTINE IN PROGRESS</span><b data-evolution-activity>${escape(initial.label)}</b></div><div class="evolution-strengths">${strengths.map(([label, level]) => `<span>${label}<b>LV ${level}</b></span>`).join("")}</div></div></section>`;
+}
+
+function bindCharacterEvolution() {
+  if (evolutionRoutineTimer) window.clearInterval(evolutionRoutineTimer);
+  const room = document.querySelector("[data-evolution-room]");
+  if (!room) return;
+  const avatar = room.querySelector("[data-evolution-avatar]");
+  const activity = room.querySelector("[data-evolution-activity]");
+  let routine = [];
+  try { routine = JSON.parse(room.dataset.routine || "[]"); } catch { return; }
+  if (!avatar || !activity || routine.length < 2) return;
+  let position = 0;
+  evolutionRoutineTimer = window.setInterval(() => {
+    position = (position + 1) % routine.length;
+    const action = routine[position];
+    avatar.style.cssText = evolutionSpriteStyle(action);
+    activity.textContent = action.label;
+    room.dataset.activity = action.id;
+  }, 6500);
+}
+
 function bindCharacterFocusHover() {
   const items = Array.from(document.querySelectorAll("#character [data-focus-axis]"));
   const setHighlight = (axis, active) => items.filter((item) => item.dataset.focusAxis === axis).forEach((item) => item.classList.toggle("is-highlighted", active));
@@ -134,8 +195,9 @@ function render({ operations, occurrences, trades, missions, projects, contentIt
   localStorage.setItem("aegis-character-levels", JSON.stringify(levels));
   window.dispatchEvent(new CustomEvent("aegis:character-levels-changed", { detail: levels }));
   const launch = !xpCampaign ? `<section class="panel xp-launch-panel"><p class="eyebrow amber">CAMPAIGN CALIBRATION</p><h3>XP is paused.</h3><p class="body-copy">Nothing logged before activation will count. When you are ready, start the five-year campaign and the ledger will begin from that moment forward.</p>${xpCampaignError ? `<p class="body-copy">${escape(xpCampaignError)}</p>` : `<button class="primary compact" type="button" id="start-xp-campaign">Start campaign tracking</button>`}</section>` : "";
-  $("#character").innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p><div class="character-intro-actions"><button class="ghost compact" type="button" id="export-system-data">Export system data</button><small>Private JSON backup of records available to this account.</small></div></div>${launch}${characterFocus(metrics, recovery)}${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
+  $("#character").innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p><div class="character-intro-actions"><button class="ghost compact" type="button" id="export-system-data">Export system data</button><small>Private JSON backup of records available to this account.</small></div></div>${launch}${characterFocus(metrics, recovery)}${characterEvolution(levels)}${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
   bindCharacterFocusHover();
+  bindCharacterEvolution();
 }
 
 async function load() {
