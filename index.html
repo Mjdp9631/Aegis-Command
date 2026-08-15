@@ -172,7 +172,7 @@
     <dialog id="operation-brief-dialog"><form method="dialog" class="dialog-card operation-brief-card"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">OPERATION BRIEF</p><h2 id="operation-brief-title">Operation</h2><p id="operation-brief-meta" class="body-copy"></p><div id="operation-brief-checklist" class="operation-checklist"></div><div class="two-col"><label>Status <select id="operation-detail-status"><option>Queued</option><option>Scheduled</option><option>Ongoing</option><option>Complete</option></select></label><label>Scheduled date <input id="operation-detail-date" type="date" /></label></div><button class="primary" id="save-operation-detail" value="default">Save schedule</button></form></dialog>
     <dialog id="operations-calendar-dialog"><form method="dialog" class="dialog-card operation-calendar-card"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">OPERATIONS SCHEDULE</p><h2>Mission calendar</h2><div class="calendar-toolbar"><button class="text-button" id="calendar-prev" type="button">←</button><strong id="operations-calendar-label"></strong><button class="text-button" id="calendar-next" type="button">→</button></div><div class="calendar-weekdays"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div><div id="operations-calendar-grid" class="operations-calendar-grid"></div><div class="calendar-panel-tabs"><button type="button" class="calendar-panel-tab active" data-calendar-panel="agenda">DAY PLAN</button><button type="button" class="calendar-panel-tab" data-calendar-panel="needed">NEEDS SCHEDULING</button></div><div class="calendar-agenda" data-calendar-panel-body="agenda"><p class="eyebrow" id="calendar-agenda-label">SELECT A DAY</p><div id="calendar-agenda-list"></div></div><div class="calendar-agenda hidden" data-calendar-panel-body="needed"><p class="eyebrow">OPERATIONS NEEDING SCHEDULING</p><div id="calendar-needs-scheduling"></div></div></form></dialog>
     <dialog id="scheduled-reminder-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">SCHEDULED OPERATIONS</p><h2>Today’s plan is live.</h2><p class="body-copy">These operations were scheduled for today. Open each brief before you mark it complete.</p><div id="scheduled-reminder-list" class="operation-checklist"></div><button class="primary" value="default">Review the plan</button></form></dialog>
-    <script src="config.js"></script>
+    <script src="config.js?v=login-name-mat-v1"></script>
     <script>
       /*
        * Keep department navigation independent from the data modules.  A failed
@@ -365,7 +365,7 @@
         })();
       })();
     </script>
-    <script type="module" src="auth-flow.js?v=auth-gate-v4"></script>
+    <script type="module" src="auth-flow.js?v=persist-session-v5"></script>
     <script type="module" src="cross-browser-sync.js?v=realtime-v2"></script>
     <script type="module" src="mission.js?v=mission-ledger-boot-v17"></script>
     <script type="module" src="phase-protocol.js?v=phase-protocol-v7"></script>
