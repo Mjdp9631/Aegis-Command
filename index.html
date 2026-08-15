@@ -215,6 +215,21 @@
           const dialog = document.getElementById("mission-dialog");
           if (dialog && !dialog.open) dialog.showModal();
         }, true);
+        // Keep recovery reporting usable even if a later feature module has a
+        // startup error. This is deliberately page-level wiring, like the
+        // mission fallback above, because the dialog is static markup.
+        document.addEventListener("click", event => {
+          const button = (event.composedPath ? event.composedPath() : []).find(node => node?.matches?.('[data-action="log-recovery"]'));
+          if (!button) return;
+          event.preventDefault();
+          const dialog = document.getElementById("recovery-dialog");
+          if (!dialog || dialog.open) return;
+          const dateField = document.getElementById("recovery-logged-on");
+          if (dateField) dateField.value = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+          const status = document.getElementById("recovery-save-status");
+          if (status) status.textContent = "";
+          try { dialog.showModal(); } catch (error) { dialog.setAttribute("open", ""); }
+        }, true);
         // Calendar remains available even if a later dashboard module has a
         // temporary error. The module takes over to populate the schedule.
         document.addEventListener("click", event => {
