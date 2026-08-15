@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="detective-visibility.css?v=tab-visibility-v1" />
     <link rel="stylesheet" href="trade-review-input.css?correction-feedback-v1" />
     <link rel="stylesheet" href="advisor.css" />
-    <link rel="stylesheet" href="mission.css?v=recovery-mission-ledger-v1" />
+    <link rel="stylesheet" href="mission.css?v=recovery-log-history-v1" />
     <link rel="stylesheet" href="filters.css" />
     <link rel="stylesheet" href="importer.css" />
     <link rel="stylesheet" href="enterprise.css?v=enterprise-legibility-v1" />
@@ -151,7 +151,7 @@
         </section>
         <section class="view" id="missions"><div class="section-intro"><p class="eyebrow amber">MISSION CONTROL</p><h2>Five missions. No noise.</h2><p>The system surfaces the few objectives that matter now.</p><div class="mission-actions"><button class="primary compact" data-action="add-mission">+ Open a mission</button><button class="text-button mission-calendar-button" id="open-operations-calendar" type="button">Open operations calendar →</button></div></div><div class="mission-cards" id="mission-cards"><div class="mission-view-tabs" aria-label="Mission ledger views"><button type="button" class="mission-view-tab active" data-mission-view="active">ACTIVE</button><button type="button" class="mission-view-tab" data-mission-view="complete">COMPLETED</button></div><div class="mission-card-list" data-mission-list><article class="mission-card"><h3>Loading mission ledger…</h3></article></div></div><section class="phase-protocol panel" id="phase-protocol" aria-live="polite"></section></section>
 
-        <section class="view" id="recovery"><div class="section-intro"><p class="eyebrow green-text">RECOVERY WING</p><h2>Rebuild the foundation.</h2><p>Health is the prerequisite—not the interruption.</p></div><div class="content-grid"><section class="panel"><div class="panel-head"><h3>Latest Recovery Report</h3><span class="large-number" id="recovery-state">—</span></div><div class="readiness" id="recovery-summary"><div><span>No recovery reports logged yet.</span><b>Awaiting data</b></div></div></section><section class="panel"><div class="panel-head"><h3 id="recovery-next-title">Next Milestone</h3></div><p class="body-copy" id="recovery-next-copy">Complete your prescribed rehab protocol and log response. Progress only when your clinician clears the next stage.</p><button class="primary compact" data-action="log-recovery">Log recovery</button></section></div><section class="panel recovery-mission-panel"><div class="panel-head"><div><p class="eyebrow green-text">RECOVERY MISSIONS</p><h3>Clinical objectives in motion.</h3></div><span class="status-pill muted" id="recovery-mission-count">—</span></div><p class="body-copy">ACL capacity, PT sessions, and every explicitly linked recovery objective live here as well as in Mission Control.</p><div class="recovery-mission-list" id="recovery-missions"><article class="recovery-mission-empty">Loading Recovery missions…</article></div></section></section>
+        <section class="view" id="recovery"><div class="section-intro"><p class="eyebrow green-text">RECOVERY WING</p><h2>Rebuild the foundation.</h2><p>Health is the prerequisite—not the interruption.</p></div><div class="content-grid"><section class="panel"><div class="panel-head"><h3>Latest Recovery Report</h3><span class="large-number" id="recovery-state">—</span></div><div class="readiness" id="recovery-summary"><div><span>No recovery reports logged yet.</span><b>Awaiting data</b></div></div></section><section class="panel"><div class="panel-head"><h3 id="recovery-next-title">Next Milestone</h3></div><p class="body-copy" id="recovery-next-copy">Complete your prescribed rehab protocol and log response. Progress only when your clinician clears the next stage.</p><button class="primary compact" data-action="log-recovery">Log recovery</button></section></div><section class="panel recovery-log-panel"><div class="panel-head"><div><p class="eyebrow green-text">RECOVERY LOG</p><h3>Recent reports.</h3></div><span class="status-pill muted" id="recovery-log-count">0 REPORTS</span></div><div class="recovery-log-list" id="recovery-log-list"><article class="recovery-log-empty">No recovery reports logged yet.</article></div></section><section class="panel recovery-mission-panel"><div class="panel-head"><div><p class="eyebrow green-text">RECOVERY MISSIONS</p><h3>Clinical objectives in motion.</h3></div><span class="status-pill muted" id="recovery-mission-count">—</span></div><p class="body-copy">ACL capacity, PT sessions, and every explicitly linked recovery objective live here as well as in Mission Control.</p><div class="recovery-mission-list" id="recovery-missions"><article class="recovery-mission-empty">Loading Recovery missions…</article></div></section></section>
 
         <section class="view" id="enterprise"><div class="section-intro"><p class="eyebrow amber">SPECIAL PROJECTS / CCFX</p><h2>Build assets that compound.</h2><p>Trading is the craft. Clarified Chaos FX is the enterprise.</p></div><div class="content-grid"><section class="panel"><div class="panel-head"><h3>Strategic Projects</h3><span class="status-pill muted">2 ACTIVE</span></div><div class="mission-list"><article><div class="mission-icon business-icon">▦</div><div><strong>CCFX Foundation</strong><small>Brand system and positioning</small></div><span>41%</span></article><article><div class="mission-icon trade-icon">◌</div><div><strong>Content Engine v1</strong><small>Publish with consistency</small></div><span>25%</span></article></div></section><section class="panel"><div class="panel-head"><h3>Next Asset</h3></div><p class="body-copy">Define what Clarified Chaos FX stands for in one clear, useful public message.</p><button class="primary compact">Open content pipeline</button></section></div></section>
 
@@ -229,6 +229,15 @@
           const status = document.getElementById("recovery-save-status");
           if (status) status.textContent = "";
           try { dialog.showModal(); } catch (error) { dialog.setAttribute("open", ""); }
+        }, true);
+        // Do not let the dialog's native `method=dialog` behavior look like a
+        // saved report if its secure save handler has not finished starting.
+        document.addEventListener("submit", event => {
+          const form = event.target?.closest?.("#recovery-dialog form");
+          if (!form || window.AEGIS_RECOVERY_LOGGER_READY === true) return;
+          event.preventDefault();
+          const status = document.getElementById("recovery-save-status");
+          if (status) status.textContent = "Recovery logging is still loading. Refresh the page, then try again.";
         }, true);
         // Calendar remains available even if a later dashboard module has a
         // temporary error. The module takes over to populate the schedule.
@@ -405,7 +414,7 @@
     </script>
     <script type="module" src="auth-flow.js?v=persist-session-v5"></script>
     <script type="module" src="cross-browser-sync.js?v=realtime-v2"></script>
-    <script type="module" src="mission.js?v=recovery-log-open-v1"></script>
+    <script type="module" src="mission.js?v=recovery-log-history-v1"></script>
     <script type="module" src="phase-protocol.js?v=phase-protocol-v7"></script>
     <script type="module" src="detective.js?v=account-profit-deposits-v2"></script>
     <script type="module" src="brain-review.js?v=correction-feedback-v1"></script>
