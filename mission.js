@@ -6,7 +6,7 @@ const $ = (selector) => document.querySelector(selector);
 const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 const priorities = '<option value="Do now">DO NOW - important + urgent</option><option value="Schedule">SCHEDULE - important + not urgent</option><option value="Delegate">DELEGATE - urgent + not important</option><option value="Eliminate">ELIMINATE - not urgent + not important</option>';
-let client = null, session = null, missions = [], missionOperations = [], currentBookTitle = "", currentBookMissionId = "";
+let client = null, session = null, missions = [], missionOperations = [], recoveryLogs = [], currentBookTitle = "", currentBookMissionId = "";
 let missionEditor = null;
 let missionDetails = null;
 let missionLoadTimer = null;
@@ -538,6 +538,24 @@ function renderRecovery(log) {
   if (!log) { state.textContent = "-"; summary.innerHTML = '<div><span>No recovery reports logged yet.</span><b>Awaiting data</b></div>'; return; }
   state.textContent = log.rehab_completed ? "DONE" : "LOGGED";
   summary.innerHTML = `<div><span>Pain level</span><b>${log.pain}/10</b></div><div><span>Swelling</span><b>${log.swelling}/10</b></div><div><span>Prescribed rehab</span><b>${log.rehab_completed ? "Complete" : "Pending"}</b></div>`;
+}
+
+function recoveryLogDate(value) {
+  const date = new Date(`${value || ""}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? String(value || "Unknown date") : new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" }).format(date);
+}
+
+function renderRecoveryLogs(logs = recoveryLogs) {
+  recoveryLogs = Array.isArray(logs) ? logs : [];
+  const target = $("#recovery-log-list");
+  const count = $("#recovery-log-count");
+  if (count) count.textContent = `${recoveryLogs.length} REPORT${recoveryLogs.length === 1 ? "" : "S"}`;
+  if (!target) return;
+  if (!recoveryLogs.length) {
+    target.innerHTML = '<article class="recovery-log-empty">No recovery reports logged yet.</article>';
+    return;
+  }
+  target.innerHTML = recoveryLogs.map((log) => `<article class="recovery-log-entry"><div class="recovery-log-entry-head"><strong>${escape(recoveryLogDate(log.logged_on))}</strong><span>${log.rehab_completed ? "REHAB COMPLETE" : "REHAB PENDING"}</span></div><div class="recovery-log-metrics"><span>Pain <b>${escape(log.pain)}/10</b></span><span>Swelling <b>${escape(log.swelling)}/10</b></span></div>${log.notes ? `<p>${escape(log.notes)}</p>` : ""}</article>`).join("");
 }
 
 function renderRecoveryMissions() {
@@ -1137,8 +1155,9 @@ async function loadData() {
       applyMissionRows(Array.isArray(data) ? data : []);
 
       try {
-        const { data: logs } = await withMissionTimeout(client.from("recovery_logs").select("*").order("logged_on", { ascending: false }).limit(1), "Recovery query");
+        const { data: logs } = await withMissionTimeout(client.from("recovery_logs").select("*").order("logged_on", { ascending: false }).order("created_at", { ascending: false }).limit(8), "Recovery query");
         renderRecovery(logs?.[0]);
+        renderRecoveryLogs(logs || []);
       } catch (recoveryError) {
         console.warn("Recovery query unavailable", recoveryError.message);
       }
@@ -1197,20 +1216,14 @@ function bindDialogs() {
       dialog.showModal();
     }
   });
-  document.addEventListener("click", (event) => {
-    const button = event.target.closest('[data-action="log-recovery"]');
-    if (!button) return;
-    event.preventDefault();
-    // Opening a local dialog must not depend on a token refresh completing.
-    // Authentication is checked again on Save, where it actually matters.
-    const dialog = $("#recovery-dialog");
-    if (!dialog) return;
-    $("#recovery-logged-on").value = easternDateKey();
-    const status = $("#recovery-save-status");
-    if (status) status.textContent = "";
-    if (!dialog.open) dialog.showModal();
-  });
-  $("#recovery-dialog form")?.addEventListener("submit", async (event) => {
+}
+
+function bindRecoveryLogger() {
+  if (window.AEGIS_RECOVERY_LOGGER_READY) return;
+  const form = $("#recovery-dialog form");
+  if (!form) return;
+  window.AEGIS_RECOVERY_LOGGER_READY = true;
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!client) return alert("Recovery logging is unavailable until the secure connection is ready.");
     const sessionResult = await client.auth.getSession();
@@ -1233,6 +1246,7 @@ function bindDialogs() {
       return;
     }
     renderRecovery(data);
+    renderRecoveryLogs([data, ...recoveryLogs.filter((log) => String(log.id) !== String(data.id))].slice(0, 8));
     $("#recovery-notes").value = "";
     if (status) status.textContent = "Saved.";
     $("#recovery-dialog").close();
@@ -1314,6 +1328,9 @@ document.addEventListener("click", (event) => {
   if (typeof window.AEGIS_SCHEDULE_MISSION === "function") window.AEGIS_SCHEDULE_MISSION(button.dataset.scheduleMission);
 });
 
+// Bind the secure Recovery form before optional render/dialog work. A failure
+// in an unrelated mission editor must never turn Save into a silent close.
+bindRecoveryLogger();
 // Paint the mission ledger before optional dialog wiring. A missing optional
 // control must never leave Active / Completed invisible.
 renderMissions(); renderCommandMissions(); renderRecovery(); renderRecoveryMissions();
