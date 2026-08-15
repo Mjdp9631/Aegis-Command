@@ -22,7 +22,7 @@
     <link rel="stylesheet" href="character.css" />
     <link rel="stylesheet" href="character-rpg.css" />
     <link rel="stylesheet" href="character-focus.css?v=axis-labels-v8" />
-    <link rel="stylesheet" href="character-evolution.css?v=living-room-v7" />
+    <link rel="stylesheet" href="character-evolution.css?v=living-room-v8" />
     <link rel="stylesheet" href="tab-advisory.css" />
     <link rel="stylesheet" href="command-summary.css" />
     <link rel="stylesheet" href="system-review.css?v=system-integrity-v2" />
@@ -158,7 +158,7 @@
 
         <section class="view" id="mastery"><div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Collect knowledge worth using and train only what your current foundation can support.</p></div><div class="mastery-tabs"><button class="mastery-tab active">Mind</button><button class="mastery-tab">Body</button></div><section class="panel"><p class="eyebrow">MASTERY SYSTEM</p><h3>Loading your Mind and Body systems...</h3></section></section>
 
-        <section class="view" id="character"><div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS</p><h2>Measure evidence. Earn upgrades.</h2><p>No arbitrary scores. Every level is earned by proof.</p></div><div class="stat-grid"><article><span>DISCIPLINE</span><strong>—</strong><small>Build a 12-week evidence trail</small></article><article><span>TRADING</span><strong>—</strong><small>Process consistency first</small></article><article><span>RECOVERY</span><strong>—</strong><small>Complete clinical milestones</small></article><article><span>BUSINESS</span><strong>—</strong><small>Ship useful systems</small></article></div></section>
+        <section class="view" id="character" data-character-ready="false" aria-busy="true"></section>
       </main>
     </div>
     <dialog id="operation-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow amber">NEW OPERATION</p><h2>What moves the mission forward?</h2><label>Recommended operation <select id="operation-suggestion"><option value="">Choose a proven next action—or create your own</option><option value="Complete prescribed ACL rehab|Recovery">Complete prescribed ACL rehab</option><option value="Schedule or attend orthopedic appointment|Recovery">Schedule or attend orthopedic appointment</option><option value="Log pain, swelling, and rehab response|Recovery">Log recovery response</option><option value="Pre-market analysis|Trading">Pre-market analysis</option><option value="Review charts and document one lesson|Trading">Review charts and document one lesson</option><option value="Journal completed trade|Trading">Journal completed trade</option><option value="Backtest one setup and record the result|Trading">Backtest one setup</option><option value="Set weekly market plan and risk limits|Trading">Set weekly market plan and risk limits</option><option value="Complete weekly trading review|Trading">Complete weekly trading review</option><option value="Read one chapter|Self Mastery">Read one chapter</option><option value="Capture one trading, psychology, or business note|Self Mastery">Capture one useful note</option><option value="Complete evening mission debrief|Self Mastery">Complete evening mission debrief</option><option value="Build one Clarified Chaos FX asset|Business">Build one Clarified Chaos FX asset</option><option value="Script or publish one piece of content|Business">Script or publish one piece of content</option><option value="Clarified Chaos FX deep-work block|Business">Clarified Chaos FX deep-work block</option></select></label><label>Operation <input id="operation-input" required placeholder="Type your own operation or use the recommendation above" /></label><label>Department <select id="operation-category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Self Mastery</option><option>Life Admin</option></select></label><label>Advances mission <select id="operation-mission"><option value="">Auto-attach to active mission</option></select></label><label class="check-label"><input id="operation-allow-unlinked" type="checkbox" /> Keep outside mission progress</label><button class="primary" id="save-operation" value="default">Add to queue</button></form></dialog>
@@ -423,7 +423,7 @@
     <script type="module" src="advisor.js?v=curated-advisory-v1"></script>
     <script type="module" src="notion-importer.js"></script>
     <script type="module" src="enterprise.js?v=project-editing-v1"></script>
-    <script type="module" src="character.js?v=character-evolution-v7"></script>
+    <script type="module" src="character.js?v=character-evolution-v8"></script>
     <script type="module" src="command-center.js?v=mission-feed-handoff-v13"></script>
     <script type="module" src="command-summary.js?v=shared-operation-state-v2"></script>
     <script type="module" src="command-dashboard.js?v=chart-hover-marker-v4"></script>
