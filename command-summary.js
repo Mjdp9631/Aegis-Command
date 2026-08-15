@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { BODY_CATEGORIES, MIND_CATEGORIES } from "./activity-metrics.js?v=weighted-project-xp-v4";
+import { BODY_CATEGORIES, MIND_CATEGORIES } from "./activity-metrics.js?v=project-xp-rebalance-v5";
 import { operatingDayKey, operationsForDay, operationComplete } from "./operation-state.js?v=shared-operation-state-v2";
 
 const config = window.AEGIS_CONFIG || {};
