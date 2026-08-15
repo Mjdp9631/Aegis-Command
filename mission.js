@@ -193,6 +193,8 @@ function applyMissionRows(rows) {
   // that transient response erase a valid mission ledger.
   if (!rows.length && missions.length) return;
   missions = rows.map(normalize);
+  window.AEGIS_MISSIONS = missions;
+  window.dispatchEvent(new CustomEvent("aegis:recovery-missions-loaded", { detail: { missions } }));
   renderMissions(); renderCommandMissions(); renderRecoveryMissions(); publishMissionChange(); syncRecoveryVisibility();
 }
 function icon(category) { return category === "Recovery" ? "＋" : category === "Trading" ? "◈" : category === "Business" ? "▦" : "◇"; }
@@ -541,30 +543,40 @@ function renderRecovery(log) {
 function renderRecoveryMissions() {
   const target = $("#recovery-missions");
   if (!target) return;
-  const recoveryMissions = sortMissions(missions.filter((mission) => mission.category === "Recovery"));
+  const recoveryMissions = sortMissions(missions.filter((mission) => String(mission.category || "").toLowerCase() === "recovery"));
   const active = recoveryMissions.filter((mission) => mission.progress < 100);
   const count = $("#recovery-mission-count");
   if (count) count.textContent = `${active.length} ACTIVE`;
   const nextTitle = $("#recovery-next-title");
   const nextCopy = $("#recovery-next-copy");
-  const lead = active[0];
-  const leadOperation = lead ? operationsForMission(lead).find((operation) => operationStatus(operation) !== "Complete") : null;
-  if (nextTitle) nextTitle.textContent = lead ? lead.title : "Recovery status";
-  if (nextCopy) nextCopy.textContent = leadOperation
-    ? `NEXT OPERATION: ${leadOperation.title}. ${leadOperation.brief || lead.completion_definition || "Complete only with clinician-approved evidence."}`
-    : lead?.completion_definition || "No active Recovery milestone is waiting.";
-  if (!recoveryMissions.length) {
-    target.innerHTML = '<article class="recovery-mission-empty"><strong>No Recovery missions are active.</strong><small>Open one in Mission Control when clinical work requires a tracked objective.</small></article>';
-    return;
+  const paintSimpleCards = () => {
+    if (!recoveryMissions.length) {
+      target.innerHTML = '<article class="recovery-mission-empty"><strong>No Recovery missions are active.</strong><small>Open one in Mission Control when clinical work requires a tracked objective.</small></article>';
+      return;
+    }
+    target.innerHTML = recoveryMissions.map((mission) => `<button type="button" class="recovery-mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${escape(mission.id)}"><div class="recovery-mission-heading"><div><span class="eyebrow green-text">${escape(mission.priority || "Recovery")}</span><strong>${escape(mission.title)}</strong></div><span>${escape(missionLabel(mission))}</span></div><div class="meter green"><i style="width:${mission.progress}%"></i></div><p>${escape(mission.completion_definition || "Define the clinical evidence that proves completion.")}</p></button>`).join("");
+  };
+  try {
+    const lead = active[0];
+    const leadOperation = lead ? operationsForMission(lead).find((operation) => operationStatus(operation) !== "Complete") : null;
+    if (nextTitle) nextTitle.textContent = lead ? lead.title : "Recovery status";
+    if (nextCopy) nextCopy.textContent = leadOperation
+      ? `NEXT OPERATION: ${leadOperation.title}. ${leadOperation.brief || lead.completion_definition || "Complete only with clinician-approved evidence."}`
+      : lead?.completion_definition || "No active Recovery milestone is waiting.";
+    if (!recoveryMissions.length) return paintSimpleCards();
+    target.innerHTML = recoveryMissions.map((mission) => {
+      const linked = operationsForMission(mission);
+      const nextOperation = linked.find((operation) => operationStatus(operation) !== "Complete");
+      const linkedSummary = nextOperation
+        ? `NEXT: ${nextOperation.title}`
+        : linked.length ? `${linked.length} linked operation${linked.length === 1 ? "" : "s"} complete or awaiting scheduling` : "No linked operation yet";
+      return `<button type="button" class="recovery-mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${escape(mission.id)}"><div class="recovery-mission-heading"><div><span class="eyebrow green-text">${escape(mission.priority || "Recovery")}</span><strong>${escape(mission.title)}</strong></div><span>${escape(missionLabel(mission))}</span></div><div class="meter green"><i style="width:${mission.progress}%"></i></div><small>${escape(linkedSummary)}</small><p>${escape(mission.completion_definition || "Define the clinical evidence that proves completion.")}</p></button>`;
+    }).join("");
+  } catch (error) {
+    console.warn("Recovery mission board fell back to basic cards", error);
+    paintSimpleCards();
   }
-  target.innerHTML = recoveryMissions.map((mission) => {
-    const linked = operationsForMission(mission);
-    const nextOperation = linked.find((operation) => operationStatus(operation) !== "Complete");
-    const linkedSummary = nextOperation
-      ? `NEXT: ${nextOperation.title}`
-      : linked.length ? `${linked.length} linked operation${linked.length === 1 ? "" : "s"} complete or awaiting scheduling` : "No linked operation yet";
-    return `<button type="button" class="recovery-mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${escape(mission.id)}"><div class="recovery-mission-heading"><div><span class="eyebrow green-text">${escape(mission.priority || "Recovery")}</span><strong>${escape(mission.title)}</strong></div><span>${escape(missionLabel(mission))}</span></div><div class="meter green"><i style="width:${mission.progress}%"></i></div><small>${escape(linkedSummary)}</small><p>${escape(mission.completion_definition || "Define the clinical evidence that proves completion.")}</p></button>`;
-  }).join("");
+  window.AEGIS_RECOVERY_RENDERER_READY = true;
 }
 
 function fieldMarkup(prefix, includeCategory) {
