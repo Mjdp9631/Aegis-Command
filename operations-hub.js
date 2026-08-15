@@ -1700,10 +1700,11 @@ async function reconcileMeasuredMissionCounts() {
 // absent, so this cannot create duplicate progress on a healthy deployment.
 async function repairMissionProgressFromCompletion(operation) {
   if (!client || !currentUser || normalizedStatus(operation) !== "Complete") return;
-  // Once the explicit pathway table is available, PostgreSQL is the only
-  // writer for measured progress. A browser-side repair here could recreate
-  // the duplicate XP/counter drift this rebuild is removing.
-  if (window.AEGIS_OPERATION_FAMILY_LINKS_AVAILABLE === true) return;
+  // Family pathways can be available before an older Supabase deployment has
+  // its matching progress trigger. Keep this repair active for that gap. The
+  // durable progress-event check below makes it a no-op when the database has
+  // already recorded the completion, so it cannot double-count a healthy
+  // deployment.
   const linkedMissions = operationMissionIds(operation).map((id) => missions.find((mission) => String(mission.id) === String(id))).filter(Boolean);
   const measuredMissions = linkedMissions.filter((mission) => String(mission.completion_type || "").toLowerCase() === "units");
   if (!measuredMissions.length) return;
@@ -1831,6 +1832,7 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
     await loadMissions();
     if (next === "Complete" && !wasComplete) await repairMissionProgressFromCompletion(operation);
     operations = await seedIfEmpty();
+    await loadOperationMissionLinks();
     await loadOccurrences();
     await ensureRecurringOccurrences();
     await markExpiredOperationsMissed();
@@ -1915,6 +1917,7 @@ async function cycleStatus(key, forcedStatus = null) {
     await loadMissions();
     if (next === "Complete" && !wasComplete) await repairMissionProgressFromCompletion(operation);
     operations = await seedIfEmpty();
+    await loadOperationMissionLinks();
     await loadOccurrences();
     await ensureRecurringOccurrences();
     await markExpiredOperationsMissed();
@@ -2662,6 +2665,7 @@ function scheduleOperationHydration() {
       await loadOperationMissionLinks();
       await syncDailyReadingOperation();
       await loadOccurrences();
+      await reconcileMeasuredMissionCounts();
       subscribeToOperationSync();
       saveCachedOperations();
       operationsReady = true;
