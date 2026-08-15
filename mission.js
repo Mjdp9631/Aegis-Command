@@ -193,7 +193,7 @@ function applyMissionRows(rows) {
   // that transient response erase a valid mission ledger.
   if (!rows.length && missions.length) return;
   missions = rows.map(normalize);
-  renderMissions(); renderCommandMissions(); publishMissionChange(); syncRecoveryVisibility();
+  renderMissions(); renderCommandMissions(); renderRecoveryMissions(); publishMissionChange(); syncRecoveryVisibility();
 }
 function icon(category) { return category === "Recovery" ? "＋" : category === "Trading" ? "◈" : category === "Business" ? "▦" : "◇"; }
 function iconClass(category) { return category === "Recovery" ? "recovery-icon" : category === "Trading" ? "trade-icon" : "business-icon"; }
@@ -536,6 +536,35 @@ function renderRecovery(log) {
   if (!log) { state.textContent = "-"; summary.innerHTML = '<div><span>No recovery reports logged yet.</span><b>Awaiting data</b></div>'; return; }
   state.textContent = log.rehab_completed ? "DONE" : "LOGGED";
   summary.innerHTML = `<div><span>Pain level</span><b>${log.pain}/10</b></div><div><span>Swelling</span><b>${log.swelling}/10</b></div><div><span>Prescribed rehab</span><b>${log.rehab_completed ? "Complete" : "Pending"}</b></div>`;
+}
+
+function renderRecoveryMissions() {
+  const target = $("#recovery-missions");
+  if (!target) return;
+  const recoveryMissions = sortMissions(missions.filter((mission) => mission.category === "Recovery"));
+  const active = recoveryMissions.filter((mission) => mission.progress < 100);
+  const count = $("#recovery-mission-count");
+  if (count) count.textContent = `${active.length} ACTIVE`;
+  const nextTitle = $("#recovery-next-title");
+  const nextCopy = $("#recovery-next-copy");
+  const lead = active[0];
+  const leadOperation = lead ? operationsForMission(lead).find((operation) => operationStatus(operation) !== "Complete") : null;
+  if (nextTitle) nextTitle.textContent = lead ? lead.title : "Recovery status";
+  if (nextCopy) nextCopy.textContent = leadOperation
+    ? `NEXT OPERATION: ${leadOperation.title}. ${leadOperation.brief || lead.completion_definition || "Complete only with clinician-approved evidence."}`
+    : lead?.completion_definition || "No active Recovery milestone is waiting.";
+  if (!recoveryMissions.length) {
+    target.innerHTML = '<article class="recovery-mission-empty"><strong>No Recovery missions are active.</strong><small>Open one in Mission Control when clinical work requires a tracked objective.</small></article>';
+    return;
+  }
+  target.innerHTML = recoveryMissions.map((mission) => {
+    const linked = operationsForMission(mission);
+    const nextOperation = linked.find((operation) => operationStatus(operation) !== "Complete");
+    const linkedSummary = nextOperation
+      ? `NEXT: ${nextOperation.title}`
+      : linked.length ? `${linked.length} linked operation${linked.length === 1 ? "" : "s"} complete or awaiting scheduling` : "No linked operation yet";
+    return `<button type="button" class="recovery-mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${escape(mission.id)}"><div class="recovery-mission-heading"><div><span class="eyebrow green-text">${escape(mission.priority || "Recovery")}</span><strong>${escape(mission.title)}</strong></div><span>${escape(missionLabel(mission))}</span></div><div class="meter green"><i style="width:${mission.progress}%"></i></div><small>${escape(linkedSummary)}</small><p>${escape(mission.completion_definition || "Define the clinical evidence that proves completion.")}</p></button>`;
+  }).join("");
 }
 
 function fieldMarkup(prefix, includeCategory) {
@@ -1163,7 +1192,7 @@ function bindDialogs() {
     // This is delegated so it still works when the Recovery tab is routed or
     // rebuilt after the module initially loads. Read the current auth state at
     // click time instead of relying on a stale module-local snapshot.
-    if (!session && client) {
+    if (client) {
       const result = await client.auth.getSession();
       session = result.data?.session || null;
     }
@@ -1175,15 +1204,27 @@ function bindDialogs() {
   });
   $("#recovery-dialog form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!session || !client) return alert("Sign in before saving recovery.");
+    if (!client) return alert("Recovery logging is unavailable until the secure connection is ready.");
+    const sessionResult = await client.auth.getSession();
+    session = sessionResult.data?.session || null;
+    if (!session) return alert("Sign in before saving recovery.");
     const pain = Number($("#recovery-pain").value);
     const swelling = Number($("#recovery-swelling").value);
     const logged_on = $("#recovery-logged-on").value || easternDateKey();
     if (!Number.isInteger(pain) || !Number.isInteger(swelling) || pain < 0 || pain > 10 || swelling < 0 || swelling > 10 || !logged_on) return;
-    const { data, error } = await client.from("recovery_logs").insert({ logged_on, pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single();
-    if (error) return alert(`Recovery could not be saved: ${error.message}`);
+    const saveButton = $("#save-recovery");
+    const status = $("#recovery-save-status");
+    if (saveButton) saveButton.disabled = true;
+    if (status) status.textContent = "Saving recovery report…";
+    const { data, error } = await client.from("recovery_logs").insert({ user_id: session.user.id, logged_on, pain, swelling, rehab_completed: $("#recovery-rehab").checked, notes: $("#recovery-notes").value.trim() }).select().single();
+    if (saveButton) saveButton.disabled = false;
+    if (error) {
+      if (status) status.textContent = `Could not save: ${error.message}`;
+      return;
+    }
     renderRecovery(data);
     $("#recovery-notes").value = "";
+    if (status) status.textContent = "Saved.";
     $("#recovery-dialog").close();
     publishDataChange("recovery");
   });
@@ -1228,6 +1269,7 @@ window.addEventListener("aegis:operations-changed", (event) => {
   missionOperations = rows.filter((operation) => !operation?._occurrence);
   renderMissions();
   renderCommandMissions();
+  renderRecoveryMissions();
   refreshOperationPlanChoices();
 });
 
@@ -1237,6 +1279,7 @@ window.addEventListener("aegis:operations-loaded", (event) => {
   missionOperations = rows.filter((operation) => !operation?._occurrence);
   renderMissions();
   renderCommandMissions();
+  renderRecoveryMissions();
   refreshOperationPlanChoices();
 });
 
@@ -1263,7 +1306,7 @@ document.addEventListener("click", (event) => {
 
 // Paint the mission ledger before optional dialog wiring. A missing optional
 // control must never leave Active / Completed invisible.
-renderMissions(); renderCommandMissions(); renderRecovery();
+renderMissions(); renderCommandMissions(); renderRecovery(); renderRecoveryMissions();
 bindMissionViewTabsFallback();
 bindDialogs();
 missionDetails = buildMissionDetails();
