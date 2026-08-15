@@ -437,7 +437,7 @@ function focusCategory(title, brief) {
 async function queueTomorrowFocus(advisory, operatingDate, userId) {
   const focus = advisory?.evening?.tomorrow_focus;
   if (!supabase || !focus || !userId) return null;
-  const title = String(focus.operation_title || "Tomorrow's focus").trim().replace(/\s+/g, " ").slice(0, 100);
+  const title = String(focus.operation_title || "Today's focus").trim().replace(/\s+/g, " ").slice(0, 100);
   const brief = `JARVIS REFERENCE: ${String(focus.jarvis || "").trim()}\n\nALFRED REFERENCE: ${String(focus.alfred || "").trim()}`.trim();
   if (!brief || !title) return null;
   const nextDate = nextOperatingDay(operatingDate);

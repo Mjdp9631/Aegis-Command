@@ -6,6 +6,7 @@ const supabase = config.supabaseUrl && config.supabaseAnonKey
   : null;
 const username = String(config.loginUsername || "matin").trim();
 const loginEmail = String(config.loginEmail || "").trim();
+let manualAccessGranted = false;
 
 const dialog = () => document.querySelector("#auth-dialog");
 const form = () => dialog()?.querySelector("form");
@@ -33,7 +34,11 @@ function ensureGate() {
 
 function syncGate(session) {
   ensureGate();
-  document.body.classList.toggle("requires-auth", !session);
+  const authorizedSession = session && manualAccessGranted ? session : null;
+  window.AEGIS_AUTH_RESOLVED = true;
+  window.AEGIS_AUTH_SESSION = authorizedSession;
+  document.body.classList.toggle("requires-auth", !authorizedSession);
+  window.dispatchEvent(new CustomEvent("aegis:auth-ready", { detail: { session: authorizedSession } }));
 }
 
 function renderAccessForm(session) {
@@ -66,6 +71,7 @@ async function openAccountAccess() {
 async function signOut() {
   const session = await getSession();
   if (!session || !window.confirm("Sign out of AEGIS Command?")) return;
+  manualAccessGranted = false;
   const { error } = await supabase.auth.signOut();
   if (error) return alert(error.message);
 }
@@ -73,7 +79,11 @@ async function signOut() {
 async function signIn(submittedUsername, password) {
   if (!loginEmail) return "Login email is not configured yet.";
   if (submittedUsername.trim().toLowerCase() !== username.toLowerCase()) return "Credentials not recognized.";
-  const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
+  const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
+  if (!error && data?.session) {
+    manualAccessGranted = true;
+    syncGate(data.session);
+  }
   return error?.message || "";
 }
 
@@ -121,9 +131,13 @@ document.addEventListener("click", async (event) => {
   message("#auth-message", error ? error.message : "Password saved. Direct login is now active.");
 }, { capture: true });
 
+window.AEGIS_AUTH_RESOLVED = false;
+window.AEGIS_AUTH_SESSION = null;
 ensureGate();
 if (supabase) {
-  getSession().then(syncGate);
+  // A saved browser session must never bypass the command-center lock screen.
+  // Clear this device's stale token and wait for a deliberate password sign-in.
+  supabase.auth.signOut({ scope: "local" }).finally(() => syncGate(null));
   supabase.auth.onAuthStateChange((_event, session) => syncGate(session));
 } else {
   syncGate(null);

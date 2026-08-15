@@ -32,7 +32,7 @@
     <link rel="stylesheet" href="sidebar-replica.css?v=sidebar-hover-v3" />
     <link rel="stylesheet" href="command-legibility.css?v=glass-panels-v19" />
   </head>
-  <body>
+  <body class="requires-auth">
     <div class="app-shell">
       <aside class="sidebar" aria-label="Primary navigation">
         <a class="brand" href="#command"><span class="brand-wordmark">AEGIS COMMAND</span></a>
@@ -365,7 +365,7 @@
         })();
       })();
     </script>
-    <script type="module" src="auth-flow.js"></script>
+    <script type="module" src="auth-flow.js?v=auth-gate-v4"></script>
     <script type="module" src="cross-browser-sync.js?v=realtime-v2"></script>
     <script type="module" src="mission.js?v=mission-ledger-boot-v17"></script>
     <script type="module" src="phase-protocol.js?v=phase-protocol-v7"></script>
@@ -385,6 +385,6 @@
     <script src="ai-context.js?v=manual-evidence-dates-v2"></script>
     <script type="module" src="ai-advisory.js?v=manual-evidence-dates-v2"></script>
     <script>document.getElementById("operation-suggestion").addEventListener("change",function(){if(!this.value)return;const [title,category]=this.value.split("|");document.getElementById("operation-input").value=title;const select=document.getElementById("operation-category");select.value=category;select.dispatchEvent(new Event("change"));});</script>
-    <script type="module" src="operations-hub.js?v=operation-family-counters-v2"></script>
+    <script type="module" src="operations-hub.js?v=todays-focus-label-v4"></script>
 </body>
 </html>
