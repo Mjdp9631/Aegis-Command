@@ -1000,6 +1000,8 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   .chart-axis-y,.chart-axis-x { fill:rgba(171,205,233,.64); font:700 7px/1 "Space Mono",ui-monospace,monospace; }
   .chart-crosshair { position:absolute; z-index:3; top:0; bottom:0; width:1px; opacity:0; pointer-events:none; background:linear-gradient(rgba(243,183,83,0),rgba(243,183,83,.95),rgba(243,183,83,0)); box-shadow:0 0 10px rgba(243,183,83,.55); transition:opacity .12s ease; }
   .chart-crosshair.visible { opacity:1; }
+  .chart-point { position:absolute; z-index:5; width:10px; height:10px; border:2px solid #f1bd6e; border-radius:50%; background:#07111d; box-shadow:0 0 0 2px rgba(91,183,250,.28),0 0 12px rgba(243,183,83,.72); opacity:0; pointer-events:none; transform:translate(-50%,-50%); transition:opacity .12s ease; }
+  .chart-point.visible { opacity:1; }
   .chart-tooltip { position:absolute; z-index:4; top:14px; opacity:0; pointer-events:none; min-width:120px; padding:7px 8px; border:1px solid rgba(243,183,83,.42); border-radius:3px; background:rgba(3,11,19,.92); transform:translateX(-2%); transition:opacity .12s ease; font-family:"Space Mono",ui-monospace,monospace; }
   .chart-tooltip.visible { opacity:1; }
   .chart-tooltip b { display:block; color:#64bbff; font-size:11px; }
