@@ -82,15 +82,15 @@ function characterFocus(metrics, recovery) {
 }
 
 const evolutionActions = [
-  { id: "reset", label: "Resetting in the lounge", sprite: 0, left: 31, bottom: 11, scale: 1.05 },
-  { id: "journal", label: "Writing the next plan", sprite: 1, left: 46, bottom: 13, scale: .92 },
-  { id: "study", label: "Studying in the library", sprite: 2, left: 76, bottom: 14, scale: .9 },
-  { id: "train", label: "Training on the floor", sprite: 3, left: 31, bottom: 10, scale: 1.13 },
-  { id: "charts", label: "Reviewing the charts", sprite: 4, left: 56, bottom: 10, scale: .98 },
-  { id: "pullups", label: "Building the body", sprite: 5, left: 88, bottom: 4, scale: 1.08 },
-  { id: "systems", label: "Building systems", sprite: 6, left: 70, bottom: 10, scale: .94 },
-  { id: "sentinel", label: "Running the command bay", sprite: 7, left: 52, bottom: 7, scale: 1.02 },
-  { id: "fridge", label: "Refueling at the fridge", sprite: 1, left: 13, bottom: 10, scale: .82 },
+  { id: "reset", label: "Resetting in the lounge", sprite: 0, left: 20, bottom: 4, scale: .72 },
+  { id: "journal", label: "Writing the next plan", sprite: 1, left: 58, bottom: 5, scale: .64 },
+  { id: "study", label: "Studying in the library", sprite: 2, left: 79, bottom: 5, scale: .62 },
+  { id: "train", label: "Training on the floor", sprite: 3, left: 52, bottom: 3, scale: .82 },
+  { id: "charts", label: "Reviewing the charts", sprite: 4, left: 59, bottom: 3, scale: .66 },
+  { id: "pullups", label: "Building the body", sprite: 5, left: 87, bottom: 3, scale: .76 },
+  { id: "systems", label: "Building systems", sprite: 6, left: 62, bottom: 4, scale: .64 },
+  { id: "sentinel", label: "Running the command bay", sprite: 7, left: 60, bottom: 3, scale: .7 },
+  { id: "fridge", label: "Refueling at the fridge", sprite: 0, left: 37, bottom: 4, scale: .61 },
 ];
 
 const evolutionStageConfig = [
@@ -105,10 +105,15 @@ const evolutionStageConfig = [
 ];
 
 function evolutionSpriteStyle(action) {
+  if (action.id === "fridge") return `--avatar-image:url('assets/generated/aegis-character-fridge.webp');--avatar-size:300% 100%;--sprite-x:0%;--sprite-y:0%;--avatar-left:${action.left}%;--avatar-bottom:${action.bottom}%;--avatar-scale:${action.scale};`;
   const column = action.sprite % 4;
   const row = Math.floor(action.sprite / 4);
   const x = ["0%", "33.333%", "66.667%", "100%"][column];
-  return `--sprite-x:${x};--sprite-y:${row ? "100%" : "0%"};--avatar-left:${action.left}%;--avatar-bottom:${action.bottom}%;--avatar-scale:${action.scale};`;
+  return `--avatar-image:url('assets/generated/aegis-character-habit-sprite.webp');--avatar-size:400% 200%;--sprite-x:${x};--sprite-y:${row ? "100%" : "0%"};--avatar-left:${action.left}%;--avatar-bottom:${action.bottom}%;--avatar-scale:${action.scale};`;
+}
+
+function evolutionWalkStyle(action, flip) {
+  return `--walker-left:${action.left}%;--walker-bottom:${action.bottom}%;--walker-flip:${flip};`;
 }
 
 function characterEvolution(levels) {
@@ -120,7 +125,7 @@ function characterEvolution(levels) {
   const strengths = [
     ["MIND", levels.mind], ["BODY", levels.body], ["TRADING", levels.trading], ["BUSINESS", levels.ccfx], ["DISCIPLINE", levels.discipline],
   ].sort((a, b) => b[1] - a[1]).slice(0, 3);
-  return `<section class="character-evolution panel" data-evolution-stage="${stageIndex}"><div class="character-evolution-heading"><div><p class="eyebrow amber">CHARACTER EVOLUTION / PASSIVE VISUAL</p><h3>Watch the environment catch up to the work.</h3><p>${escape(stage.description)} It is visual only: no buttons, no new workload, and no change to the Character System itself.</p></div><div class="character-evolution-readout"><span>CURRENT CHAPTER</span><strong>${stage.name}</strong><small>Average system level: ${averageLevel}</small></div></div><div class="evolution-room" data-evolution-room data-stage="${stageIndex}" data-routine="${escape(JSON.stringify(routine))}"><div class="evolution-ceiling" aria-hidden="true"></div><div class="evolution-window" aria-hidden="true"></div><div class="evolution-fridge" aria-hidden="true"></div><div class="evolution-library" aria-hidden="true"></div><div class="evolution-desk" aria-hidden="true"></div><div class="evolution-training-rig" aria-hidden="true"></div><div class="evolution-lounge" aria-hidden="true"></div><div class="evolution-floor-grid" aria-hidden="true"></div><div class="evolution-avatar" data-evolution-avatar style="${evolutionSpriteStyle(initial)}" aria-hidden="true"></div><div class="evolution-status"><span>ROUTINE IN PROGRESS</span><b data-evolution-activity>${escape(initial.label)}</b></div><div class="evolution-strengths">${strengths.map(([label, level]) => `<span>${label}<b>LV ${level}</b></span>`).join("")}</div></div></section>`;
+  return `<section class="character-evolution panel" data-evolution-stage="${stageIndex}"><div class="character-evolution-heading"><div><p class="eyebrow amber">CHARACTER EVOLUTION / PASSIVE VISUAL</p><h3>Watch the environment catch up to the work.</h3><p>${escape(stage.description)} It is visual only: no buttons, no new workload, and no change to the Character System itself.</p></div><div class="character-evolution-readout"><span>CURRENT CHAPTER</span><strong>${stage.name}</strong><small>Average system level: ${averageLevel}</small></div></div><div class="evolution-room" data-evolution-room data-stage="${stageIndex}" data-routine="${escape(JSON.stringify(routine))}"><div class="evolution-fridge-door" aria-hidden="true"></div><div class="evolution-walker" data-evolution-walker aria-hidden="true"></div><div class="evolution-avatar" data-evolution-avatar data-action="${initial.id}" style="${evolutionSpriteStyle(initial)}" aria-hidden="true"></div><div class="evolution-status"><span>ROUTINE IN PROGRESS</span><b data-evolution-activity>${escape(initial.label)}</b></div><div class="evolution-strengths">${strengths.map(([label, level]) => `<span>${label}<b>LV ${level}</b></span>`).join("")}</div></div></section>`;
 }
 
 function bindCharacterEvolution() {
@@ -129,24 +134,35 @@ function bindCharacterEvolution() {
   const room = document.querySelector("[data-evolution-room]");
   if (!room) return;
   const avatar = room.querySelector("[data-evolution-avatar]");
+  const walker = room.querySelector("[data-evolution-walker]");
   const activity = room.querySelector("[data-evolution-activity]");
   let routine = [];
   try { routine = JSON.parse(room.dataset.routine || "[]"); } catch { return; }
-  if (!avatar || !activity || routine.length < 2) return;
-  const activate = (action, initial = false) => {
+  if (!avatar || !walker || !activity || routine.length < 2) return;
+  const settle = (action) => {
     if (evolutionMoveTimer) window.clearTimeout(evolutionMoveTimer);
-    avatar.dataset.moving = initial ? "false" : "true";
     avatar.style.cssText = evolutionSpriteStyle(action);
+    avatar.dataset.action = action.id;
+    avatar.hidden = false;
+    walker.dataset.moving = "false";
     activity.textContent = action.label;
     room.dataset.activity = action.id;
-    if (!initial) evolutionMoveTimer = window.setTimeout(() => { avatar.dataset.moving = "false"; }, 1600);
   };
   let position = 0;
-  activate(routine[position], true);
+  settle(routine[position]);
   evolutionRoutineTimer = window.setInterval(() => {
+    const current = routine[position];
     position = (position + 1) % routine.length;
-    activate(routine[position]);
-  }, 6500);
+    const next = routine[position];
+    const flip = next.left < current.left ? 1 : -1;
+    avatar.hidden = true;
+    walker.dataset.moving = "true";
+    walker.style.cssText = evolutionWalkStyle(current, flip);
+    room.dataset.activity = "walking";
+    activity.textContent = `Walking to ${next.id === "fridge" ? "the fridge" : next.label.replace(/^\w+ /, "")}`;
+    requestAnimationFrame(() => { walker.style.cssText = evolutionWalkStyle(next, flip); });
+    evolutionMoveTimer = window.setTimeout(() => settle(next), 2400);
+  }, 8200);
 }
 
 function bindCharacterFocusHover() {
