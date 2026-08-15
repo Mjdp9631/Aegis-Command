@@ -335,16 +335,39 @@ function capabilityBenchmarkFields(template = null) {
   return `<fieldset class="capability-benchmark-fields"><legend>Campaign benchmarks</legend><p>Define what proves each level. Weight XP by difficulty, risk, credential, and real-world usefulness; earned tiers stack.</p>${levels.map(([level, requirement, xp]) => `<div class="capability-benchmark-field"><label>${level} — proof of competence<textarea name="benchmark_${level.toLowerCase()}" required placeholder="Lessons, certificate, knowledge, or evidence required">${escapeHtml(requirement)}</textarea></label><label>${level} XP<input name="benchmark_${level.toLowerCase()}_xp" type="number" min="0" max="500" required value="${Number(xp)}" /></label></div>`).join("")}</fieldset>`;
 }
 
+function suggestedCapabilityBenchmarks(title, skillType) {
+  const name = String(title || "this skill").trim();
+  const difficult = /(first aid|cpr|medical|cyber|security|crisis|combat|emergency|legal|financial)/i.test(name);
+  const longHorizon = /(language|programming|coding|music|instrument|engineering|mathematics)/i.test(name);
+  const weights = difficult ? [12, 30, 65, 115] : longHorizon ? [6, 22, 55, 120] : skillType === "Adversarial" ? [10, 28, 60, 105] : [8, 20, 45, 85];
+  return [
+    [`Complete a structured introductory course or guide for ${name}, then demonstrate the core workflow without notes.`, weights[0]],
+    [`Finish a deliberate practice block for ${name} with at least ten documented applications and a review of recurring errors.`, weights[1]],
+    [`Complete intermediate training, a recognized assessment, or a verified real-world project that proves reliable ${name} performance.`, weights[2]],
+    [`Earn an advanced credential where one exists, or deliver consistent high-stakes ${name} results that survive an independent review.`, weights[3]],
+  ];
+}
+
 function openCapabilityDialog(mode, skillType = "Practical", skill = null, template = null) {
   const dialog = document.querySelector("#capability-dialog");
   if (!dialog) return;
   const close = `<button class="dialog-close" type="button" data-capability-close>×</button>`;
   if (mode === "add") {
-    dialog.innerHTML = `<form class="dialog-card mastery-form capability-campaign-form" data-capability-mode="add"><div>${close}</div><p class="eyebrow blue-text">${template ? "AI-GUIDED" : "CUSTOM"} CAPABILITY CAMPAIGN</p><h2>${template ? "Review the recommended path." : "Define the path to mastery."}</h2><p class="body-copy">What moves this skill from novice to competent, proficient, then master? Use meaningful proof—not just time spent.</p><label>Track <select name="skill_type"><option ${skillType === "Practical" ? "selected" : ""}>Practical</option><option ${skillType === "Adversarial" ? "selected" : ""}>Adversarial</option></select></label><label>Skill <input name="title" required placeholder="e.g. Learning a language" value="${escapeHtml(template?.title || "")}" /></label><label>Definition <textarea name="description" required placeholder="What does useful competence look like?">${escapeHtml(template?.description || "")}</textarea></label>${capabilityBenchmarkFields(template)}<button class="primary" type="submit">Launch capability campaign</button></form>`;
+    dialog.innerHTML = `<form class="dialog-card mastery-form capability-campaign-form" data-capability-mode="add"><div>${close}</div><p class="eyebrow blue-text">${template ? "AI-GUIDED" : "CUSTOM"} CAPABILITY CAMPAIGN</p><h2>${template ? "Review the recommended path." : "Define the path to mastery."}</h2><p class="body-copy">What moves this skill from novice to competent, proficient, then master? Use meaningful proof—not just time spent.</p><label>Track <select name="skill_type"><option ${skillType === "Practical" ? "selected" : ""}>Practical</option><option ${skillType === "Adversarial" ? "selected" : ""}>Adversarial</option></select></label><label>Skill <input name="title" required placeholder="e.g. Learning a language" value="${escapeHtml(template?.title || "")}" /></label><button class="ghost compact capability-suggest" type="button" data-capability-suggest>✦ Suggest benchmarks</button><label>Definition <textarea name="description" required placeholder="What does useful competence look like?">${escapeHtml(template?.description || "")}</textarea></label>${capabilityBenchmarkFields(template)}<button class="primary" type="submit">Launch capability campaign</button></form>`;
   } else {
     dialog.innerHTML = `<form class="dialog-card mastery-form" data-capability-mode="log" data-capability-id="${escapeHtml(skill.id)}"><div>${close}</div><p class="eyebrow ${skill.skill_type === "Practical" ? "blue-text" : "amber"}">${escapeHtml(skill.skill_type)} SKILL</p><h2>${escapeHtml(skill.title)}</h2><p class="body-copy">${escapeHtml(skill.description || "Record the conditions and result, not just the intention.")}</p><div class="two-col"><label>Practice date <input name="practiced_on" type="date" value="${easternDateKey()}" required /></label><label>Minutes <input name="duration_minutes" type="number" min="1" max="1440" /></label></div><label>Pressure <select name="pressure_level"><option>Low</option><option>Moderate</option><option>High</option></select></label><label>Result / evidence <textarea name="result" required placeholder="What did you practice, what happened, and what needs work next?"></textarea></label><label>Status <select name="status"><option>Active</option><option>Complete</option><option>Paused</option></select></label><button class="primary" type="submit">Save practice</button></form>`;
   }
   dialog.querySelector("[data-capability-close]").addEventListener("click", () => dialog.close());
+  dialog.querySelector("[data-capability-suggest]")?.addEventListener("click", () => {
+    const form = dialog.querySelector("form");
+    const title = String(form?.elements.title?.value || "").trim();
+    if (!title) return alert("Name the skill first, then I can suggest its benchmark path.");
+    const suggestions = suggestedCapabilityBenchmarks(title, String(form.elements.skill_type.value || skillType));
+    capabilityLevels.forEach((level, index) => {
+      form.elements[`benchmark_${level.toLowerCase()}`].value = suggestions[index][0];
+      form.elements[`benchmark_${level.toLowerCase()}_xp`].value = suggestions[index][1];
+    });
+  });
   dialog.querySelector("form").addEventListener("submit", saveCapability);
   dialog.showModal();
 }
