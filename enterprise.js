@@ -83,6 +83,10 @@ async function load() {
     projectResult = await supabase.from("business_projects").select("*").order("created_at", { ascending: false });
     if (projectResult.error) projectResult = await supabase.from("business_projects").select("*");
   }
+  if (contentResult.error) {
+    contentResult = await supabase.from("content_items").select("*").order("created_at", { ascending: false });
+    if (contentResult.error) contentResult = await supabase.from("content_items").select("*");
+  }
   if (projectResult.error || contentResult.error) return;
   projectSteps = stepResult.error ? [] : stepResult.data || [];
   const storedProjects = (projectResult.data || []).map((project) => {
