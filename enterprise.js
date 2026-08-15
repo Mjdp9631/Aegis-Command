@@ -7,6 +7,10 @@ const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => 
 const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 const PROJECT_XP = Object.freeze({ Minor: 10, Standard: 25, Major: 50, Flagship: 100 });
 let projects = [], projectSteps = [], content = [], financialFoundation = null;
+let attemptedAegisRecoveryFor = null;
+
+const isLegacyAegisTitle = (title) => ["created aegis", "create aegis"].includes(String(title || "").trim().toLowerCase());
+const projectPriority = (priority) => ({ "do now": "Do now", delegate: "Delegate", eliminate: "Eliminate" }[String(priority || "").trim().toLowerCase()] || "Schedule");
 
 const projectReward = (project) => {
   if (project?.project_mode === "Ongoing system") return 0;
@@ -48,11 +52,12 @@ async function load() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [projectResult, stepResult, contentResult, foundationResult] = await Promise.all([
+  const [projectResult, stepResult, contentResult, foundationResult, missionResult] = await Promise.all([
     supabase.from("business_projects").select("*").order("logged_on", { ascending: false }),
     supabase.from("business_project_steps").select("*").order("project_id").order("position"),
     supabase.from("content_items").select("*").order("logged_on", { ascending: false }),
     supabase.from("financial_foundations").select("*").maybeSingle(),
+    supabase.from("missions").select("id,title,priority,created_at,completed_at").ilike("title", "%aegis%"),
   ]);
   if (projectResult.error || contentResult.error) return;
   projectSteps = stepResult.error ? [] : stepResult.data || [];
@@ -65,6 +70,30 @@ async function load() {
   });
   content = contentResult.data || [];
   financialFoundation = foundationResult.error ? null : foundationResult.data || null;
+  const aegisMission = (missionResult.data || []).find((mission) => isLegacyAegisTitle(mission.title));
+  const hasAegisProject = projects.some((project) => isLegacyAegisTitle(project.title));
+  if (aegisMission && !hasAegisProject && attemptedAegisRecoveryFor !== aegisMission.id) {
+    attemptedAegisRecoveryFor = aegisMission.id;
+    const { error: recoveryError } = await supabase.from("business_projects").insert({
+      user_id: sessionData.session.user.id,
+      title: aegisMission.title,
+      status: "Complete",
+      priority: projectPriority(aegisMission.priority),
+      project_type: "Aegis system",
+      progress: 100,
+      outcome: "Aegis Command v1 is deployed and usable as a live personal command system.",
+      next_action: "Operate and improve Aegis through separately scoped releases.",
+      logged_on: easternDateKey(new Date(aegisMission.completed_at || aegisMission.created_at || Date.now())),
+      source_mission_id: aegisMission.id,
+      project_mode: "Milestone",
+      effort_band: "Flagship",
+      estimated_hours: 120,
+      completion_evidence: "Aegis Command v1 was built, deployed, and made usable as a live command system.",
+      xp_reward: 100,
+    });
+    if (!recoveryError) return load();
+    console.warn("Could not recover legacy Aegis project", recoveryError.message);
+  }
   render();
 }
 
