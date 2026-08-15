@@ -113,20 +113,25 @@ function formatChartValue(value, unit, withSign = true) {
   return unit === "$" ? `${sign}$${number.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : `${sign}${number.toFixed(2)}${unit}`;
 }
 
-function chartSvg(entries, unit, total) {
-  if (!entries.length) return '<div class="chart-empty">LOG CLOSED TRADE DATA TO ACTIVATE THIS DISPLAY</div>';
+function chartGeometry(entries) {
   const width = 620, height = 255, padLeft = 52, padRight = 16, padTop = 18, padBottom = 28;
   const values = [0, ...entries.map((entry) => entry.total)];
   const min = Math.min(...values), max = Math.max(...values);
   const span = max - min || 1;
   const xAt = (index) => padLeft + (index / Math.max(1, entries.length - 1)) * (width - padLeft - padRight);
   const yAt = (value) => height - padBottom - ((value - min) / span) * (height - padTop - padBottom);
+  return { width, height, padLeft, padRight, padTop, padBottom, min, max, span, xAt, yAt };
+}
+
+function chartSvg(entries, unit, total) {
+  if (!entries.length) return '<div class="chart-empty">LOG CLOSED TRADE DATA TO ACTIVATE THIS DISPLAY</div>';
+  const { width, height, padLeft, padRight, padTop, padBottom, min, span, xAt, yAt } = chartGeometry(entries);
   const points = entries.map((entry, index) => `${xAt(index)},${yAt(entry.total)}`).join(" ");
   const area = `${padLeft},${height - padBottom} ${points} ${width - padRight},${height - padBottom}`;
   const horizontal = Array.from({ length: 5 }, (_, index) => { const value=min+(span*(4-index)/4);const y=yAt(value);return `<path d="M ${padLeft} ${y} H ${width-padRight}"/><text class="chart-axis-y" x="4" y="${y+3}">${formatChartValue(value, unit, false)}</text>`; }).join("");
   const vertical = Array.from({ length: 6 }, (_, index) => { const item=entries[Math.round((entries.length-1)*(index/5))];const x=padLeft+((width-padLeft-padRight)*(index/5));const label=item?.date?.toLocaleDateString(undefined,{month:"short",day:"numeric"})||"";return `<path d="M ${x} ${padTop} V ${height-padBottom}"/><text class="chart-axis-x" x="${x}" y="${height-7}" text-anchor="middle">${label}</text>`; }).join("");
   const formattedTotal = formatChartValue(total, unit);
-  return `<div class="chart-summary-readout"><span>CUMULATIVE PNL</span><small>FROM LOGGED TRADES</small><b class="${total < 0 ? "negative" : ""}">${formattedTotal}</b></div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><g class="chart-grid">${horizontal}${vertical}</g><defs><linearGradient id="pnl-fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#58b4ff" stop-opacity=".34"/><stop offset="1" stop-color="#58b4ff" stop-opacity="0"/></linearGradient></defs><polygon points="${area}" fill="url(#pnl-fill)"/><polyline points="${points}" class="chart-line"/></svg><div class="chart-crosshair" aria-hidden="true"></div><div class="chart-tooltip" aria-hidden="true"></div>`;
+  return `<div class="chart-summary-readout"><span>CUMULATIVE PNL</span><small>FROM LOGGED TRADES</small><b class="${total < 0 ? "negative" : ""}">${formattedTotal}</b></div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><g class="chart-grid">${horizontal}${vertical}</g><defs><linearGradient id="pnl-fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#58b4ff" stop-opacity=".34"/><stop offset="1" stop-color="#58b4ff" stop-opacity="0"/></linearGradient></defs><polygon points="${area}" fill="url(#pnl-fill)"/><polyline points="${points}" class="chart-line"/></svg><div class="chart-crosshair" aria-hidden="true"></div><div class="chart-point" aria-hidden="true"></div><div class="chart-tooltip" aria-hidden="true"></div>`;
 }
 
 function attachCrosshair(chart) {
@@ -135,18 +140,23 @@ function attachCrosshair(chart) {
   host.onpointermove = (event) => {
     if (!chart?.entries?.length) return;
     const rect = host.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const geometry = chartGeometry(chart.entries);
+    const pointerX = ((event.clientX - rect.left) / rect.width) * geometry.width;
+    const ratio = Math.max(0, Math.min(1, (pointerX - geometry.padLeft) / (geometry.width - geometry.padLeft - geometry.padRight)));
     const index = Math.round(ratio * (chart.entries.length - 1));
     const entry = chart.entries[index];
-    const x = (index / Math.max(1, chart.entries.length - 1)) * 100;
+    const x = (geometry.xAt(index) / geometry.width) * 100;
+    const y = (geometry.yAt(entry.total) / geometry.height) * 100;
     const crosshair = host.querySelector(".chart-crosshair");
+    const point = host.querySelector(".chart-point");
     const tooltip = host.querySelector(".chart-tooltip");
-    if (!crosshair || !tooltip) return;
+    if (!crosshair || !point || !tooltip) return;
     crosshair.style.left = `${x}%`; crosshair.classList.add("visible");
+    point.style.left = `${x}%`; point.style.top = `${y}%`; point.classList.add("visible");
     tooltip.innerHTML = `<b>${entry.total >= 0 ? "+" : ""}${entry.total.toFixed(2)}${chart.unit}</b><span>${entry.date.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} · ${entry.delta >= 0 ? "+" : ""}${entry.delta.toFixed(2)}${chart.unit}</span>`;
     tooltip.style.left = `${Math.min(78, Math.max(3, x))}%`; tooltip.classList.add("visible");
   };
-  host.onpointerleave = () => { host.querySelector(".chart-crosshair")?.classList.remove("visible"); host.querySelector(".chart-tooltip")?.classList.remove("visible"); };
+  host.onpointerleave = () => { host.querySelector(".chart-crosshair")?.classList.remove("visible"); host.querySelector(".chart-point")?.classList.remove("visible"); host.querySelector(".chart-tooltip")?.classList.remove("visible"); };
 }
 
 function render() {
