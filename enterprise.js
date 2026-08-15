@@ -51,8 +51,11 @@ async function load() {
     supabase.from("content_items").select("*").order("logged_on", { ascending: false }),
     supabase.from("financial_foundations").select("*").maybeSingle(),
   ]);
-  if (projectResult.error || stepResult.error || contentResult.error) return;
-  projectSteps = stepResult.data || [];
+  if (projectResult.error || contentResult.error) return;
+  // A failed step-list query must never blank the entire Special Projects
+  // surface. Existing projects remain useful and visible while the optional
+  // step table is unavailable or its schema cache catches up.
+  projectSteps = stepResult.error ? [] : stepResult.data || [];
   projects = (projectResult.data || []).map((project) => {
     const steps = projectSteps.filter((step) => String(step.project_id) === String(project.id));
     if (!steps.length) return project;
