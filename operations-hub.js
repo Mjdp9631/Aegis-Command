@@ -1886,6 +1886,7 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
   if (operation._occurrence) saveCachedOccurrences();
   if (currentUser) {
     await loadMissions();
+    await loadOperationMissionLinks();
     if (next === "Complete" && !wasComplete) await repairMissionProgressFromCompletion(operation);
     operations = await seedIfEmpty();
     await loadOperationMissionLinks();
@@ -1971,6 +1972,7 @@ async function cycleStatus(key, forcedStatus = null) {
   // created duplicate chapter/PT progress after a refresh.
   if (currentUser) {
     await loadMissions();
+    await loadOperationMissionLinks();
     if (next === "Complete" && !wasComplete) await repairMissionProgressFromCompletion(operation);
     operations = await seedIfEmpty();
     await loadOperationMissionLinks();
