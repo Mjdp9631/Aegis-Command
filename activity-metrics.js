@@ -1,7 +1,6 @@
 export const MIND_CATEGORIES = [
   "Book",
   "Quote",
-  "Trading Note",
   "Psychology",
   "Space",
   "Philosophy",
@@ -18,7 +17,6 @@ export const BODY_CATEGORIES = ["Health", "Gym", "Mobility", "Performance", "Spo
 export const MIND_AWARDS = {
   Book: 50,
   Quote: 5,
-  "Trading Note": 20,
   Psychology: 15,
   Space: 10,
   Philosophy: 15,
@@ -121,7 +119,9 @@ function closedTrade(trade) {
     && trade.pnl_percent != null;
 }
 
-export function tradingXp(trades = [], startedAt) {
+const TRADING_NOTE_AWARD = 5;
+
+export function tradingXp(trades = [], tradingNotes = [], startedAt) {
   const totals = new Map();
   trades.filter((trade) => isOnOrAfter(trade.traded_at || trade.created_at, startedAt) && closedTrade(trade)).forEach((trade) => {
     const key = monthKey(trade.traded_at || trade.created_at);
@@ -132,6 +132,13 @@ export function tradingXp(trades = [], startedAt) {
     const change = pnl > 0 ? Math.min(55, Math.round(pnl * 6)) : Math.max(-12, Math.round(pnl * 2));
     ledger.push({ label: month, detail: `${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}% PnL`, change });
   });
+  tradingNotes
+    .filter((entry) => entry.category === "Trading Note" && isOnOrAfter(evidenceDay(entry), startedAt))
+    .forEach((entry) => ledger.push({
+      label: evidenceDay(entry),
+      detail: `Trading Note: ${entry.title || "entry"} · process evidence XP`,
+      change: TRADING_NOTE_AWARD,
+    }));
   return { xp: Math.max(0, ledger.reduce((total, entry) => total + entry.change, 0)), ledger: ledger.sort((a, b) => b.label.localeCompare(a.label)) };
 }
 
@@ -236,7 +243,7 @@ export function characterMetrics(data = {}, startedAt) {
   const empty = { xp: 0, ledger: [] };
   if (!startedAt) return { discipline: empty, trading: empty, ccfx: empty, mastery: { mind: empty, body: empty }, totalXp: 0 };
   const discipline = disciplineXp(data.operations, data.occurrences, startedAt);
-  const trading = tradingXp(data.trades, startedAt);
+  const trading = tradingXp(data.trades, data.masteryEntries, startedAt);
   const ccfx = enterpriseXp(data.projects, data.contentItems, data.financialFoundation, startedAt);
   const mastery = masteryXp(data.masteryEntries, data.masteryChallenges, data.trainingSessions, data.capabilityLogs, startedAt);
   const totalXp = discipline.xp + trading.xp + ccfx.xp + mastery.mind.xp + mastery.body.xp;
