@@ -1729,10 +1729,26 @@ async function advanceLinkedMissionsFromCompletion(operation, countsBeforeComple
   }
   if (!missionIds.length) missionIds = operationMissionIds(linkedOperation);
   const uniqueMissionIds = [...new Set(missionIds.map(String))];
+  const ledgerIdentity = {
+    user_id: currentUser.id,
+    operation_id: durableOperationId,
+    occurrence_id: operation._occurrence?.id || null,
+  };
   let updated = false;
   for (const missionId of uniqueMissionIds) {
     const mission = missions.find((item) => String(item.id) === missionId);
     if (!mission || String(mission.completion_type || "").toLowerCase() !== "units") continue;
+    const { data: ledgerEntry, error: ledgerError } = await client
+      .from("operation_mission_completion_ledger")
+      .insert({ ...ledgerIdentity, mission_id: mission.id })
+      .select("id")
+      .maybeSingle();
+    // A duplicate means this exact completion has already been credited. A
+    // missing ledger table means migration 082 has not been applied yet.
+    if (ledgerError || !ledgerEntry) {
+      if (ledgerError && !/duplicate|unique/i.test(String(ledgerError.message || ""))) console.warn("Mission completion ledger unavailable", ledgerError.message);
+      continue;
+    }
     const target = Math.max(1, Number(mission.target_count || 1));
     const current = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
     const previous = Number(countsBeforeCompletion.get(String(mission.id)));
@@ -1751,6 +1767,44 @@ async function advanceLinkedMissionsFromCompletion(operation, countsBeforeComple
       if (index >= 0) missions[index] = data;
       updated = true;
     }
+  }
+  if (updated) window.dispatchEvent(new CustomEvent("aegis:missions-refresh", { detail: { source: "operations-hub" } }));
+}
+
+async function reverseLinkedMissionCompletion(operation, countsBeforeChange = new Map()) {
+  if (!client || !currentUser) return;
+  const durableOperationId = operation._series?.id || operation._occurrence?.operation_id || operation.id;
+  if (!durableOperationId) return;
+  let ledgerQuery = client.from("operation_mission_completion_ledger")
+    .select("id,mission_id")
+    .eq("user_id", currentUser.id)
+    .eq("operation_id", durableOperationId);
+  if (operation._occurrence?.id) ledgerQuery = ledgerQuery.eq("occurrence_id", operation._occurrence.id);
+  else ledgerQuery = ledgerQuery.is("occurrence_id", null);
+  const { data: ledgerEntries, error: ledgerError } = await ledgerQuery;
+  if (ledgerError || !ledgerEntries?.length) return;
+  let updated = false;
+  for (const entry of ledgerEntries) {
+    const mission = missions.find((item) => String(item.id) === String(entry.mission_id));
+    if (!mission || String(mission.completion_type || "").toLowerCase() !== "units") continue;
+    const current = Math.max(0, Number(mission.completed_count || 0));
+    const previous = Number(countsBeforeChange.get(String(mission.id)));
+    // A database trigger may already have reversed this exact status change.
+    if (!(Number.isFinite(previous) && current < previous) && current > 0) {
+      const next = current - 1;
+      const { data, error } = await client.from("missions")
+        .update({ completed_count: next, completed: false, progress: Math.round((next / Math.max(1, Number(mission.target_count || 1))) * 100) })
+        .eq("id", mission.id)
+        .eq("user_id", currentUser.id)
+        .select()
+        .maybeSingle();
+      if (!error && data) {
+        const index = missions.findIndex((item) => String(item.id) === String(data.id));
+        if (index >= 0) missions[index] = data;
+        updated = true;
+      }
+    }
+    await client.from("operation_mission_completion_ledger").delete().eq("id", entry.id).eq("user_id", currentUser.id);
   }
   if (updated) window.dispatchEvent(new CustomEvent("aegis:missions-refresh", { detail: { source: "operations-hub" } }));
 }
@@ -1786,7 +1840,7 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
   const currentStatus = displayStatus(operation, selectedDay || operatingDayKey());
   const wasComplete = normalizedStatus(operation) === "Complete" || currentStatus === "Complete";
   const nextCompleted = next === "Complete";
-  const missionCountsBeforeCompletion = nextCompleted && !wasComplete
+  const missionCountsBeforeChange = (nextCompleted && !wasComplete) || (!nextCompleted && wasComplete)
     ? new Map(missions.map((mission) => [String(mission.id), Number(mission.completed_count || 0)]))
     : new Map();
   const series = operation._series || operation;
@@ -1857,7 +1911,8 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
   if (currentUser) {
     await loadMissions();
     await loadOperationMissionLinks();
-    if (next === "Complete" && !wasComplete) await advanceLinkedMissionsFromCompletion(operation, missionCountsBeforeCompletion);
+    if (next === "Complete" && !wasComplete) await advanceLinkedMissionsFromCompletion(operation, missionCountsBeforeChange);
+    if (next !== "Complete" && wasComplete) await reverseLinkedMissionCompletion(operation, missionCountsBeforeChange);
     operations = await seedIfEmpty();
     await loadOperationMissionLinks();
     await loadOccurrences();
@@ -1889,7 +1944,7 @@ async function cycleStatus(key, forcedStatus = null) {
   const index = cycle.indexOf(currentStatus);
   const next = forcedStatus || cycle[(index + 1) % cycle.length];
   const wasComplete = currentStatus === "Complete";
-  const missionCountsBeforeCompletion = next === "Complete" && !wasComplete
+  const missionCountsBeforeChange = (next === "Complete" && !wasComplete) || (next !== "Complete" && wasComplete)
     ? new Map(missions.map((mission) => [String(mission.id), Number(mission.completed_count || 0)]))
     : new Map();
   Object.assign(operation, { status: next, completed: next === "Complete" });
@@ -1946,7 +2001,8 @@ async function cycleStatus(key, forcedStatus = null) {
   if (currentUser) {
     await loadMissions();
     await loadOperationMissionLinks();
-    if (next === "Complete" && !wasComplete) await advanceLinkedMissionsFromCompletion(operation, missionCountsBeforeCompletion);
+    if (next === "Complete" && !wasComplete) await advanceLinkedMissionsFromCompletion(operation, missionCountsBeforeChange);
+    if (next !== "Complete" && wasComplete) await reverseLinkedMissionCompletion(operation, missionCountsBeforeChange);
     operations = await seedIfEmpty();
     await loadOperationMissionLinks();
     await loadOccurrences();
