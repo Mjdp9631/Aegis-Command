@@ -360,10 +360,27 @@ let cursor = newYorkTodayDate();
 let selectedDay = operatingDayKey();
 
 const occurrenceCacheKey = () => `aegis-operation-occurrences:${currentUser?.id || "anonymous"}`;
+const occurrenceWindowStart = () => {
+  const start = dateForKey(operatingDayKey());
+  start.setUTCDate(start.getUTCDate() - 30);
+  return dayKey(start);
+};
+const occurrenceWindowEnd = () => {
+  const end = dateForKey(operatingDayKey());
+  end.setUTCDate(end.getUTCDate() + 60);
+  return dayKey(end);
+};
 const cachedOccurrences = () => {
   try {
     const stored = JSON.parse(localStorage.getItem(occurrenceCacheKey()) || "[]");
-    return Array.isArray(stored) ? stored : [];
+    const start = occurrenceWindowStart();
+    const end = occurrenceWindowEnd();
+    return Array.isArray(stored)
+      ? stored.filter((row) => {
+        const date = dateOnly(row?.occurrence_date);
+        return date >= start && date <= end;
+      })
+      : [];
   } catch {
     return [];
   }
@@ -381,12 +398,7 @@ function occurrenceIdentity(row) {
 function cachedOccurrenceIsCurrent(row) {
   const key = dateOnly(row?.occurrence_date);
   if (!key) return false;
-  const series = operations.find((operation) => String(operation.id) === String(row.operation_id));
-  // Occurrences are historical calendar records as well as live queue rows.
-  // Keep prior-day entries when a refresh has to use the local cache.
-  if (!series) return true;
-  const end = dateOnly(series.scheduled_end_date);
-  return !end || key <= end;
+  return key >= occurrenceWindowStart() && key <= occurrenceWindowEnd();
 }
 
 function recurringDateKeys(operation, maxDays = 370) {
@@ -534,7 +546,11 @@ async function loadOccurrences() {
     operationOccurrences = cachedOccurrences();
     return;
   }
-  const { data, error } = await client.from("operation_occurrences").select("*").eq("user_id", currentUser.id);
+  const { data, error } = await client.from("operation_occurrences")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .gte("occurrence_date", occurrenceWindowStart())
+    .lte("occurrence_date", occurrenceWindowEnd());
   if (error) {
     // Migration 044 may not have been run yet. Keep the legacy view usable and
     // avoid replacing valid operations with an empty queue.
@@ -2582,6 +2598,7 @@ function wireCalendarPanels() {
 let bootInFlight = false;
 let hubStarted = false;
 let maintenanceScheduled = false;
+let hydrationScheduled = false;
 
 function scheduleOperationMaintenance() {
   if (maintenanceScheduled || !client || !currentUser) return;
@@ -2612,43 +2629,67 @@ function scheduleOperationMaintenance() {
   }
 }
 
+function scheduleOperationHydration() {
+  if (hydrationScheduled || !client || !currentUser) return;
+  hydrationScheduled = true;
+  const run = async () => {
+    try {
+      // These calls keep the cloud state authoritative, but none is required
+      // to show the already-cached queue. Keeping them off the login path
+      // prevents a large operation history from monopolizing the main thread.
+      await loadBedtimeRecords();
+      await loadMissions();
+      await loadCurrentBook();
+      operations = await seedIfEmpty();
+      await loadOperationMissionLinks();
+      await syncDailyReadingOperation();
+      await loadOccurrences();
+      subscribeToOperationSync();
+      saveCachedOperations();
+      operationsReady = true;
+      announceOperationsLoaded();
+      renderQueue();
+      renderCalendar();
+      scheduleOperationMaintenance();
+    } catch (error) {
+      console.warn("Operations hydration recovered from a load error", error);
+    } finally {
+      hydrationScheduled = false;
+    }
+  };
+  // Always yield a frame after sign-in before any cloud history is read.
+  window.setTimeout(() => { void run(); }, 0);
+}
+
 async function boot() {
   if (bootInFlight) return;
   bootInFlight = true;
   operationsReady = false;
   try {
     ensurePermanentMissionCalendar();
-  if (client) {
+    if (client) {
       const { data } = await client.auth.getSession();
       currentUser = data?.session?.user || null;
     }
-    await loadBedtimeRecords();
-  // A queue must never disappear merely because an auth refresh is still in
-  // flight. Cloud records replace this small local safety feed as soon as the
-  // session is available.
-  const local = cachedOperations();
-  if (currentUser) {
-    await loadMissions();
-    await loadCurrentBook();
-  }
-  if (currentUser) {
-    operations = await seedIfEmpty();
-    await loadOperationMissionLinks();
-    await syncDailyReadingOperation();
-    await loadOccurrences();
-    subscribeToOperationSync();
-  } else {
-    operations = await ensureTodayOperations(local.length ? local : starterOperations());
-    operationOccurrences = cachedOccurrences();
-  }
-  if (!operations.length) operations = local.length ? local : starterOperations();
+    // A queue must never disappear merely because a cloud refresh is still in
+    // flight. Show this small local safety feed first, then hydrate in the
+    // background without locking input immediately after login.
+    const local = cachedOperations();
+    if (currentUser) {
+      if (!operations.length) operations = local.length ? local : starterOperations();
+      if (!operationOccurrences.length) operationOccurrences = cachedOccurrences();
+    } else {
+      operations = await ensureTodayOperations(local.length ? local : starterOperations());
+      operationOccurrences = cachedOccurrences();
+    }
+    if (!operations.length) operations = local.length ? local : starterOperations();
     saveCachedOperations();
     operationsReady = true;
     announceOperationsLoaded();
     renderQueue();
     renderCalendar();
     window.dispatchEvent(new CustomEvent("aegis:operations-ready"));
-    scheduleOperationMaintenance();
+    if (currentUser) scheduleOperationHydration();
   } catch (error) {
     console.warn("Operations hub recovered from a load error", error);
     operations = cachedOperations();

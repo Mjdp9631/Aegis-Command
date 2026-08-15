@@ -37,11 +37,7 @@ function syncGate(session) {
   const authorizedSession = session && manualAccessGranted ? session : null;
   window.AEGIS_AUTH_RESOLVED = true;
   window.AEGIS_AUTH_SESSION = authorizedSession;
-  // Keep the gate in place while the private dashboard prepares its first
-  // useful frame. Removing it immediately made the login feel like a browser
-  // freeze even though the same startup work was already underway.
-  document.body.classList.add("requires-auth");
-  if (authorizedSession) message("#gate-message", "Opening command center…");
+  document.body.classList.toggle("requires-auth", !authorizedSession);
   window.dispatchEvent(new CustomEvent("aegis:auth-ready", { detail: { session: authorizedSession } }));
 }
 
@@ -138,9 +134,6 @@ document.addEventListener("click", async (event) => {
 window.AEGIS_AUTH_RESOLVED = false;
 window.AEGIS_AUTH_SESSION = null;
 ensureGate();
-window.addEventListener("aegis:operations-ready", () => {
-  if (window.AEGIS_AUTH_SESSION) document.body.classList.remove("requires-auth");
-});
 if (supabase) {
   // A saved browser session must never bypass the command-center lock screen.
   // Clear this device's stale token and wait for a deliberate password sign-in.
