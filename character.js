@@ -9,8 +9,6 @@ const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => 
 let xpCampaign = null;
 let xpCampaignError = null;
 let directorReviews = [];
-let evolutionRoutineTimer = null;
-let evolutionMoveTimer = null;
 const quarterKey = () => `${new Date().getFullYear()}-Q${Math.floor(new Date().getMonth() / 3) + 1}`;
 
 function missionProgress(mission) {
@@ -81,6 +79,7 @@ function characterFocus(metrics, recovery) {
   return `<section class="character-focus panel"><div class="character-focus-heading"><p class="eyebrow blue-text">CHARACTER SYSTEMS / LIVE PROFILE</p><h3>The whole system at a glance.</h3><p>Hover or focus an axis to isolate that level. Each marker reflects evidence earned in its system.</p></div><div class="character-focus-layout"><div class="character-hexagon-wrap"><div class="character-hexagon"><svg viewBox="0 0 100 100" role="img" aria-label="Character level radar"><defs><radialGradient id="character-radar-level-fill" cx="50%" cy="50%" r="72%"><stop offset="0%" stop-color="#b9575b" stop-opacity=".84"></stop><stop offset="55%" stop-color="#a6aa72" stop-opacity=".7"></stop><stop offset="100%" stop-color="#55c794" stop-opacity=".66"></stop></radialGradient></defs><polygon class="character-radar-grid" points="50,7 87,28 87,72 50,93 13,72 13,28"></polygon><polygon class="character-radar-grid inner" points="50,22 74,36 74,64 50,78 26,64 26,36"></polygon><path class="character-radar-axis" d="M16 50H84M50 7V93M16 28L84 72M84 28L16 72"></path><path class="character-radar-brackets" d="M43 9h-5M38 9v5M57 9h5M62 9v5M88 40v-5h-5M88 60v5h-5M57 91h5v-5M43 91h-5v-5M12 60v5h5M12 40v-5h5"></path><polygon class="character-radar-data" points="${points}"></polygon>${axisMarkup}<circle class="character-radar-core-ring" cx="50" cy="50" r="5.5"></circle><circle class="character-radar-core" cx="50" cy="50" r="1.8"></circle></svg></div><div class="character-hexagon-readout"><span>CHARACTER LEVEL</span><strong>LV ${level.level}</strong><small>${Math.round(level.current)} / ${level.required} XP</small></div></div><div class="character-focus-stats">${focusStat("DISCIPLINE", metrics.discipline, "daily", "amber", "discipline")}${focusStat("TRADING", metrics.trading, "monthly", "blue", "trading")}${focusStat("BODY", metrics.mastery.body, "Body", "green", "body")}${focusStat("CCFX", metrics.ccfx, "CCFX", "amber", "ccfx")}${focusStat("MIND", metrics.mastery.mind, "Mind", "blue", "mind")}${recoveryFocusStat(recovery)}</div></div></section>`;
 }
 
+/* Retired Character Evolution experiment. Kept out of the runtime until a future rebuild. */
 const evolutionActions = [
   { id: "couch", label: "Resetting in the lounge", target: "the couch", left: 19, bottom: 14 },
   { id: "fridge", label: "Refueling at the fridge", target: "the fridge", left: 39, bottom: 11 },
@@ -171,6 +170,8 @@ function bindCharacterEvolution() {
   }, 7200);
 }
 
+*/
+
 function bindCharacterFocusHover() {
   const items = Array.from(document.querySelectorAll("#character [data-focus-axis]"));
   const setHighlight = (axis, active) => items.filter((item) => item.dataset.focusAxis === axis).forEach((item) => item.classList.toggle("is-highlighted", active));
@@ -227,11 +228,10 @@ function render({ operations, occurrences, trades, missions, projects, contentIt
   window.dispatchEvent(new CustomEvent("aegis:character-levels-changed", { detail: levels }));
   const launch = !xpCampaign ? `<section class="panel xp-launch-panel"><p class="eyebrow amber">CAMPAIGN CALIBRATION</p><h3>XP is paused.</h3><p class="body-copy">Nothing logged before activation will count. When you are ready, start the five-year campaign and the ledger will begin from that moment forward.</p>${xpCampaignError ? `<p class="body-copy">${escape(xpCampaignError)}</p>` : `<button class="primary compact" type="button" id="start-xp-campaign">Start campaign tracking</button>`}</section>` : "";
   const characterView = $("#character");
-  characterView.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p><div class="character-intro-actions"><button class="ghost compact" type="button" id="export-system-data">Export system data</button><small>Private JSON backup of records available to this account.</small></div></div>${launch}${characterFocus(metrics, recovery)}${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>${characterEvolution(levels)}`;
+  characterView.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p><div class="character-intro-actions"><button class="ghost compact" type="button" id="export-system-data">Export system data</button><small>Private JSON backup of records available to this account.</small></div></div>${launch}${characterFocus(metrics, recovery)}${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
   characterView.dataset.characterReady = "true";
   characterView.setAttribute("aria-busy", "false");
   bindCharacterFocusHover();
-  bindCharacterEvolution();
 }
 
 async function load() {
