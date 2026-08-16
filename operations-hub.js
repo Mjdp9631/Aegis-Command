@@ -353,7 +353,7 @@ const gymOperationForDay = (operationDay = operatingDayKey()) => {
   const split = gymSplitForDay(operationDay);
   const isRest = split === "Rest";
   return {
-    title: isRest ? "Recovery — rest and reset" : `Gym — ${split}`,
+    title: isRest ? "Rest - recovery and reset" : `Gym - ${split}`,
     category: isRest ? "Recovery" : "Self Mastery",
     priority: isRest ? "Medium" : "High",
     status: "Queued",
@@ -368,6 +368,46 @@ const gymOperationForDay = (operationDay = operatingDayKey()) => {
   };
 };
 const gymOperationForToday = () => gymOperationForDay(operatingDayKey());
+
+// Daily gym rows are generated one calendar day at a time. Earlier versions
+// only checked whether *any* gym row existed today, so an old "Gym - Legs"
+// row could survive onto Saturday and suppress the Saturday Upper Body row.
+// Treat those generated rows as a single rotating slot and repair the slot
+// from the actual New York weekday. This leaves manually scheduled workouts
+// alone and never rewrites completed history.
+function isGeneratedGymSplit(operation) {
+  if (!operation?.is_daily || operation?._occurrence) return false;
+  const title = String(operation.title || "").trim();
+  const brief = String(operation.brief || operation.notes || "");
+  return /^gym\s*[-–—]/i.test(title)
+    || /^rest\s*[-–—].*recovery/i.test(title)
+    || /(?:complete the (?:legs|push|pull|lower body|upper body) session selected in self mastery|protect recovery: light mobility only)/i.test(brief);
+}
+
+async function repairTodayGymSplit(records, activeDay) {
+  const expected = gymOperationForDay(activeDay);
+  const candidates = records.filter((operation) => {
+    const day = dateOnly(operation.operation_date || operation.scheduled_date);
+    return day === activeDay && isGeneratedGymSplit(operation);
+  });
+  // Prefer a still-actionable record. A completed record is preserved as
+  // history, even if it was created by the old split logic.
+  const stale = candidates.find((operation) => normalizedStatus(operation) !== "Complete") || null;
+  if (!stale) return records;
+  const differs = String(stale.title || "") !== expected.title
+    || String(stale.category || "") !== expected.category
+    || String(stale.brief || stale.notes || "") !== expected.brief;
+  if (!differs) return records;
+  Object.assign(stale, {
+    ...expected,
+    status: stale.status,
+    completed: Boolean(stale.completed),
+    completed_on: stale.completed_on || null,
+    status_override: Boolean(stale.status_override),
+  });
+  await persist(stale);
+  return records;
+}
 
 let operations = [];
 let operationOccurrences = [];
@@ -2059,6 +2099,10 @@ async function ensureTodayOperations(records = []) {
   const preMarket = preMarketOperationForToday();
   if (preMarket) daily.unshift(preMarket);
   daily.push(gymOperationForToday());
+
+  // Correct the persisted rotating slot before deciding whether today's plan
+  // already exists. Otherwise any stale gym title counts as today's workout.
+  await repairTodayGymSplit(records, activeDay);
 
   const hasTodayPlan = (planned) => records.some((operation) => {
     const sameTitle = String(operation.title || "").trim().toLowerCase() === planned.title.toLowerCase()
