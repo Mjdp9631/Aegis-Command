@@ -82,15 +82,15 @@ function characterFocus(metrics, recovery) {
 }
 
 const evolutionActions = [
-  { id: "reset", label: "Resetting in the lounge", sprite: 0, left: 20, bottom: 2, scale: 1 },
-  { id: "journal", label: "Writing the next plan", sprite: 1, left: 59, bottom: 2, scale: 1 },
-  { id: "study", label: "Studying in the library", sprite: 2, left: 79, bottom: 5, scale: .62 },
-  { id: "train", label: "Training on the floor", sprite: 3, left: 52, bottom: 3, scale: .82 },
-  { id: "charts", label: "Reviewing the charts", sprite: 4, left: 59, bottom: 2, scale: 1 },
-  { id: "pullups", label: "Building the body", sprite: 5, left: 87, bottom: 3, scale: .76 },
-  { id: "systems", label: "Building systems", sprite: 6, left: 62, bottom: 2, scale: 1 },
-  { id: "sentinel", label: "Running the command bay", sprite: 7, left: 60, bottom: 3, scale: .7 },
-  { id: "fridge", label: "Refueling at the fridge", sprite: 0, left: 37, bottom: 2, scale: 1 },
+  { id: "reset", label: "Resetting in the lounge", left: 19, bottom: 19 },
+  { id: "journal", label: "Writing the next plan", left: 58, bottom: 20 },
+  { id: "study", label: "Studying in the library", left: 76, bottom: 17 },
+  { id: "train", label: "Training on the floor", left: 50, bottom: 5 },
+  { id: "charts", label: "Reviewing the charts", left: 58, bottom: 20 },
+  { id: "pullups", label: "Building the body", left: 88, bottom: 7 },
+  { id: "systems", label: "Building systems", left: 58, bottom: 20 },
+  { id: "sentinel", label: "Running the command bay", left: 58, bottom: 20 },
+  { id: "fridge", label: "Refueling at the fridge", left: 33, bottom: 8 },
 ];
 
 const evolutionStageConfig = [
@@ -104,18 +104,8 @@ const evolutionStageConfig = [
   { level: 36, name: "SENTINEL", description: "The final environment is earned through years of consistent evidence.", routine: [6, 7, 7, 5] },
 ];
 
-function evolutionSpriteStyle(action) {
-  if (action.id === "reset") return `--avatar-image:url('assets/generated/aegis-character-couch-frames.webp');--avatar-size:300% 100%;--sprite-x:0%;--sprite-y:0%;--avatar-left:${action.left}%;--avatar-bottom:${action.bottom}%;--avatar-scale:${action.scale};`;
-  if (action.id === "fridge") return `--avatar-image:url('assets/generated/aegis-character-fridge-frames.webp');--avatar-size:300% 100%;--sprite-x:0%;--sprite-y:0%;--avatar-left:${action.left}%;--avatar-bottom:${action.bottom}%;--avatar-scale:${action.scale};`;
-  if (["journal", "charts", "systems"].includes(action.id)) return `--avatar-image:url('assets/generated/aegis-character-desk-frames.webp');--avatar-size:300% 100%;--sprite-x:0%;--sprite-y:0%;--avatar-left:${action.left}%;--avatar-bottom:${action.bottom}%;--avatar-scale:${action.scale};`;
-  const column = action.sprite % 4;
-  const row = Math.floor(action.sprite / 4);
-  const x = ["0%", "33.333%", "66.667%", "100%"][column];
-  return `--avatar-image:url('assets/generated/aegis-character-habit-sprite.webp');--avatar-size:400% 200%;--sprite-x:${x};--sprite-y:${row ? "100%" : "0%"};--avatar-left:${action.left}%;--avatar-bottom:${action.bottom}%;--avatar-scale:${action.scale};`;
-}
-
-function evolutionWalkStyle(action, flip) {
-  return `--walker-left:${action.left}%;--walker-bottom:${action.bottom}%;--walker-flip:${flip};`;
+function evolutionActorStyle(action) {
+  return `--actor-left:${action.left}%;--actor-bottom:${action.bottom}%;`;
 }
 
 function characterEvolution(levels) {
@@ -127,7 +117,7 @@ function characterEvolution(levels) {
   const strengths = [
     ["MIND", levels.mind], ["BODY", levels.body], ["TRADING", levels.trading], ["BUSINESS", levels.ccfx], ["DISCIPLINE", levels.discipline],
   ].sort((a, b) => b[1] - a[1]).slice(0, 3);
-  return `<section class="character-evolution panel" data-evolution-stage="${stageIndex}"><div class="character-evolution-heading"><div><p class="eyebrow amber">CHARACTER EVOLUTION / PASSIVE VISUAL</p><h3>Watch the environment catch up to the work.</h3><p>${escape(stage.description)} It is visual only: no buttons, no new workload, and no change to the Character System itself.</p></div><div class="character-evolution-readout"><span>CURRENT CHAPTER</span><strong>${stage.name}</strong><small>Average system level: ${averageLevel}</small></div></div><div class="evolution-room" data-evolution-room data-stage="${stageIndex}" data-routine="${escape(JSON.stringify(routine))}"><div class="evolution-walker" data-evolution-walker aria-hidden="true"></div><div class="evolution-avatar" data-evolution-avatar data-action="${initial.id}" style="${evolutionSpriteStyle(initial)}" aria-hidden="true"></div><div class="evolution-status"><span>ROUTINE IN PROGRESS</span><b data-evolution-activity>${escape(initial.label)}</b></div><div class="evolution-strengths">${strengths.map(([label, level]) => `<span>${label}<b>LV ${level}</b></span>`).join("")}</div></div></section>`;
+  return `<section class="character-evolution panel" data-evolution-stage="${stageIndex}"><div class="character-evolution-heading"><div><p class="eyebrow amber">CHARACTER EVOLUTION / PASSIVE VISUAL</p><h3>Watch the environment catch up to the work.</h3><p>${escape(stage.description)} It is visual only: no buttons, no new workload, and no change to the Character System itself.</p></div><div class="character-evolution-readout"><span>CURRENT CHAPTER</span><strong>${stage.name}</strong><small>Average system level: ${averageLevel}</small></div></div><div class="evolution-room" data-evolution-room data-stage="${stageIndex}" data-routine="${escape(JSON.stringify(routine))}"><div class="life-actor" data-life-actor data-pose="${initial.id}" data-action="idle" style="${evolutionActorStyle(initial)}" aria-hidden="true"><i class="life-shadow"></i><i class="life-leg life-leg-left"></i><i class="life-leg life-leg-right"></i><i class="life-torso"></i><i class="life-arm life-arm-left"></i><i class="life-arm life-arm-right"></i><i class="life-head"><b class="life-hair"></b><b class="life-beard"></b></i></div><div class="evolution-status"><span>ROUTINE IN PROGRESS</span><b data-evolution-activity>${escape(initial.label)}</b></div><div class="evolution-strengths">${strengths.map(([label, level]) => `<span>${label}<b>LV ${level}</b></span>`).join("")}</div></div></section>`;
 }
 
 function bindCharacterEvolution() {
@@ -135,18 +125,16 @@ function bindCharacterEvolution() {
   if (evolutionMoveTimer) window.clearTimeout(evolutionMoveTimer);
   const room = document.querySelector("[data-evolution-room]");
   if (!room) return;
-  const avatar = room.querySelector("[data-evolution-avatar]");
-  const walker = room.querySelector("[data-evolution-walker]");
+  const actor = room.querySelector("[data-life-actor]");
   const activity = room.querySelector("[data-evolution-activity]");
   let routine = [];
   try { routine = JSON.parse(room.dataset.routine || "[]"); } catch { return; }
-  if (!avatar || !walker || !activity || routine.length < 2) return;
+  if (!actor || !activity || routine.length < 2) return;
   const settle = (action) => {
     if (evolutionMoveTimer) window.clearTimeout(evolutionMoveTimer);
-    avatar.style.cssText = evolutionSpriteStyle(action);
-    avatar.dataset.action = action.id;
-    avatar.hidden = false;
-    walker.dataset.moving = "false";
+    actor.style.cssText = evolutionActorStyle(action);
+    actor.dataset.action = "idle";
+    actor.dataset.pose = action.id;
     activity.textContent = action.label;
     room.dataset.activity = action.id;
   };
@@ -156,13 +144,11 @@ function bindCharacterEvolution() {
     const current = routine[position];
     position = (position + 1) % routine.length;
     const next = routine[position];
-    const flip = next.left < current.left ? 1 : -1;
-    avatar.hidden = true;
-    walker.dataset.moving = "true";
-    walker.style.cssText = evolutionWalkStyle(current, flip);
+    actor.dataset.action = "walking";
+    actor.dataset.pose = "walking";
     room.dataset.activity = "walking";
     activity.textContent = `Walking to ${next.id === "fridge" ? "the fridge" : next.label.replace(/^\w+ /, "")}`;
-    requestAnimationFrame(() => { walker.style.cssText = evolutionWalkStyle(next, flip); });
+    requestAnimationFrame(() => { actor.style.cssText = evolutionActorStyle(next); });
     evolutionMoveTimer = window.setTimeout(() => settle(next), 2400);
   }, 8200);
 }

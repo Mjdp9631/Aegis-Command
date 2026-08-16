@@ -2,35 +2,73 @@
 #character[data-character-ready="false"] { visibility: hidden; }
 .character-evolution-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
 .character-evolution-heading h3 { margin: 0 0 7px; font-size: 22px; }
-.character-evolution-heading p:last-child { max-width: 660px; margin: 0; color: #b8c7d8; font-size: 12px; line-height: 1.55; }
+.character-evolution-heading p:last-child { max-width: 660px; margin: 0; color: #c7d3df; font-size: 12px; line-height: 1.55; }
 .character-evolution-readout { display: grid; justify-items: end; gap: 4px; min-width: 150px; text-align: right; }
 .character-evolution-readout span, .evolution-status span { color: #aebdcb; font: 700 9px/1.2 "Space Mono", ui-monospace, monospace; letter-spacing: .12em; }
 .character-evolution-readout strong { color: var(--amber); font: 800 16px/1 "Orbitron", sans-serif; letter-spacing: .05em; }
 .character-evolution-readout small { color: #dce8f5; font-size: 10px; }
 
-.evolution-room { position: relative; isolation: isolate; min-height: clamp(360px, 40vw, 600px); overflow: hidden; border: 1px solid rgba(177, 205, 228, .24); border-radius: 12px; background: linear-gradient(90deg, rgba(1, 4, 9, .18), transparent 50%), url("assets/generated/aegis-evolution-room.webp") center / cover no-repeat; box-shadow: inset 0 0 48px rgba(0, 0, 0, .45); }
-.evolution-room::before { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; background: linear-gradient(90deg, rgba(2, 7, 12, .18), transparent 45%, rgba(2, 7, 12, .2)), linear-gradient(0deg, rgba(0,0,0,.26), transparent 30%); }
-.evolution-room::after { content: ""; position: absolute; z-index: 10; inset: 0; pointer-events: none; border: 1px solid rgba(228, 173, 99, .14); border-radius: inherit; box-shadow: inset 0 0 36px rgba(0, 0, 0, .5); }
+.evolution-room { position: relative; isolation: isolate; min-height: clamp(360px, 40vw, 600px); overflow: hidden; border: 1px solid rgba(177, 205, 228, .24); border-radius: 12px; background: linear-gradient(90deg, rgba(1, 4, 9, .1), transparent 52%), url("assets/generated/aegis-evolution-room-illustrated.webp") center / cover no-repeat; box-shadow: inset 0 0 48px rgba(0, 0, 0, .45); }
+.evolution-room::before { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; background: linear-gradient(90deg, rgba(2, 7, 12, .14), transparent 45%, rgba(2, 7, 12, .16)), linear-gradient(0deg, rgba(0,0,0,.2), transparent 34%); }
+.evolution-room::after { content: ""; position: absolute; z-index: 10; inset: 0; pointer-events: none; border: 1px solid rgba(228, 173, 99, .14); border-radius: inherit; box-shadow: inset 0 0 36px rgba(0, 0, 0, .42); }
 
-.evolution-avatar, .evolution-walker { position: absolute; z-index: 5; left: var(--avatar-left); bottom: var(--avatar-bottom); width: min(19%, 192px); aspect-ratio: 1; background-image: var(--avatar-image); background-position: var(--sprite-x) var(--sprite-y); background-repeat: no-repeat; background-size: var(--avatar-size); filter: drop-shadow(0 12px 8px rgba(0,0,0,.55)); transform: translateX(-50%) scale(var(--avatar-scale)); transform-origin: bottom center; }
-.evolution-avatar { transition: opacity .24s ease; animation: evolution-idle 4s ease-in-out infinite; }
-.evolution-avatar[hidden] { display: none; }
-.evolution-avatar[data-action="reset"] { width: min(29%, 350px); aspect-ratio: .787; animation: couch-idle 2.4s steps(3, end) infinite alternate; }
-.evolution-avatar[data-action="fridge"] { width: min(25%, 306px); aspect-ratio: .72; animation: fridge-reach 1.5s steps(3, end) infinite alternate; }
-.evolution-avatar[data-action="journal"], .evolution-avatar[data-action="charts"], .evolution-avatar[data-action="systems"] { width: min(33%, 400px); aspect-ratio: .778; animation: desk-loop 1.8s steps(3, end) infinite alternate; }
-.evolution-walker { --walker-left: 20%; --walker-bottom: 4%; --walker-flip: 1; z-index: 7; left: var(--walker-left); bottom: var(--walker-bottom); width: min(12%, 150px); aspect-ratio: .5; background-image: url("assets/generated/aegis-character-walk.webp"); background-size: 400% 100%; background-position: 0 0; opacity: 0; transform: translateX(-50%) scaleX(var(--walker-flip)); transition: left 2.32s linear, bottom 2.32s linear, opacity .14s linear; pointer-events: none; }
-.evolution-walker[data-moving="true"] { opacity: 1; animation: walk-cycle .48s steps(4, end) infinite; }
-.evolution-walker[data-moving="false"] { opacity: 0; animation: none; }
+.life-actor { --skin: #b97855; --cloth: #202733; --cloth-hi: #3a475a; --boot: #11151b; position: absolute; z-index: 5; left: var(--actor-left); bottom: var(--actor-bottom); width: clamp(72px, 9vw, 138px); height: clamp(142px, 18vw, 230px); transform: translateX(-50%); transition: left 2.35s linear, bottom 2.35s linear; filter: drop-shadow(0 8px 7px rgba(0, 0, 0, .45)); }
+.life-actor i, .life-actor b { display: block; position: absolute; }
+.life-shadow { width: 74%; height: 8%; left: 13%; bottom: 0; border-radius: 50%; background: rgba(0,0,0,.42); filter: blur(3px); }
+.life-head { z-index: 4; width: 29%; height: 22%; left: 35.5%; top: 4%; border-radius: 46% 46% 42% 42%; background: var(--skin); box-shadow: inset -4px -2px 0 rgba(78, 40, 31, .24); }
+.life-head::before { content: ""; position: absolute; top: 41%; left: 15%; width: 70%; height: 22%; background: radial-gradient(circle at 25% 50%, #17191d 0 10%, transparent 12%), radial-gradient(circle at 75% 50%, #17191d 0 10%, transparent 12%); }
+.life-head::after { content: ""; position: absolute; left: 43%; bottom: 17%; width: 18%; height: 7%; border-bottom: 1px solid rgba(63, 31, 26, .8); border-radius: 50%; }
+.life-hair { width: 104%; height: 42%; left: -2%; top: -10%; border-radius: 52% 52% 20% 20%; background: #1b1718; }
+.life-hair::after { content: ""; position: absolute; width: 35%; height: 35%; right: -22%; top: -25%; border-radius: 50%; background: #1b1718; }
+.life-beard { width: 78%; height: 40%; left: 11%; bottom: -5%; border-radius: 25% 25% 42% 42%; background: #252022; opacity: .94; }
+.life-torso { z-index: 2; width: 44%; height: 37%; left: 28%; top: 23%; border-radius: 29% 29% 16% 16%; background: linear-gradient(100deg, var(--cloth-hi), var(--cloth) 58%); box-shadow: inset -5px -2px 0 rgba(0,0,0,.24); }
+.life-torso::before { content: ""; position: absolute; width: 36%; height: 16%; left: 32%; bottom: 13%; border: 1px solid rgba(129, 154, 177, .32); border-radius: 4px 4px 9px 9px; }
+.life-torso::after { content: ""; position: absolute; height: 92%; left: 49%; top: 4%; border-left: 1px solid rgba(185, 204, 218, .36); }
+.life-arm { z-index: 3; width: 17%; height: 34%; top: 27%; border-radius: 999px; background: linear-gradient(90deg, var(--cloth-hi), var(--cloth)); transform-origin: 50% 8%; }
+.life-arm::after { content: ""; position: absolute; width: 75%; height: 22%; left: 12%; bottom: -8%; border-radius: 50%; background: var(--skin); }
+.life-arm-left { left: 21%; transform: rotate(13deg); }
+.life-arm-right { right: 21%; transform: rotate(-13deg); }
+.life-leg { z-index: 1; width: 18%; height: 38%; top: 57%; border-radius: 999px 999px 22% 22%; background: linear-gradient(90deg, #374150, #1c222b); transform-origin: 50% 7%; }
+.life-leg::after { content: ""; position: absolute; width: 130%; height: 18%; left: -13%; bottom: -4%; border-radius: 55% 48% 30% 30%; background: var(--boot); }
+.life-leg-left { left: 30%; transform: rotate(4deg); }
+.life-leg-right { right: 30%; transform: rotate(-4deg); }
+
+.life-actor[data-action="walking"] { animation: life-bob .46s ease-in-out infinite alternate; }
+.life-actor[data-action="walking"] .life-arm-left, .life-actor[data-action="walking"] .life-leg-right { animation: life-swing-left .46s ease-in-out infinite alternate; }
+.life-actor[data-action="walking"] .life-arm-right, .life-actor[data-action="walking"] .life-leg-left { animation: life-swing-right .46s ease-in-out infinite alternate; }
+.life-actor[data-pose="reset"] { transform: translateX(-50%) scale(.75); transform-origin: bottom center; }
+.life-actor[data-pose="reset"] .life-torso { top: 36%; transform: rotate(-3deg); }
+.life-actor[data-pose="reset"] .life-head { top: 18%; }
+.life-actor[data-pose="reset"] .life-arm-left { top: 44%; left: 25%; height: 26%; transform: rotate(30deg); }
+.life-actor[data-pose="reset"] .life-arm-right { top: 44%; right: 25%; height: 26%; transform: rotate(-30deg); }
+.life-actor[data-pose="reset"] .life-leg-left { top: 68%; left: 24%; height: 20%; transform: rotate(54deg); }
+.life-actor[data-pose="reset"] .life-leg-right { top: 68%; right: 24%; height: 20%; transform: rotate(-54deg); }
+.life-actor[data-pose="fridge"] .life-arm-left { animation: fridge-reach .95s ease-in-out infinite alternate; }
+.life-actor[data-pose="fridge"] .life-arm-right { transform: rotate(-52deg); }
+.life-actor[data-pose="journal"], .life-actor[data-pose="charts"], .life-actor[data-pose="systems"], .life-actor[data-pose="sentinel"] { transform: translateX(-50%) scale(.7); transform-origin: bottom center; }
+.life-actor[data-pose="journal"] .life-head, .life-actor[data-pose="charts"] .life-head, .life-actor[data-pose="systems"] .life-head, .life-actor[data-pose="sentinel"] .life-head { top: 18%; transform: rotate(8deg); }
+.life-actor[data-pose="journal"] .life-torso, .life-actor[data-pose="charts"] .life-torso, .life-actor[data-pose="systems"] .life-torso, .life-actor[data-pose="sentinel"] .life-torso { top: 36%; transform: rotate(7deg); }
+.life-actor[data-pose="journal"] .life-arm-left, .life-actor[data-pose="charts"] .life-arm-left, .life-actor[data-pose="systems"] .life-arm-left, .life-actor[data-pose="sentinel"] .life-arm-left { top: 43%; transform: rotate(62deg); animation: type-left .5s ease-in-out infinite alternate; }
+.life-actor[data-pose="journal"] .life-arm-right, .life-actor[data-pose="charts"] .life-arm-right, .life-actor[data-pose="systems"] .life-arm-right, .life-actor[data-pose="sentinel"] .life-arm-right { top: 43%; transform: rotate(-58deg); animation: type-right .5s ease-in-out infinite alternate; }
+.life-actor[data-pose="journal"] .life-leg, .life-actor[data-pose="charts"] .life-leg, .life-actor[data-pose="systems"] .life-leg, .life-actor[data-pose="sentinel"] .life-leg { top: 66%; transform: rotate(60deg); }
+.life-actor[data-pose="train"] { transform: translateX(-50%) scale(.57) rotate(90deg); transform-origin: bottom center; }
+.life-actor[data-pose="train"] .life-arm-left, .life-actor[data-pose="train"] .life-arm-right { animation: pushup .82s ease-in-out infinite alternate; }
+.life-actor[data-pose="pullups"] .life-arm-left, .life-actor[data-pose="pullups"] .life-arm-right { top: 7%; height: 42%; animation: pullup .85s ease-in-out infinite alternate; }
+.life-actor[data-pose="study"] { transform: translateX(-50%) scale(.62); }
+
 .evolution-status { position: absolute; z-index: 11; left: 17px; top: 14px; display: grid; gap: 5px; padding: 9px 11px; border-left: 2px solid var(--amber); background: rgba(6, 12, 19, .68); backdrop-filter: blur(5px); }
 .evolution-status b { color: #f4f7fa; font-size: 12px; }
 .evolution-strengths { position: absolute; z-index: 11; right: 15px; bottom: 12px; display: flex; gap: 6px; }
 .evolution-strengths span { display: flex; align-items: center; gap: 6px; padding: 5px 7px; border: 1px solid rgba(166, 196, 220, .25); background: rgba(5, 11, 17, .68); color: #d4e0eb; font: 700 8px/1 "Space Mono", ui-monospace, monospace; letter-spacing: .07em; }
 .evolution-strengths b { color: #f4d59d; font-size: 9px; }
 
-@keyframes evolution-idle { 0%,100% { filter: drop-shadow(0 12px 8px rgba(0,0,0,.55)); } 50% { filter: drop-shadow(0 15px 10px rgba(0,0,0,.65)) brightness(1.035); } }
-@keyframes walk-cycle { to { background-position: 100% 0; } }
-@keyframes couch-idle { 0% { background-position: 0 0; } 50% { background-position: 50% 0; } 100% { background-position: 100% 0; } }
-@keyframes fridge-reach { 0% { background-position: 0 0; } 50% { background-position: 50% 0; } 100% { background-position: 100% 0; } }
-@keyframes desk-loop { 0% { background-position: 0 0; } 50% { background-position: 50% 0; } 100% { background-position: 100% 0; } }
-@media (prefers-reduced-motion: reduce) { .evolution-avatar, .evolution-walker { animation: none; transition: none; } }
-@media (max-width: 620px) { .character-evolution-heading { flex-direction: column; gap: 13px; } .character-evolution-readout { justify-items: start; text-align: left; } .evolution-room { min-height: 275px; } .evolution-avatar { width: 26%; } .evolution-walker { width: 28%; } .evolution-strengths { left: 11px; right: auto; bottom: 9px; max-width: calc(100% - 22px); overflow: hidden; } .evolution-strengths span { font-size: 7px; } .evolution-status { left: 10px; top: 10px; } }
+@keyframes life-bob { to { translate: 0 -2%; } }
+@keyframes life-swing-left { to { transform: rotate(28deg); } }
+@keyframes life-swing-right { to { transform: rotate(-28deg); } }
+@keyframes fridge-reach { to { transform: rotate(69deg) translateY(-4%); } }
+@keyframes type-left { to { transform: rotate(72deg) translateY(7%); } }
+@keyframes type-right { to { transform: rotate(-68deg) translateY(7%); } }
+@keyframes pushup { to { translate: 0 -14%; } }
+@keyframes pullup { to { translate: 0 -16%; } }
+@media (prefers-reduced-motion: reduce) { .life-actor, .life-actor * { animation: none !important; transition: none; } }
+@media (max-width: 620px) { .character-evolution-heading { flex-direction: column; gap: 13px; } .character-evolution-readout { justify-items: start; text-align: left; } .evolution-room { min-height: 275px; } .life-actor { width: 19vw; height: 32vw; } .evolution-strengths { left: 11px; right: auto; bottom: 9px; max-width: calc(100% - 22px); overflow: hidden; } .evolution-strengths span { font-size: 7px; } .evolution-status { left: 10px; top: 10px; } }
