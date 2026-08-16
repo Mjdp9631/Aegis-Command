@@ -82,15 +82,12 @@ function characterFocus(metrics, recovery) {
 }
 
 const evolutionActions = [
-  { id: "reset", label: "Resetting in the lounge", left: 19, bottom: 19 },
-  { id: "journal", label: "Writing the next plan", left: 58, bottom: 20 },
-  { id: "study", label: "Studying in the library", left: 76, bottom: 17 },
-  { id: "train", label: "Training on the floor", left: 50, bottom: 5 },
-  { id: "charts", label: "Reviewing the charts", left: 58, bottom: 20 },
-  { id: "pullups", label: "Building the body", left: 88, bottom: 7 },
-  { id: "systems", label: "Building systems", left: 58, bottom: 20 },
-  { id: "sentinel", label: "Running the command bay", left: 58, bottom: 20 },
-  { id: "fridge", label: "Refueling at the fridge", left: 33, bottom: 8 },
+  { id: "couch", label: "Resetting in the lounge", target: "the couch", left: 19, bottom: 14 },
+  { id: "fridge", label: "Refueling at the fridge", target: "the fridge", left: 39, bottom: 11 },
+  { id: "desk", label: "Working at the desk", target: "the desk", left: 63, bottom: 11 },
+  { id: "library", label: "Studying in the library", target: "the library", left: 80, bottom: 11 },
+  { id: "training", label: "Training on the floor", target: "the training mat", left: 52, bottom: 5 },
+  { id: "pullups", label: "Building the body", target: "the pull-up bar", left: 89, bottom: 7 },
 ];
 
 const evolutionStageConfig = [
@@ -104,6 +101,24 @@ const evolutionStageConfig = [
   { level: 36, name: "SENTINEL", description: "The final environment is earned through years of consistent evidence.", routine: [6, 7, 7, 5] },
 ];
 
+function evolutionBand(level) {
+  if (level >= 21) return 5;
+  if (level >= 15) return 4;
+  if (level >= 10) return 3;
+  if (level >= 6) return 2;
+  if (level >= 3) return 1;
+  return 0;
+}
+
+function evolutionRoutine(levels) {
+  const routine = [evolutionActions[0], evolutionActions[1]];
+  if (levels.mind >= 3) routine.push(evolutionActions[3]);
+  if (levels.trading >= 3 || levels.ccfx >= 3) routine.push(evolutionActions[2]);
+  if (levels.body >= 3) routine.push(evolutionActions[4]);
+  if (levels.body >= 10) routine.push(evolutionActions[5]);
+  return routine.length > 2 ? routine : [...routine, evolutionActions[0]];
+}
+
 function evolutionActorStyle(action) {
   return `--actor-left:${action.left}%;--actor-bottom:${action.bottom}%;`;
 }
@@ -112,12 +127,13 @@ function characterEvolution(levels) {
   const averageLevel = Math.round(Object.values(levels).reduce((sum, level) => sum + Number(level || 0), 0) / Math.max(1, Object.keys(levels).length));
   const stageIndex = evolutionStageConfig.reduce((selected, stage, index) => averageLevel >= stage.level ? index : selected, 0);
   const stage = evolutionStageConfig[stageIndex];
-  const routine = stage.routine.map((index) => evolutionActions[index]);
+  const routine = evolutionRoutine(levels);
   const initial = routine[0];
   const strengths = [
     ["MIND", levels.mind], ["BODY", levels.body], ["TRADING", levels.trading], ["BUSINESS", levels.ccfx], ["DISCIPLINE", levels.discipline],
   ].sort((a, b) => b[1] - a[1]).slice(0, 3);
-  return `<section class="character-evolution panel" data-evolution-stage="${stageIndex}"><div class="character-evolution-heading"><div><p class="eyebrow amber">CHARACTER EVOLUTION / PASSIVE VISUAL</p><h3>Watch the environment catch up to the work.</h3><p>${escape(stage.description)} It is visual only: no buttons, no new workload, and no change to the Character System itself.</p></div><div class="character-evolution-readout"><span>CURRENT CHAPTER</span><strong>${stage.name}</strong><small>Average system level: ${averageLevel}</small></div></div><div class="evolution-room" data-evolution-room data-stage="${stageIndex}" data-routine="${escape(JSON.stringify(routine))}"><div class="life-actor" data-life-actor data-pose="${initial.id}" data-action="idle" style="${evolutionActorStyle(initial)}" aria-hidden="true"><i class="life-shadow"></i><i class="life-leg life-leg-left"></i><i class="life-leg life-leg-right"></i><i class="life-torso"></i><i class="life-arm life-arm-left"></i><i class="life-arm life-arm-right"></i><i class="life-head"><b class="life-hair"></b><b class="life-beard"></b></i></div><div class="evolution-status"><span>ROUTINE IN PROGRESS</span><b data-evolution-activity>${escape(initial.label)}</b></div><div class="evolution-strengths">${strengths.map(([label, level]) => `<span>${label}<b>LV ${level}</b></span>`).join("")}</div></div></section>`;
+  const bands = Object.fromEntries(Object.entries(levels).map(([key, level]) => [key, evolutionBand(level)]));
+  return `<section class="character-evolution panel" data-evolution-stage="${stageIndex}"><div class="character-evolution-heading"><div><p class="eyebrow amber">CHARACTER EVOLUTION / PASSIVE VISUAL</p><h3>Watch the room evolve with the work.</h3><p>${escape(stage.description)} A living idle-game scene driven by your actual levels; visual only, with no extra workload.</p></div><div class="character-evolution-readout"><span>CURRENT CHAPTER</span><strong>${stage.name}</strong><small>Average system level: ${averageLevel}</small></div></div><div class="evolution-room idle-room" data-evolution-room data-stage="${stageIndex}" data-discipline="${bands.discipline}" data-trading="${bands.trading}" data-business="${bands.ccfx}" data-mind="${bands.mind}" data-body="${bands.body}" data-routine="${escape(JSON.stringify(routine))}"><div class="idle-sky" aria-hidden="true"><i></i><i></i><i></i></div><div class="idle-window" aria-hidden="true"><i></i></div><div class="idle-room-label" aria-hidden="true">MAT'S BASE // LV ${averageLevel}</div><div class="idle-couch idle-prop" aria-hidden="true"><i></i><b></b></div><div class="idle-fridge idle-prop" aria-hidden="true"><i></i><b></b></div><div class="idle-desk idle-prop" aria-hidden="true"><i></i><b></b><em></em></div><div class="idle-library idle-prop" aria-hidden="true"><i></i><b></b></div><div class="idle-gym idle-prop" aria-hidden="true"><i></i></div><div class="life-actor idle-avatar" data-life-actor data-pose="${initial.id}" data-action="idle" style="${evolutionActorStyle(initial)}" aria-hidden="true"><i class="life-shadow"></i><i class="life-leg life-leg-left"></i><i class="life-leg life-leg-right"></i><i class="life-torso"></i><i class="life-arm life-arm-left"></i><i class="life-arm life-arm-right"></i><i class="life-head"><b class="life-hair"></b><b class="life-beard"></b></i></div><div class="evolution-status"><span>ROUTINE IN PROGRESS</span><b data-evolution-activity>${escape(initial.label)}</b></div><div class="evolution-strengths">${strengths.map(([label, level]) => `<span>${label}<b>LV ${level}</b></span>`).join("")}</div></div></section>`;
 }
 
 function bindCharacterEvolution() {
@@ -147,10 +163,10 @@ function bindCharacterEvolution() {
     actor.dataset.action = "walking";
     actor.dataset.pose = "walking";
     room.dataset.activity = "walking";
-    activity.textContent = `Walking to ${next.id === "fridge" ? "the fridge" : next.label.replace(/^\w+ /, "")}`;
+    activity.textContent = `Walking to ${next.target}`;
     requestAnimationFrame(() => { actor.style.cssText = evolutionActorStyle(next); });
     evolutionMoveTimer = window.setTimeout(() => settle(next), 2400);
-  }, 8200);
+  }, 7200);
 }
 
 function bindCharacterFocusHover() {
