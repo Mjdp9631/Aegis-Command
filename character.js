@@ -146,6 +146,8 @@ function bindCharacterEvolution() {
   let routine = [];
   try { routine = JSON.parse(room.dataset.routine || "[]"); } catch { return; }
   if (!actor || !activity || routine.length < 2) return;
+  actor.querySelectorAll(".life-arm").forEach((arm) => { arm.innerHTML = `<b class="life-forearm"><b class="life-hand"></b></b>`; });
+  actor.querySelectorAll(".life-leg").forEach((leg) => { leg.innerHTML = `<b class="life-shin"><b class="life-boot"></b></b>`; });
   const settle = (action) => {
     if (evolutionMoveTimer) window.clearTimeout(evolutionMoveTimer);
     actor.style.cssText = evolutionActorStyle(action);
