@@ -170,8 +170,6 @@ function bindCharacterEvolution() {
   }, 7200);
 }
 
-*/
-
 function bindCharacterFocusHover() {
   const items = Array.from(document.querySelectorAll("#character [data-focus-axis]"));
   const setHighlight = (axis, active) => items.filter((item) => item.dataset.focusAxis === axis).forEach((item) => item.classList.toggle("is-highlighted", active));
