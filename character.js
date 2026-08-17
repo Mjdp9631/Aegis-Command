@@ -212,6 +212,9 @@ class CharacterLifeScene {
       desk: "assets/generated/aegis-character-manbun-pixel-desk-source.png",
     };
     Object.entries(this.spriteSources).forEach(([key, source]) => this.loadSprite(key, source));
+    this.roomBackground = new Image();
+    this.roomBackground.decoding = "async";
+    this.roomBackground.src = "assets/generated/aegis-character-room-pixel-v1.png?v=room-pixel-v1";
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
     this.resize();
@@ -320,6 +323,30 @@ class CharacterLifeScene {
 
   drawRoom(time) {
     const { ctx, width: w, height: h } = this;
+    if (this.roomBackground.complete && this.roomBackground.naturalWidth) {
+      // Render a single painted room rather than layering unrelated canvas
+      // furniture.  Cover preserves the full width of the walk route while
+      // trimming only a little ceiling/floor from the cinematic 16:9 source.
+      const image = this.roomBackground;
+      const imageAspect = image.naturalWidth / image.naturalHeight;
+      const stageAspect = w / h;
+      let sourceX = 0; let sourceY = 0; let sourceWidth = image.naturalWidth; let sourceHeight = image.naturalHeight;
+      if (imageAspect > stageAspect) {
+        sourceWidth = image.naturalHeight * stageAspect;
+        sourceX = (image.naturalWidth - sourceWidth) / 2;
+      } else {
+        sourceHeight = image.naturalWidth / stageAspect;
+        sourceY = (image.naturalHeight - sourceHeight) / 2;
+      }
+      ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, w, h);
+      // A slight lower-third shade keeps the live character readable without
+      // making the painted room look like it has been overlaid by an effect.
+      const floorShade = ctx.createLinearGradient(0, h * .56, 0, h);
+      floorShade.addColorStop(0, "rgba(2, 5, 11, 0)");
+      floorShade.addColorStop(1, "rgba(2, 5, 11, .16)");
+      ctx.fillStyle = floorShade; ctx.fillRect(0, 0, w, h);
+      return;
+    }
     const discipline = Number(this.levels.discipline || 0);
     const mind = Number(this.levels.mind || 0);
     const tech = Number(this.levels.trading || 0) + Number(this.levels.ccfx || 0);
