@@ -378,19 +378,26 @@ class CharacterLifeScene {
     ctx.fillStyle = "rgba(0, 0, 0, .34)"; ctx.beginPath(); ctx.ellipse(0, 6, 31, 7, 0, 0, Math.PI * 2); ctx.fill();
     const head = (hx, hy) => {
       ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(hx, hy, 13, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#1d1717"; ctx.beginPath(); ctx.arc(hx - 2, hy - 11, 11, Math.PI, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(hx + 9, hy - 14, 5, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#2c2020"; ctx.beginPath(); ctx.arc(hx + 1, hy + 8, 10, 0, Math.PI); ctx.fill();
+      // Man bun, beard, and a readable face hold together at the deliberately
+      // small pixel resolution instead of reducing him to a featureless dot.
+      ctx.fillStyle = "#1b1517"; ctx.beginPath(); ctx.arc(hx - 2, hy - 11, 11, Math.PI, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(hx + 9, hy - 14, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#2b1d20"; ctx.beginPath(); ctx.arc(hx + 1, hy + 8, 10, 0, Math.PI); ctx.fill();
+      this.line([hx - 6, hy - 3, hx - 2, hy - 4], "#3a2523", 1); this.line([hx + 2, hy - 4, hx + 6, hy - 3], "#3a2523", 1);
+      ctx.fillStyle = "#101318"; ctx.fillRect(hx - 4, hy - 1, 2, 1); ctx.fillRect(hx + 3, hy - 1, 2, 1);
+      this.line([hx, hy, hx - 1, hy + 3, hx + 1, hy + 4], "#774938", 1);
+      this.line([hx - 2, hy + 6, hx + 3, hy + 6], "#9e5f50", 1);
+      this.rounded(hx - 5, hy + 11, 10, 7, 2, skin);
     };
-    const torso = (tx, ty, angle = 0) => { ctx.save(); ctx.translate(tx, ty); ctx.rotate(angle); this.rounded(-broad, -36, broad * 2, 43, 12, clothing, "#080c10"); ctx.fillStyle = "rgba(157, 196, 221, .22)"; ctx.fillRect(-waist, -5, waist * 2, 2); ctx.restore(); };
-    const leg = (x1, y1, kneeX, kneeY, footX, footY) => { this.limb(x1, y1, kneeX, kneeY, 13, "#1b2833"); this.limb(kneeX, kneeY, footX, footY, 11, "#18222b"); this.rounded(footX - 8, footY - 3, 16, 6, 3, "#0c1014"); };
-    const arm = (x1, y1, elbowX, elbowY, handX, handY) => { this.limb(x1, y1, elbowX, elbowY, 11, clothing); this.limb(elbowX, elbowY, handX, handY, 8, skin); };
+    const torso = (tx, ty, angle = 0) => { ctx.save(); ctx.translate(tx, ty); ctx.rotate(angle); this.rounded(-broad, -36, broad * 2, 47, 12, clothing, "#080c10"); ctx.fillStyle = "rgba(157, 196, 221, .22)"; ctx.fillRect(-waist, -8, waist * 2, 2); this.line([-6, -34, 0, -27, 6, -34], "rgba(194, 219, 235, .5)", 1); this.line([0, -27, 0, 3], "rgba(7, 10, 15, .45)", 1); ctx.fillStyle = "rgba(10, 15, 21, .38)"; ctx.fillRect(-broad + 5, -18, 5, 10); ctx.fillRect(broad - 10, -18, 5, 10); ctx.restore(); };
+    const leg = (x1, y1, kneeX, kneeY, footX, footY) => { this.limb(x1, y1, kneeX, kneeY, 16, "#1b2833"); this.limb(kneeX, kneeY, footX, footY, 13, "#18222b"); this.line([kneeX - 3, kneeY, kneeX + 3, kneeY], "#4b6172", 1); this.rounded(footX - 8, footY - 3, 17, 7, 3, "#0c1014"); };
+    const arm = (x1, y1, elbowX, elbowY, handX, handY) => { this.limb(x1, y1, elbowX, elbowY, 13, clothing); this.limb(elbowX, elbowY, handX, handY, 9, skin); this.line([elbowX - 2, elbowY, elbowX + 2, elbowY], "rgba(190, 214, 230, .3)", 1); };
     if (action === "couch") {
-      torso(-2, -55 + idleMotion, -.1); head(-7, -105 + idleMotion); leg(-12, -20, 16, -15, 24, 0); leg(9, -20, 31, -9, 40, 0); arm(-broad + 3, -77 + idleMotion, -38, -60 + idleMotion, -30, -45 + idleMotion); arm(broad - 3, -77 + idleMotion, 21, -52 - idleMotion, 32, -42 - idleMotion);
+      torso(-2, -55 + idleMotion, -.1); head(-7, -105 + idleMotion); leg(-12, -48, 13, -42, 24, 0); leg(9, -48, 29, -37, 40, 0); arm(-broad + 3, -77 + idleMotion, -38, -60 + idleMotion, -30, -45 + idleMotion); arm(broad - 3, -77 + idleMotion, 21, -52 - idleMotion, 32, -42 - idleMotion);
     } else if (action === "desk") {
-      torso(-3, -56 + idleMotion * .35, .04); head(-3, -106 + idleMotion * .35); leg(-12, -19, 11, -12, 21, 0); leg(9, -19, 26, -12, 36, 0); arm(-broad + 4, -79, 9, -71 + idleMotion, 29, -59 + idleMotion); arm(broad - 4, -79, 24, -70 - idleMotion, 39, -59 - idleMotion);
+      torso(-3, -56 + idleMotion * .35, .04); head(-3, -106 + idleMotion * .35); leg(-12, -49, 10, -40, 21, 0); leg(9, -49, 26, -38, 36, 0); arm(-broad + 4, -79, 9, -71 + idleMotion, 29, -59 + idleMotion); arm(broad - 4, -79, 24, -70 - idleMotion, 39, -59 - idleMotion);
     } else {
       const sway = action === "walking" ? step * 12 : 0;
-      torso(0, -58, action === "walking" ? step * .04 : 0); head(0, -108 + (action === "walking" ? Math.abs(step) * 2 : 0)); leg(-9, -19, -13 + sway, -4, -19 + sway * 1.2, 0); leg(9, -19, 13 - sway, -4, 19 - sway * 1.2, 0);
+      torso(0, -58, action === "walking" ? step * .04 : 0); head(0, -108 + (action === "walking" ? Math.abs(step) * 2 : 0)); leg(-9, -51, -13 + sway, -20, -19 + sway * 1.2, 0); leg(9, -51, 13 - sway, -20, 19 - sway * 1.2, 0);
       if (action === "fridge") { arm(-broad + 2, -80, 17, -84 + idleMotion, 34, -76 + idleMotion); arm(broad - 2, -80, 31, -67 - idleMotion, 40, -55 - idleMotion); this.rounded(37, -64 + idleMotion, 8, 17, 3, "#68c6ee"); }
       else { arm(-broad + 2, -80, -30 - sway, -52, -27 - sway, -31); arm(broad - 2, -80, 30 + sway, -52, 28 + sway, -31); }
     }
