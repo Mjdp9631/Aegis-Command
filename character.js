@@ -245,7 +245,10 @@ class CharacterLifeScene {
         const red = data[offset]; const green = data[offset + 1]; const blue = data[offset + 2];
         // ImageGen's flat chroma-green studio backdrop.  Preserve the blue
         // bottle and every dark/skin tone pixel on the character.
-        if (green > 145 && green > red * 1.32 && green > blue * 1.32) data[offset + 3] = 0;
+        // Also remove the anti-aliased green fringe created where the source
+        // sprite meets the studio backdrop.  The character has no green
+        // material, so this intentionally favors a clean silhouette.
+        if (green > 82 && green > red * 1.12 && green > blue * 1.12) data[offset + 3] = 0;
         if (!data[offset + 3]) continue;
         const pixel = offset / 4; const x = pixel % sourceCanvas.width; const y = Math.floor(pixel / sourceCanvas.width);
         left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y);
@@ -462,10 +465,13 @@ class CharacterLifeScene {
     const action = this.mode === "walking" ? "walking" : this.actions[this.index].id;
     const x = this.position * w;
     const spriteSpec = {
-      walking: { ground: h * .79, height: h * .69 },
-      couch: { ground: h * .79, height: h * .57 },
-      fridge: { ground: h * .79, height: h * .70 },
-      desk: { ground: h * .79, height: h * .58 },
+      // The painted room's real floor is near the lower edge.  The prior
+      // vector scene used a much higher imaginary ground line, which made
+      // feet float through the couch and chair after the room upgrade.
+      walking: { ground: h * .94, height: h * .69 },
+      couch: { ground: h * .94, height: h * .57 },
+      fridge: { ground: h * .94, height: h * .70 },
+      desk: { ground: h * .94, height: h * .58 },
     }[action];
     if (spriteSpec && this.drawSprite(action, x, spriteSpec.ground, spriteSpec.height, time)) return;
 
