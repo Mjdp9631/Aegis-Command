@@ -396,9 +396,24 @@ class CharacterLifeScene {
       drawImageFrame(actionImage, 1, brightFilter);
       if (!loopImage?.complete || !loopImage.naturalWidth) return;
       // A gentle 3.6s base -> action -> base loop: phone scroll/head bob,
-      // water down/sip, or finger movement/monitor pulse, without a cutout.
+      // water down/sip, or finger movement/monitor pulse, without repainting
+      // the whole room at a different exposure.
       const alpha = (Math.sin((time - this.startedAt) * (Math.PI * 2 / 3600) - Math.PI / 2) + 1) / 2;
-      drawImageFrame(loopImage, alpha);
+      const loopAreas = {
+        couch: { x: .10, y: .32, width: .25, height: .55, filter: "brightness(.75) saturate(1.02)" },
+        fridge: { x: .34, y: .20, width: .21, height: .65, filter: "brightness(.77) saturate(1.02)" },
+        desk: { x: .66, y: .30, width: .27, height: .60, filter: "brightness(.72) saturate(1.02)" },
+      }[action];
+      if (!loopAreas) return;
+      // The crop includes surrounding furniture so occlusion remains painted
+      // together, but its bounds prevent generated exposure changes from
+      // flashing across windows, walls, and floor.
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(loopAreas.x * w, loopAreas.y * h, loopAreas.width * w, loopAreas.height * h);
+      ctx.clip();
+      drawImageFrame(loopImage, alpha, loopAreas.filter);
+      ctx.restore();
     };
     if (actionImage?.complete && actionImage.naturalWidth) {
       this.usingActionFrame = true;
