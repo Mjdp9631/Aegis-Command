@@ -181,7 +181,12 @@ function characterLifePanel(levels) {
 class CharacterLifeScene {
   constructor(canvas, levels) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext("2d");
+    this.outputCtx = canvas.getContext("2d");
+    this.buffer = document.createElement("canvas");
+    this.buffer.width = 480;
+    this.buffer.height = 206;
+    this.ctx = this.buffer.getContext("2d");
+    this.ctx.imageSmoothingEnabled = false;
     this.levels = levels;
     this.activityLabel = canvas.closest("[data-character-life]")?.querySelector("[data-life-activity]");
     this.actions = [
@@ -211,9 +216,12 @@ class CharacterLifeScene {
     this.canvas.width = Math.round(width * scale);
     this.canvas.height = Math.round(height * scale);
     this.canvas.style.height = `${height}px`;
-    this.ctx.setTransform(scale, 0, 0, scale, 0, 0);
-    this.width = width;
-    this.height = height;
+    this.outputCtx.setTransform(scale, 0, 0, scale, 0, 0);
+    this.outputCtx.imageSmoothingEnabled = false;
+    this.displayWidth = width;
+    this.displayHeight = height;
+    this.width = this.buffer.width;
+    this.height = this.buffer.height;
   }
 
   rounded(x, y, width, height, radius, fill, stroke = null) {
@@ -267,12 +275,12 @@ class CharacterLifeScene {
     const tech = Number(this.levels.trading || 0) + Number(this.levels.ccfx || 0);
     const body = Number(this.levels.body || 0);
     const wall = ctx.createLinearGradient(0, 0, 0, h * .74);
-    wall.addColorStop(0, discipline >= 5 ? "#101c29" : "#241817");
-    wall.addColorStop(1, discipline >= 3 ? "#0b1320" : "#171215");
+    wall.addColorStop(0, discipline >= 5 ? "#121b32" : "#21182b");
+    wall.addColorStop(1, discipline >= 3 ? "#0b1020" : "#151323");
     ctx.fillStyle = wall;
     ctx.fillRect(0, 0, w, h * .76);
     const floor = ctx.createLinearGradient(0, h * .66, 0, h);
-    floor.addColorStop(0, "#111a22"); floor.addColorStop(1, "#05090f");
+    floor.addColorStop(0, "#151a30"); floor.addColorStop(1, "#080914");
     ctx.fillStyle = floor; ctx.fillRect(0, h * .66, w, h * .34);
     for (let index = 0; index < 9; index += 1) this.line([0, h * (.69 + index * .04), w, h * (.69 + index * .04)], "rgba(111, 156, 190, .1)", 1);
     for (let index = -3; index < 7; index += 1) this.line([w * .5, h * .66, w * (index / 5), h], "rgba(111, 156, 190, .08)", 1);
@@ -287,6 +295,11 @@ class CharacterLifeScene {
     }
     this.line([w * .15, h * .09, w * .15, h * .43], "rgba(160, 205, 235, .25)", 2);
     this.line([w * .055, h * .26, w * .245, h * .26], "rgba(160, 205, 235, .25)", 2);
+    for (let streak = 0; streak < 12; streak += 1) {
+      const rx = w * (.07 + ((streak * 17) % 155) / 1000);
+      const ry = h * (.12 + ((streak * 29 + time / 80) % 170) / 1000);
+      this.line([rx, ry, rx - 1.5, ry + 5], "rgba(168, 203, 255, .45)", 1);
+    }
 
     if (discipline < 3) {
       this.line([w * .3, h * .11, w * .33, h * .22, w * .31, h * .32, w * .35, h * .43], "rgba(42, 30, 31, .88)", 3);
@@ -323,6 +336,12 @@ class CharacterLifeScene {
     this.rounded(deskX, deskY, w * .24, h * .047, 4, "#2a2420", "rgba(230, 173, 93, .24)");
     this.line([deskX + w * .03, deskY + h * .04, deskX + w * .02, h * .71], "#251e1b", 6);
     this.line([deskX + w * .205, deskY + h * .04, deskX + w * .215, h * .71], "#251e1b", 6);
+    // A proper chair keeps the seated desk pose inside the same room rather
+    // than looking like a character laid over the furniture.
+    this.rounded(deskX + w * .1, h * .52, w * .072, h * .16, 7, "#18243a", "rgba(86, 144, 224, .35)");
+    this.rounded(deskX + w * .118, h * .65, w * .07, h * .045, 5, "#162037");
+    this.line([deskX + w * .145, h * .69, deskX + w * .145, h * .74], "#101827", 3);
+    this.line([deskX + w * .115, h * .745, deskX + w * .175, h * .745], "#101827", 2);
     for (let monitor = 0; monitor < (tech >= 4 ? 2 : 1); monitor += 1) {
       const mx = deskX + w * (.035 + monitor * .09);
       this.rounded(mx, h * .31, w * .078, h * .14, 3, "#09121e", "rgba(98, 193, 255, .55)");
@@ -378,7 +397,13 @@ class CharacterLifeScene {
     ctx.restore();
   }
 
-  draw(time) { this.ctx.clearRect(0, 0, this.width, this.height); this.drawRoom(time); this.drawAvatar(time); }
+  draw(time) {
+    this.ctx.clearRect(0, 0, this.width, this.height);
+    this.drawRoom(time);
+    this.drawAvatar(time);
+    this.outputCtx.clearRect(0, 0, this.displayWidth, this.displayHeight);
+    this.outputCtx.drawImage(this.buffer, 0, 0, this.width, this.height, 0, 0, this.displayWidth, this.displayHeight);
+  }
   loop(timestamp) { if (!document.hidden) { this.update(timestamp); this.draw(timestamp); } this.frame = requestAnimationFrame(this.loop); }
 }
 
