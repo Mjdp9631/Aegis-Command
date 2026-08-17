@@ -219,7 +219,7 @@ class CharacterLifeScene {
     this.roomActionFrames = {};
     {
       const actionSources = {
-        couch: "assets/generated/aegis-character-room-couch-action-v1.png",
+        couch: "assets/generated/aegis-character-room-couch-action-v2.png",
         fridge: "assets/generated/aegis-character-room-fridge-action-v1.png",
         desk: "assets/generated/aegis-character-room-desk-action-v1.png",
       };
@@ -228,6 +228,20 @@ class CharacterLifeScene {
         image.decoding = "async";
         image.src = `${source}?v=room-action-v1`;
         this.roomActionFrames[action] = image;
+      });
+    }
+    this.roomWalkFrames = {};
+    {
+      const walkSources = {
+        "couch:fridge": "assets/generated/aegis-character-room-walk-couch-fridge-v1.png",
+        "fridge:desk": "assets/generated/aegis-character-room-walk-fridge-desk-v1.png",
+        "desk:couch": "assets/generated/aegis-character-room-walk-desk-couch-v1.png",
+      };
+      Object.entries(walkSources).forEach(([route, source]) => {
+        const image = new Image();
+        image.decoding = "async";
+        image.src = `${source}?v=room-walk-v1`;
+        this.roomWalkFrames[route] = image;
       });
     }
     this.roomFrame = null;
@@ -325,11 +339,11 @@ class CharacterLifeScene {
       this.previousIndex = this.index;
       this.index = (this.index + 1) % this.actions.length;
       this.startedAt = timestamp;
-      this.activityLabel.textContent = `Shifting to ${this.actions[this.index].target}`;
+      this.activityLabel.textContent = `Walking to ${this.actions[this.index].target}`;
       return;
     }
     if (this.mode !== "transition") return;
-    const progress = clamp(elapsed / 720, 0, 1);
+    const progress = clamp(elapsed / 1800, 0, 1);
     if (progress < 1) return;
     this.mode = "acting";
     this.startedAt = timestamp;
@@ -342,6 +356,7 @@ class CharacterLifeScene {
     const actionImage = this.roomActionFrames[action];
     const previousAction = this.actions[this.previousIndex]?.id;
     const previousImage = this.mode === "transition" ? this.roomActionFrames[previousAction] : null;
+    const walkImage = this.mode === "transition" ? this.roomWalkFrames[`${previousAction}:${action}`] : null;
     const drawImageFrame = (image, alpha = 1) => {
       // Render a single painted room rather than layering unrelated canvas
       // furniture.  Cover preserves the full width of the walk route while
@@ -363,7 +378,18 @@ class CharacterLifeScene {
     };
     if (actionImage?.complete && actionImage.naturalWidth) {
       this.usingActionFrame = true;
-      if (previousImage?.complete && previousImage.naturalWidth) {
+      if (previousImage?.complete && previousImage.naturalWidth && walkImage?.complete && walkImage.naturalWidth) {
+        const progress = clamp((time - this.startedAt) / 1800, 0, 1);
+        if (progress < .28) {
+          drawImageFrame(previousImage);
+          drawImageFrame(walkImage, progress / .28);
+        } else if (progress < .72) {
+          drawImageFrame(walkImage);
+        } else {
+          drawImageFrame(walkImage);
+          drawImageFrame(actionImage, (progress - .72) / .28);
+        }
+      } else if (previousImage?.complete && previousImage.naturalWidth) {
         const progress = clamp((time - this.startedAt) / 720, 0, 1);
         drawImageFrame(previousImage);
         drawImageFrame(actionImage, progress);
