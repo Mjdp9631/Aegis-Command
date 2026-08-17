@@ -61,7 +61,13 @@
 .character-life-stage::before { top: 9px; left: 9px; border-top: 1px solid; border-left: 1px solid; }
 .character-life-stage::after { right: 9px; bottom: 9px; border-right: 1px solid; border-bottom: 1px solid; }
 
-.character-life-stage canvas { display: block; width: 100%; min-height: 250px; }
+.character-life-stage canvas {
+  display: block;
+  width: 100%;
+  min-height: 250px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
 
 .character-life-key {
   position: absolute;
