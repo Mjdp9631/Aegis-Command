@@ -190,9 +190,9 @@ class CharacterLifeScene {
     this.levels = levels;
     this.activityLabel = canvas.closest("[data-character-life]")?.querySelector("[data-life-activity]");
     this.actions = [
-      { id: "couch", label: "Resetting in the lounge", target: "the couch", x: .22, dwell: 6200 },
-      { id: "fridge", label: "Refueling at the fridge", target: "the fridge", x: .505, dwell: 4400 },
-      { id: "desk", label: "Reviewing charts at the desk", target: "the trading desk", x: .77, dwell: 6800 },
+      { id: "couch", label: "Resetting in the lounge", target: "the couch", x: .22, dwell: 14000 },
+      { id: "fridge", label: "Refueling at the fridge", target: "the fridge", x: .505, dwell: 10000 },
+      { id: "desk", label: "Reviewing charts at the desk", target: "the trading desk", x: .77, dwell: 18000 },
     ];
     this.index = 0;
     this.previousIndex = 0;
@@ -228,6 +228,20 @@ class CharacterLifeScene {
         image.decoding = "async";
         image.src = `${source}?v=room-action-v1`;
         this.roomActionFrames[action] = image;
+      });
+    }
+    this.roomActionLoopFrames = {};
+    {
+      const loopSources = {
+        couch: "assets/generated/aegis-character-room-couch-scroll-v1.png",
+        fridge: "assets/generated/aegis-character-room-fridge-lower-v1.png",
+        desk: "assets/generated/aegis-character-room-desk-typing-v1.png",
+      };
+      Object.entries(loopSources).forEach(([action, source]) => {
+        const image = new Image();
+        image.decoding = "async";
+        image.src = `${source}?v=room-action-loop-v1`;
+        this.roomActionLoopFrames[action] = image;
       });
     }
     this.roomWalkFrames = {};
@@ -357,7 +371,7 @@ class CharacterLifeScene {
     const previousAction = this.actions[this.previousIndex]?.id;
     const previousImage = this.mode === "transition" ? this.roomActionFrames[previousAction] : null;
     const walkImage = this.mode === "transition" ? this.roomWalkFrames[`${previousAction}:${action}`] : null;
-    const drawImageFrame = (image, alpha = 1) => {
+    const drawImageFrame = (image, alpha = 1, filter = "none") => {
       // Render a single painted room rather than layering unrelated canvas
       // furniture.  Cover preserves the full width of the walk route while
       // trimming only a little ceiling/floor from the cinematic 16:9 source.
@@ -372,35 +386,45 @@ class CharacterLifeScene {
         sourceY = (image.naturalHeight - sourceHeight) / 2;
       }
       this.roomFrame = { image, sourceX, sourceY, sourceWidth, sourceHeight };
-      ctx.save(); ctx.globalAlpha = alpha;
+      ctx.save(); ctx.globalAlpha = alpha; ctx.filter = filter;
       ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, w, h);
       ctx.restore();
+    };
+    const brightFilter = "brightness(1.1) saturate(1.04) contrast(1.015)";
+    const drawActionLoop = () => {
+      const loopImage = this.roomActionLoopFrames[action];
+      drawImageFrame(actionImage, 1, brightFilter);
+      if (!loopImage?.complete || !loopImage.naturalWidth) return;
+      // A gentle 3.6s base -> action -> base loop: phone scroll/head bob,
+      // water down/sip, or finger movement/monitor pulse, without a cutout.
+      const alpha = (Math.sin((time - this.startedAt) * (Math.PI * 2 / 3600) - Math.PI / 2) + 1) / 2;
+      drawImageFrame(loopImage, alpha);
     };
     if (actionImage?.complete && actionImage.naturalWidth) {
       this.usingActionFrame = true;
       if (previousImage?.complete && previousImage.naturalWidth && walkImage?.complete && walkImage.naturalWidth) {
         const progress = clamp((time - this.startedAt) / 1800, 0, 1);
         if (progress < .28) {
-          drawImageFrame(previousImage);
-          drawImageFrame(walkImage, progress / .28);
+          drawImageFrame(previousImage, 1, brightFilter);
+          drawImageFrame(walkImage, progress / .28, brightFilter);
         } else if (progress < .72) {
-          drawImageFrame(walkImage);
+          drawImageFrame(walkImage, 1, brightFilter);
         } else {
-          drawImageFrame(walkImage);
-          drawImageFrame(actionImage, (progress - .72) / .28);
+          drawImageFrame(walkImage, 1, brightFilter);
+          drawImageFrame(actionImage, (progress - .72) / .28, brightFilter);
         }
       } else if (previousImage?.complete && previousImage.naturalWidth) {
         const progress = clamp((time - this.startedAt) / 720, 0, 1);
-        drawImageFrame(previousImage);
-        drawImageFrame(actionImage, progress);
+        drawImageFrame(previousImage, 1, brightFilter);
+        drawImageFrame(actionImage, progress, brightFilter);
       } else {
-        drawImageFrame(actionImage);
+        drawActionLoop();
       }
       // A slight lower-third shade keeps the live character readable without
       // making the painted room look like it has been overlaid by an effect.
       const floorShade = ctx.createLinearGradient(0, h * .56, 0, h);
       floorShade.addColorStop(0, "rgba(2, 5, 11, 0)");
-      floorShade.addColorStop(1, "rgba(2, 5, 11, .16)");
+      floorShade.addColorStop(1, "rgba(2, 5, 11, .09)");
       ctx.fillStyle = floorShade; ctx.fillRect(0, 0, w, h);
       return;
     }
