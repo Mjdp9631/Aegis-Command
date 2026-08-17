@@ -215,6 +215,7 @@ class CharacterLifeScene {
     this.roomBackground = new Image();
     this.roomBackground.decoding = "async";
     this.roomBackground.src = "assets/generated/aegis-character-room-pixel-v1.png?v=room-pixel-v1";
+    this.roomFrame = null;
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
     this.resize();
@@ -341,6 +342,7 @@ class CharacterLifeScene {
         sourceHeight = image.naturalWidth / stageAspect;
         sourceY = (image.naturalHeight - sourceHeight) / 2;
       }
+      this.roomFrame = { image, sourceX, sourceY, sourceWidth, sourceHeight };
       ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, w, h);
       // A slight lower-third shade keeps the live character readable without
       // making the painted room look like it has been overlaid by an effect.
@@ -350,6 +352,7 @@ class CharacterLifeScene {
       ctx.fillStyle = floorShade; ctx.fillRect(0, 0, w, h);
       return;
     }
+    this.roomFrame = null;
     const discipline = Number(this.levels.discipline || 0);
     const mind = Number(this.levels.mind || 0);
     const tech = Number(this.levels.trading || 0) + Number(this.levels.ccfx || 0);
@@ -460,6 +463,36 @@ class CharacterLifeScene {
     return true;
   }
 
+  drawRoomForeground(action) {
+    if (!this.roomFrame || this.mode === "walking") return;
+    const { ctx, width: w, height: h } = this;
+    // Each rectangle is a real foreground piece re-painted from the same room
+    // image after the character.  That gives the couch/table/chair depth
+    // without a second mismatched illustration or a CSS overlay.
+    const layers = {
+      couch: [
+        { x: .275, y: .59, width: .075, height: .22 }, // sofa arm
+        { x: .35, y: .64, width: .205, height: .285 }, // coffee table
+      ],
+      desk: [
+        { x: .695, y: .62, width: .095, height: .10 }, // chair arm + seat front
+        { x: .755, y: .70, width: .085, height: .22 }, // chair base
+        { x: .815, y: .56, width: .185, height: .31 }, // desk front edge
+      ],
+      fridge: [
+        { x: .48, y: .57, width: .075, height: .18 }, // lower fridge edge
+      ],
+    }[action] || [];
+    const frame = this.roomFrame;
+    layers.forEach((layer) => {
+      const dx = layer.x * w; const dy = layer.y * h; const dw = layer.width * w; const dh = layer.height * h;
+      const sx = frame.sourceX + layer.x * frame.sourceWidth;
+      const sy = frame.sourceY + layer.y * frame.sourceHeight;
+      const sw = layer.width * frame.sourceWidth; const sh = layer.height * frame.sourceHeight;
+      ctx.drawImage(frame.image, sx, sy, sw, sh, dx, dy, dw, dh);
+    });
+  }
+
   drawAvatar(time) {
     const { ctx, width: w, height: h } = this;
     const action = this.mode === "walking" ? "walking" : this.actions[this.index].id;
@@ -518,6 +551,7 @@ class CharacterLifeScene {
     this.ctx.clearRect(0, 0, this.width, this.height);
     this.drawRoom(time);
     this.drawAvatar(time);
+    this.drawRoomForeground(this.mode === "walking" ? "walking" : this.actions[this.index].id);
     this.outputCtx.clearRect(0, 0, this.displayWidth, this.displayHeight);
     this.outputCtx.drawImage(this.buffer, 0, 0, this.width, this.height, 0, 0, this.displayWidth, this.displayHeight);
   }
