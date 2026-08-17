@@ -215,7 +215,22 @@ class CharacterLifeScene {
     this.roomBackground = new Image();
     this.roomBackground.decoding = "async";
     this.roomBackground.src = "assets/generated/aegis-character-room-pixel-v1.png?v=room-pixel-v1";
+    this.roomActionFrames = {};
+    {
+      const actionSources = {
+        couch: "assets/generated/aegis-character-room-couch-action-v1.png",
+        fridge: "assets/generated/aegis-character-room-fridge-action-v1.png",
+        desk: "assets/generated/aegis-character-room-desk-action-v1.png",
+      };
+      Object.entries(actionSources).forEach(([action, source]) => {
+        const image = new Image();
+        image.decoding = "async";
+        image.src = `${source}?v=room-action-v1`;
+        this.roomActionFrames[action] = image;
+      });
+    }
     this.roomFrame = null;
+    this.usingActionFrame = false;
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
     this.resize();
@@ -327,11 +342,14 @@ class CharacterLifeScene {
 
   drawRoom(time) {
     const { ctx, width: w, height: h } = this;
-    if (this.roomBackground.complete && this.roomBackground.naturalWidth) {
+    const action = this.mode === "acting" ? this.actions[this.index]?.id : null;
+    const actionImage = action ? this.roomActionFrames[action] : null;
+    const image = actionImage?.complete && actionImage.naturalWidth ? actionImage : this.roomBackground;
+    this.usingActionFrame = image === actionImage;
+    if (image?.complete && image.naturalWidth) {
       // Render a single painted room rather than layering unrelated canvas
       // furniture.  Cover preserves the full width of the walk route while
       // trimming only a little ceiling/floor from the cinematic 16:9 source.
-      const image = this.roomBackground;
       const imageAspect = image.naturalWidth / image.naturalHeight;
       const stageAspect = w / h;
       let sourceX = 0; let sourceY = 0; let sourceWidth = image.naturalWidth; let sourceHeight = image.naturalHeight;
@@ -464,7 +482,7 @@ class CharacterLifeScene {
   }
 
   drawRoomForeground(action) {
-    if (!this.roomFrame || this.mode === "walking") return;
+    if (!this.roomFrame || this.mode === "walking" || this.usingActionFrame) return;
     const { ctx, width: w, height: h } = this;
     // Each rectangle is a real foreground piece re-painted from the same room
     // image after the character.  That gives the couch/table/chair depth
@@ -496,6 +514,9 @@ class CharacterLifeScene {
   drawAvatar(time) {
     const { ctx, width: w, height: h } = this;
     const action = this.mode === "walking" ? "walking" : this.actions[this.index].id;
+    // Couch/fridge/desk moments are complete painted frames.  Drawing a
+    // cutout on top would undo their built-in furniture occlusion.
+    if (this.usingActionFrame) return;
     const x = this.position * w;
     const spriteSpec = {
       // The painted room's real floor is near the lower edge.  The prior
