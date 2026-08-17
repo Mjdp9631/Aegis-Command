@@ -207,7 +207,7 @@ class CharacterLifeScene {
     this.sprites = {};
     this.spriteSources = {
       walking: "assets/generated/aegis-character-manbun-pixel-standing-source.png",
-      couch: "assets/generated/aegis-character-manbun-pixel-couch-source.png",
+      couch: "assets/generated/aegis-character-manbun-pixel-couch-front-source.png",
       fridge: "assets/generated/aegis-character-manbun-pixel-fridge-source.png",
       desk: "assets/generated/aegis-character-manbun-pixel-desk-source.png",
     };
@@ -506,7 +506,9 @@ class CharacterLifeScene {
       fridge: { ground: h * .94, height: h * .70 },
       desk: { ground: h * .94, height: h * .58 },
     }[action];
-    if (spriteSpec && this.drawSprite(action, x, spriteSpec.ground, spriteSpec.height, time)) return;
+    // The desk is on the right, so this seated sprite is mirrored to face the
+    // monitors.  The couch pose is replaced by a front-facing sprite below.
+    if (spriteSpec && this.drawSprite(action, x, spriteSpec.ground, spriteSpec.height, time, action === "desk")) return;
 
     // Brief load fallback only: the detailed sprites above replace this as
     // soon as their local files are decoded.
