@@ -195,6 +195,7 @@ class CharacterLifeScene {
       { id: "desk", label: "Reviewing charts at the desk", target: "the trading desk", x: .77, dwell: 6800 },
     ];
     this.index = 0;
+    this.previousIndex = 0;
     this.mode = "acting";
     this.startedAt = performance.now();
     this.position = this.actions[0].x;
@@ -320,21 +321,16 @@ class CharacterLifeScene {
     const action = this.actions[this.index];
     const elapsed = timestamp - this.startedAt;
     if (this.mode === "acting" && elapsed >= action.dwell) {
-      this.mode = "walking";
-      this.from = action.x;
+      this.mode = "transition";
+      this.previousIndex = this.index;
       this.index = (this.index + 1) % this.actions.length;
-      this.to = this.actions[this.index].x;
       this.startedAt = timestamp;
-      this.activityLabel.textContent = `Walking to ${this.actions[this.index].target}`;
+      this.activityLabel.textContent = `Shifting to ${this.actions[this.index].target}`;
       return;
     }
-    if (this.mode !== "walking") return;
-    const travel = 1100 + Math.abs(this.to - this.from) * 3800;
-    const progress = clamp(elapsed / travel, 0, 1);
-    const eased = progress < .5 ? 2 * progress * progress : 1 - ((-2 * progress + 2) ** 2) / 2;
-    this.position = this.from + (this.to - this.from) * eased;
+    if (this.mode !== "transition") return;
+    const progress = clamp(elapsed / 720, 0, 1);
     if (progress < 1) return;
-    this.position = this.to;
     this.mode = "acting";
     this.startedAt = timestamp;
     this.activityLabel.textContent = this.actions[this.index].label;
@@ -342,11 +338,11 @@ class CharacterLifeScene {
 
   drawRoom(time) {
     const { ctx, width: w, height: h } = this;
-    const action = this.mode === "acting" ? this.actions[this.index]?.id : null;
-    const actionImage = action ? this.roomActionFrames[action] : null;
-    const image = actionImage?.complete && actionImage.naturalWidth ? actionImage : this.roomBackground;
-    this.usingActionFrame = image === actionImage;
-    if (image?.complete && image.naturalWidth) {
+    const action = this.actions[this.index]?.id;
+    const actionImage = this.roomActionFrames[action];
+    const previousAction = this.actions[this.previousIndex]?.id;
+    const previousImage = this.mode === "transition" ? this.roomActionFrames[previousAction] : null;
+    const drawImageFrame = (image, alpha = 1) => {
       // Render a single painted room rather than layering unrelated canvas
       // furniture.  Cover preserves the full width of the walk route while
       // trimming only a little ceiling/floor from the cinematic 16:9 source.
@@ -361,7 +357,19 @@ class CharacterLifeScene {
         sourceY = (image.naturalHeight - sourceHeight) / 2;
       }
       this.roomFrame = { image, sourceX, sourceY, sourceWidth, sourceHeight };
+      ctx.save(); ctx.globalAlpha = alpha;
       ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, w, h);
+      ctx.restore();
+    };
+    if (actionImage?.complete && actionImage.naturalWidth) {
+      this.usingActionFrame = true;
+      if (previousImage?.complete && previousImage.naturalWidth) {
+        const progress = clamp((time - this.startedAt) / 720, 0, 1);
+        drawImageFrame(previousImage);
+        drawImageFrame(actionImage, progress);
+      } else {
+        drawImageFrame(actionImage);
+      }
       // A slight lower-third shade keeps the live character readable without
       // making the painted room look like it has been overlaid by an effect.
       const floorShade = ctx.createLinearGradient(0, h * .56, 0, h);
@@ -371,6 +379,12 @@ class CharacterLifeScene {
       return;
     }
     this.roomFrame = null;
+    this.usingActionFrame = false;
+    // Do not fall back to the empty room or a standalone character: wait a
+    // beat for the complete couch frame so every visible scene is one layer.
+    ctx.fillStyle = "#080d14"; ctx.fillRect(0, 0, w, h);
+    return;
+    /* istanbul ignore next */
     const discipline = Number(this.levels.discipline || 0);
     const mind = Number(this.levels.mind || 0);
     const tech = Number(this.levels.trading || 0) + Number(this.levels.ccfx || 0);
@@ -482,7 +496,7 @@ class CharacterLifeScene {
   }
 
   drawRoomForeground(action) {
-    if (!this.roomFrame || this.mode === "walking" || this.usingActionFrame) return;
+    if (!this.roomFrame || this.mode === "transition" || this.usingActionFrame) return;
     const { ctx, width: w, height: h } = this;
     // Each rectangle is a real foreground piece re-painted from the same room
     // image after the character.  That gives the couch/table/chair depth
@@ -516,7 +530,7 @@ class CharacterLifeScene {
     const action = this.mode === "walking" ? "walking" : this.actions[this.index].id;
     // Couch/fridge/desk moments are complete painted frames.  Drawing a
     // cutout on top would undo their built-in furniture occlusion.
-    if (this.usingActionFrame) return;
+    if (this.mode === "acting" || this.mode === "transition") return;
     const x = this.position * w;
     const spriteSpec = {
       // The painted room's real floor is near the lower edge.  The prior
