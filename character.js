@@ -9,6 +9,7 @@ const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => 
 let xpCampaign = null;
 let xpCampaignError = null;
 let directorReviews = [];
+let characterLifeAnimator = null;
 const quarterKey = () => `${new Date().getFullYear()}-Q${Math.floor(new Date().getMonth() / 3) + 1}`;
 
 function missionProgress(mission) {
@@ -170,6 +171,224 @@ function bindCharacterEvolution() {
   }, 7200);
 }
 
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+function characterLifePanel(levels) {
+  const averageLevel = Math.round(Object.values(levels).reduce((sum, level) => sum + Number(level || 0), 0) / Math.max(1, Object.keys(levels).length));
+  return `<section class="character-life panel" data-character-life><div class="character-life-heading"><div><p class="eyebrow amber">LIVING QUARTERS / PASSIVE VISUAL</p><h3>Watch the work change the room.</h3><p>One real-time scene: Mat walks to the couch, refuels at the fridge, then sits down to trade. Every level changes only the part of life it earned.</p></div><div class="character-life-readout"><span>LIVE ROUTINE</span><strong>LV ${averageLevel}</strong><small data-life-activity>Resetting in the lounge</small></div></div><div class="character-life-stage"><canvas data-character-life-canvas aria-label="Animated character routine: couch, fridge, and trading desk"></canvas><div class="character-life-key" aria-hidden="true"><span>DISCIPLINE <b>ROOM</b></span><span>MIND <b>LIBRARY</b></span><span>BODY <b>PHYSIQUE</b></span><span>TRADING + CCFX <b>TECH</b></span></div></div></section>`;
+}
+
+class CharacterLifeScene {
+  constructor(canvas, levels) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext("2d");
+    this.levels = levels;
+    this.activityLabel = canvas.closest("[data-character-life]")?.querySelector("[data-life-activity]");
+    this.actions = [
+      { id: "couch", label: "Resetting in the lounge", target: "the couch", x: .22, dwell: 6200 },
+      { id: "fridge", label: "Refueling at the fridge", target: "the fridge", x: .505, dwell: 4400 },
+      { id: "desk", label: "Reviewing charts at the desk", target: "the trading desk", x: .77, dwell: 6800 },
+    ];
+    this.index = 0;
+    this.mode = "acting";
+    this.startedAt = performance.now();
+    this.position = this.actions[0].x;
+    this.from = this.position;
+    this.to = this.position;
+    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver.observe(canvas);
+    this.resize();
+    this.loop = this.loop.bind(this);
+    this.frame = requestAnimationFrame(this.loop);
+  }
+
+  destroy() { cancelAnimationFrame(this.frame); this.resizeObserver.disconnect(); }
+
+  resize() {
+    const width = Math.max(320, this.canvas.clientWidth || 960);
+    const height = Math.round(clamp(width * .43, 250, 460));
+    const scale = Math.min(window.devicePixelRatio || 1, 2);
+    this.canvas.width = Math.round(width * scale);
+    this.canvas.height = Math.round(height * scale);
+    this.canvas.style.height = `${height}px`;
+    this.ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    this.width = width;
+    this.height = height;
+  }
+
+  rounded(x, y, width, height, radius, fill, stroke = null) {
+    const { ctx } = this;
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, radius);
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
+  }
+
+  line(points, color, width = 2) {
+    const { ctx } = this;
+    ctx.beginPath();
+    ctx.moveTo(points[0], points[1]);
+    for (let index = 2; index < points.length; index += 2) ctx.lineTo(points[index], points[index + 1]);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+  }
+
+  update(timestamp) {
+    const action = this.actions[this.index];
+    const elapsed = timestamp - this.startedAt;
+    if (this.mode === "acting" && elapsed >= action.dwell) {
+      this.mode = "walking";
+      this.from = action.x;
+      this.index = (this.index + 1) % this.actions.length;
+      this.to = this.actions[this.index].x;
+      this.startedAt = timestamp;
+      this.activityLabel.textContent = `Walking to ${this.actions[this.index].target}`;
+      return;
+    }
+    if (this.mode !== "walking") return;
+    const travel = 1100 + Math.abs(this.to - this.from) * 3800;
+    const progress = clamp(elapsed / travel, 0, 1);
+    const eased = progress < .5 ? 2 * progress * progress : 1 - ((-2 * progress + 2) ** 2) / 2;
+    this.position = this.from + (this.to - this.from) * eased;
+    if (progress < 1) return;
+    this.position = this.to;
+    this.mode = "acting";
+    this.startedAt = timestamp;
+    this.activityLabel.textContent = this.actions[this.index].label;
+  }
+
+  drawRoom(time) {
+    const { ctx, width: w, height: h } = this;
+    const discipline = Number(this.levels.discipline || 0);
+    const mind = Number(this.levels.mind || 0);
+    const tech = Number(this.levels.trading || 0) + Number(this.levels.ccfx || 0);
+    const body = Number(this.levels.body || 0);
+    const wall = ctx.createLinearGradient(0, 0, 0, h * .74);
+    wall.addColorStop(0, discipline >= 5 ? "#101c29" : "#241817");
+    wall.addColorStop(1, discipline >= 3 ? "#0b1320" : "#171215");
+    ctx.fillStyle = wall;
+    ctx.fillRect(0, 0, w, h * .76);
+    const floor = ctx.createLinearGradient(0, h * .66, 0, h);
+    floor.addColorStop(0, "#111a22"); floor.addColorStop(1, "#05090f");
+    ctx.fillStyle = floor; ctx.fillRect(0, h * .66, w, h * .34);
+    for (let index = 0; index < 9; index += 1) this.line([0, h * (.69 + index * .04), w, h * (.69 + index * .04)], "rgba(111, 156, 190, .1)", 1);
+    for (let index = -3; index < 7; index += 1) this.line([w * .5, h * .66, w * (index / 5), h], "rgba(111, 156, 190, .08)", 1);
+
+    this.rounded(w * .055, h * .09, w * .19, h * .34, 5, "#080e18", "rgba(112, 189, 247, .34)");
+    ctx.fillStyle = "rgba(48, 135, 200, .13)"; ctx.fillRect(w * .062, h * .103, w * .176, h * .312);
+    for (let index = 0; index < 18; index += 1) {
+      const x = w * (.067 + ((index * 23) % 160) / 1000);
+      const y = h * (.15 + ((index * 37) % 190) / 1000);
+      ctx.fillStyle = index % 3 ? "rgba(113, 193, 255, .58)" : "rgba(235, 174, 88, .55)";
+      ctx.fillRect(x, y, 2 + (index % 3), 2 + (index % 2));
+    }
+    this.line([w * .15, h * .09, w * .15, h * .43], "rgba(160, 205, 235, .25)", 2);
+    this.line([w * .055, h * .26, w * .245, h * .26], "rgba(160, 205, 235, .25)", 2);
+
+    if (discipline < 3) {
+      this.line([w * .3, h * .11, w * .33, h * .22, w * .31, h * .32, w * .35, h * .43], "rgba(42, 30, 31, .88)", 3);
+      this.line([w * .34, h * .22, w * .38, h * .18], "rgba(42, 30, 31, .72)", 2);
+    } else {
+      for (let index = 0; index < 5; index += 1) this.line([w * (.28 + index * .115), h * .08, w * (.28 + index * .115), h * .64], "rgba(91, 139, 170, .11)", 1);
+    }
+
+    this.rounded(w * .09, h * .54, w * .25, h * .12, 10, "#2a3037", "rgba(190, 205, 216, .16)");
+    this.rounded(w * .105, h * .47, w * .22, h * .14, 10, "#333a41", "rgba(214, 224, 230, .14)");
+    this.rounded(w * .07, h * .56, w * .05, h * .14, 8, "#262d34");
+    this.rounded(w * .315, h * .56, w * .05, h * .14, 8, "#262d34");
+    this.line([w * .105, h * .61, w * .325, h * .61], "rgba(5, 9, 13, .56)", 2);
+
+    const fridgeX = w * .46; const fridgeY = h * .21;
+    const atFridge = this.mode === "acting" && this.actions[this.index].id === "fridge";
+    const door = atFridge ? 9 + Math.sin(time / 250) * 1.2 : 1;
+    this.rounded(fridgeX, fridgeY, w * .115, h * .43, 6, tech >= 7 ? "#202d36" : "#30343a", "rgba(173, 207, 227, .28)");
+    this.rounded(fridgeX + w * .008, fridgeY + h * .018, w * .098, h * .245, 4, "#1d242b");
+    this.rounded(fridgeX + w * .008, fridgeY + h * .278, w * .098, h * .142, 4, "#1b2128");
+    this.line([fridgeX + w * .09, fridgeY + h * .06, fridgeX + w * .09 + door, fridgeY + h * .22], "#a7c4d5", 3);
+    if (atFridge) { ctx.fillStyle = "rgba(134, 211, 255, .18)"; ctx.fillRect(fridgeX + w * .02, fridgeY + h * .03, w * .075, h * .20); }
+
+    const shelfX = w * .355;
+    this.rounded(shelfX, h * .23, w * .075, h * .39, 3, "#1d2228", "rgba(179, 147, 95, .23)");
+    for (let row = 0; row < 4; row += 1) this.line([shelfX, h * (.3 + row * .08), shelfX + w * .075, h * (.3 + row * .08)], "rgba(180, 202, 217, .17)", 2);
+    for (let book = 0; book < clamp(Math.round(mind * 2), 0, 8); book += 1) {
+      const row = Math.floor(book / 2); const column = book % 2;
+      ctx.fillStyle = book % 2 ? "#b87945" : "#527b9b";
+      ctx.fillRect(shelfX + w * (.012 + column * .027), h * (.25 + row * .08), w * .018, h * .047);
+    }
+
+    const deskX = w * .665; const deskY = h * .49;
+    this.rounded(deskX, deskY, w * .24, h * .047, 4, "#2a2420", "rgba(230, 173, 93, .24)");
+    this.line([deskX + w * .03, deskY + h * .04, deskX + w * .02, h * .71], "#251e1b", 6);
+    this.line([deskX + w * .205, deskY + h * .04, deskX + w * .215, h * .71], "#251e1b", 6);
+    for (let monitor = 0; monitor < (tech >= 4 ? 2 : 1); monitor += 1) {
+      const mx = deskX + w * (.035 + monitor * .09);
+      this.rounded(mx, h * .31, w * .078, h * .14, 3, "#09121e", "rgba(98, 193, 255, .55)");
+      this.line([mx + w * .008, h * .41, mx + w * .07, h * .35, mx + w * .074, h * .38], "#4cb8ff", 1.6);
+      this.line([mx + w * .039, h * .45, mx + w * .039, h * .49], "#516c80", 2);
+    }
+    if (body >= 3) {
+      this.line([w * .91, h * .62, w * .97, h * .62], "#88aabf", 5);
+      this.line([w * .92, h * .59, w * .93, h * .67], "#88aabf", 3);
+      this.line([w * .96, h * .59, w * .95, h * .67], "#88aabf", 3);
+      ctx.fillStyle = "#4e6578"; ctx.beginPath(); ctx.arc(w * .92, h * .62, 8, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(w * .96, h * .62, 8, 0, Math.PI * 2); ctx.fill();
+    }
+    this.rounded(w * .17, h * .73, w * .68, h * .15, h * .03, "rgba(14, 31, 47, .72)", "rgba(94, 181, 236, .18)");
+  }
+
+  limb(x1, y1, x2, y2, width, color) {
+    this.line([x1, y1, x2, y2], color, width);
+    this.ctx.fillStyle = "#0e151c";
+    this.ctx.beginPath(); this.ctx.arc(x2, y2, Math.max(2, width * .16), 0, Math.PI * 2); this.ctx.fill();
+  }
+
+  drawAvatar(time) {
+    const { ctx, width: w, height: h } = this;
+    const action = this.mode === "walking" ? "walking" : this.actions[this.index].id;
+    const x = this.position * w;
+    const bodyLevel = Number(this.levels.body || 0);
+    const scale = clamp(w / 1100, .66, 1.05);
+    const step = Math.sin(time / 120) * (action === "walking" ? 1 : .08);
+    const broad = 19 + clamp(bodyLevel, 0, 18) * .62;
+    const waist = Math.max(17, 25 - clamp(bodyLevel, 0, 16) * .45);
+    const skin = "#b77d59"; const clothing = bodyLevel >= 7 ? "#233b56" : "#2c333f";
+    const idleMotion = Math.sin(time / 460) * 2;
+    ctx.save(); ctx.translate(x, h * .78); ctx.scale(scale, scale);
+    ctx.fillStyle = "rgba(0, 0, 0, .34)"; ctx.beginPath(); ctx.ellipse(0, 6, 31, 7, 0, 0, Math.PI * 2); ctx.fill();
+    const head = (hx, hy) => {
+      ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(hx, hy, 13, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#1d1717"; ctx.beginPath(); ctx.arc(hx - 2, hy - 11, 11, Math.PI, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(hx + 9, hy - 14, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#2c2020"; ctx.beginPath(); ctx.arc(hx + 1, hy + 8, 10, 0, Math.PI); ctx.fill();
+    };
+    const torso = (tx, ty, angle = 0) => { ctx.save(); ctx.translate(tx, ty); ctx.rotate(angle); this.rounded(-broad, -36, broad * 2, 43, 12, clothing, "#080c10"); ctx.fillStyle = "rgba(157, 196, 221, .22)"; ctx.fillRect(-waist, -5, waist * 2, 2); ctx.restore(); };
+    const leg = (x1, y1, kneeX, kneeY, footX, footY) => { this.limb(x1, y1, kneeX, kneeY, 13, "#1b2833"); this.limb(kneeX, kneeY, footX, footY, 11, "#18222b"); this.rounded(footX - 8, footY - 3, 16, 6, 3, "#0c1014"); };
+    const arm = (x1, y1, elbowX, elbowY, handX, handY) => { this.limb(x1, y1, elbowX, elbowY, 11, clothing); this.limb(elbowX, elbowY, handX, handY, 8, skin); };
+    if (action === "couch") {
+      torso(-2, -55 + idleMotion, -.1); head(-7, -105 + idleMotion); leg(-12, -20, 16, -15, 24, 0); leg(9, -20, 31, -9, 40, 0); arm(-broad + 3, -77 + idleMotion, -38, -60 + idleMotion, -30, -45 + idleMotion); arm(broad - 3, -77 + idleMotion, 21, -52 - idleMotion, 32, -42 - idleMotion);
+    } else if (action === "desk") {
+      torso(-3, -56 + idleMotion * .35, .04); head(-3, -106 + idleMotion * .35); leg(-12, -19, 11, -12, 21, 0); leg(9, -19, 26, -12, 36, 0); arm(-broad + 4, -79, 9, -71 + idleMotion, 29, -59 + idleMotion); arm(broad - 4, -79, 24, -70 - idleMotion, 39, -59 - idleMotion);
+    } else {
+      const sway = action === "walking" ? step * 12 : 0;
+      torso(0, -58, action === "walking" ? step * .04 : 0); head(0, -108 + (action === "walking" ? Math.abs(step) * 2 : 0)); leg(-9, -19, -13 + sway, -4, -19 + sway * 1.2, 0); leg(9, -19, 13 - sway, -4, 19 - sway * 1.2, 0);
+      if (action === "fridge") { arm(-broad + 2, -80, 17, -84 + idleMotion, 34, -76 + idleMotion); arm(broad - 2, -80, 31, -67 - idleMotion, 40, -55 - idleMotion); this.rounded(37, -64 + idleMotion, 8, 17, 3, "#68c6ee"); }
+      else { arm(-broad + 2, -80, -30 - sway, -52, -27 - sway, -31); arm(broad - 2, -80, 30 + sway, -52, 28 + sway, -31); }
+    }
+    ctx.restore();
+  }
+
+  draw(time) { this.ctx.clearRect(0, 0, this.width, this.height); this.drawRoom(time); this.drawAvatar(time); }
+  loop(timestamp) { if (!document.hidden) { this.update(timestamp); this.draw(timestamp); } this.frame = requestAnimationFrame(this.loop); }
+}
+
+function bindCharacterLifeScene(levels) {
+  characterLifeAnimator?.destroy();
+  const canvas = document.querySelector("[data-character-life-canvas]");
+  if (!canvas || !window.HTMLCanvasElement) return;
+  characterLifeAnimator = new CharacterLifeScene(canvas, levels);
+}
+
 function bindCharacterFocusHover() {
   const items = Array.from(document.querySelectorAll("#character [data-focus-axis]"));
   const setHighlight = (axis, active) => items.filter((item) => item.dataset.focusAxis === axis).forEach((item) => item.classList.toggle("is-highlighted", active));
@@ -226,10 +445,11 @@ function render({ operations, occurrences, trades, missions, projects, contentIt
   window.dispatchEvent(new CustomEvent("aegis:character-levels-changed", { detail: levels }));
   const launch = !xpCampaign ? `<section class="panel xp-launch-panel"><p class="eyebrow amber">CAMPAIGN CALIBRATION</p><h3>XP is paused.</h3><p class="body-copy">Nothing logged before activation will count. When you are ready, start the five-year campaign and the ledger will begin from that moment forward.</p>${xpCampaignError ? `<p class="body-copy">${escape(xpCampaignError)}</p>` : `<button class="primary compact" type="button" id="start-xp-campaign">Start campaign tracking</button>`}</section>` : "";
   const characterView = $("#character");
-  characterView.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p><div class="character-intro-actions"><button class="ghost compact" type="button" id="export-system-data">Export system data</button><small>Private JSON backup of records available to this account.</small></div></div>${launch}${characterFocus(metrics, recovery)}${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>`;
+  characterView.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p><div class="character-intro-actions"><button class="ghost compact" type="button" id="export-system-data">Export system data</button><small>Private JSON backup of records available to this account.</small></div></div>${launch}${characterFocus(metrics, recovery)}${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>${characterLifePanel(levels)}`;
   characterView.dataset.characterReady = "true";
   characterView.setAttribute("aria-busy", "false");
   bindCharacterFocusHover();
+  bindCharacterLifeScene(levels);
 }
 
 async function load() {
