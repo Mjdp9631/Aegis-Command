@@ -247,15 +247,29 @@ class CharacterLifeScene {
     this.roomWalkFrames = {};
     {
       const walkSources = {
-        "couch:fridge": "assets/generated/aegis-character-room-walk-couch-fridge-v1.png",
-        "fridge:desk": "assets/generated/aegis-character-room-walk-fridge-desk-v1.png",
-        "desk:couch": "assets/generated/aegis-character-room-walk-desk-couch-v1.png",
+        "couch:fridge": [
+          "assets/generated/aegis-character-room-walk-couch-fridge-start-v1.png",
+          "assets/generated/aegis-character-room-walk-couch-fridge-v1.png",
+          "assets/generated/aegis-character-room-walk-couch-fridge-end-v1.png",
+        ],
+        "fridge:desk": [
+          "assets/generated/aegis-character-room-walk-fridge-desk-start-v1.png",
+          "assets/generated/aegis-character-room-walk-fridge-desk-v1.png",
+          "assets/generated/aegis-character-room-walk-fridge-desk-end-v1.png",
+        ],
+        "desk:couch": [
+          "assets/generated/aegis-character-room-walk-desk-couch-start-v1.png",
+          "assets/generated/aegis-character-room-walk-desk-couch-v1.png",
+          "assets/generated/aegis-character-room-walk-desk-couch-end-v1.png",
+        ],
       };
-      Object.entries(walkSources).forEach(([route, source]) => {
-        const image = new Image();
-        image.decoding = "async";
-        image.src = `${source}?v=room-walk-v1`;
-        this.roomWalkFrames[route] = image;
+      Object.entries(walkSources).forEach(([route, sources]) => {
+        this.roomWalkFrames[route] = sources.map((source) => {
+          const image = new Image();
+          image.decoding = "async";
+          image.src = `${source}?v=room-walk-v2`;
+          return image;
+        });
       });
     }
     this.roomFrame = null;
@@ -357,7 +371,7 @@ class CharacterLifeScene {
       return;
     }
     if (this.mode !== "transition") return;
-    const progress = clamp(elapsed / 1800, 0, 1);
+    const progress = clamp(elapsed / 3000, 0, 1);
     if (progress < 1) return;
     this.mode = "acting";
     this.startedAt = timestamp;
@@ -370,7 +384,7 @@ class CharacterLifeScene {
     const actionImage = this.roomActionFrames[action];
     const previousAction = this.actions[this.previousIndex]?.id;
     const previousImage = this.mode === "transition" ? this.roomActionFrames[previousAction] : null;
-    const walkImage = this.mode === "transition" ? this.roomWalkFrames[`${previousAction}:${action}`] : null;
+    const walkImages = this.mode === "transition" ? this.roomWalkFrames[`${previousAction}:${action}`] : null;
     const drawImageFrame = (image, alpha = 1, filter = "none") => {
       // Render a single painted room rather than layering unrelated canvas
       // furniture.  Cover preserves the full width of the walk route while
@@ -417,16 +431,45 @@ class CharacterLifeScene {
     };
     if (actionImage?.complete && actionImage.naturalWidth) {
       this.usingActionFrame = true;
-      if (previousImage?.complete && previousImage.naturalWidth && walkImage?.complete && walkImage.naturalWidth) {
-        const progress = clamp((time - this.startedAt) / 1800, 0, 1);
-        if (progress < .28) {
+      if (previousImage?.complete && previousImage.naturalWidth && Array.isArray(walkImages) && walkImages.every((image) => image.complete && image.naturalWidth) && this.roomBackground.complete && this.roomBackground.naturalWidth) {
+        const progress = clamp((time - this.startedAt) / 3000, 0, 1);
+        const route = `${previousAction}:${action}`;
+        // Keep the bright painted room underneath every stride.  Only the
+        // area where Mat is walking changes, the same technique used for the
+        // drinking/typing loops, so the whole room cannot flash between
+        // separate generated exposures.
+        const walkArea = {
+          "couch:fridge": { x: .27, y: .20, width: .30, height: .66 },
+          "fridge:desk": { x: .45, y: .20, width: .35, height: .66 },
+          "desk:couch": { x: .25, y: .20, width: .51, height: .66 },
+        }[route];
+        const drawWalkStride = (image, alpha = 1) => {
+          if (!walkArea) return;
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(walkArea.x * w, walkArea.y * h, walkArea.width * w, walkArea.height * h);
+          ctx.clip();
+          drawImageFrame(image, alpha, brightFilter);
+          ctx.restore();
+        };
+        if (progress < .16) {
+          // Leave the last action smoothly, then reveal the first stride.
           drawImageFrame(previousImage, 1, brightFilter);
-          drawImageFrame(walkImage, progress / .28, brightFilter);
-        } else if (progress < .72) {
-          drawImageFrame(walkImage, 1, brightFilter);
+          drawImageFrame(this.roomBackground, progress / .16, brightFilter);
+          drawWalkStride(walkImages[0], progress / .16);
+        } else if (progress < .84) {
+          drawImageFrame(this.roomBackground, 1, brightFilter);
+          const stridePosition = ((progress - .16) / .68) * (walkImages.length - 1);
+          const strideIndex = Math.min(walkImages.length - 2, Math.floor(stridePosition));
+          const strideBlend = stridePosition - strideIndex;
+          drawWalkStride(walkImages[strideIndex], 1);
+          drawWalkStride(walkImages[strideIndex + 1], strideBlend);
         } else {
-          drawImageFrame(walkImage, 1, brightFilter);
-          drawImageFrame(actionImage, (progress - .72) / .28, brightFilter);
+          // Preserve the final stride while the destination action settles.
+          const settle = (progress - .84) / .16;
+          drawImageFrame(this.roomBackground, 1, brightFilter);
+          drawWalkStride(walkImages[walkImages.length - 1], 1 - settle);
+          drawImageFrame(actionImage, settle, brightFilter);
         }
       } else if (previousImage?.complete && previousImage.naturalWidth) {
         const progress = clamp((time - this.startedAt) / 720, 0, 1);
