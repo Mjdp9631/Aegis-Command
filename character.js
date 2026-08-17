@@ -200,6 +200,18 @@ class CharacterLifeScene {
     this.position = this.actions[0].x;
     this.from = this.position;
     this.to = this.position;
+    // These are deliberately rendered as actual detailed pixel-art sprites,
+    // not as another layer of geometric canvas parts.  The green studio
+    // backing is keyed out once when each local asset loads, then the cropped
+    // character sits inside the furniture the room renderer already owns.
+    this.sprites = {};
+    this.spriteSources = {
+      walking: "assets/generated/aegis-character-manbun-pixel-standing-source.png",
+      couch: "assets/generated/aegis-character-manbun-pixel-couch-source.png",
+      fridge: "assets/generated/aegis-character-manbun-pixel-fridge-source.png",
+      desk: "assets/generated/aegis-character-manbun-pixel-desk-source.png",
+    };
+    Object.entries(this.spriteSources).forEach(([key, source]) => this.loadSprite(key, source));
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
     this.resize();
@@ -208,6 +220,44 @@ class CharacterLifeScene {
   }
 
   destroy() { cancelAnimationFrame(this.frame); this.resizeObserver.disconnect(); }
+
+  loadSprite(key, source) {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => {
+      // Keeping the keyed copy modest avoids retaining four giant source
+      // canvases while preserving all visible pixel detail in the scene.
+      const maxHeight = 768;
+      const scale = Math.min(1, maxHeight / image.naturalHeight);
+      const sourceCanvas = document.createElement("canvas");
+      sourceCanvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      sourceCanvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const sourceCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
+      sourceCtx.imageSmoothingEnabled = false;
+      sourceCtx.drawImage(image, 0, 0, sourceCanvas.width, sourceCanvas.height);
+      const pixels = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+      const { data } = pixels;
+      let left = sourceCanvas.width; let top = sourceCanvas.height; let right = -1; let bottom = -1;
+      for (let offset = 0; offset < data.length; offset += 4) {
+        const red = data[offset]; const green = data[offset + 1]; const blue = data[offset + 2];
+        // ImageGen's flat chroma-green studio backdrop.  Preserve the blue
+        // bottle and every dark/skin tone pixel on the character.
+        if (green > 145 && green > red * 1.32 && green > blue * 1.32) data[offset + 3] = 0;
+        if (!data[offset + 3]) continue;
+        const pixel = offset / 4; const x = pixel % sourceCanvas.width; const y = Math.floor(pixel / sourceCanvas.width);
+        left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y);
+      }
+      if (right < left || bottom < top) return;
+      const padding = 3;
+      left = Math.max(0, left - padding); right = Math.min(sourceCanvas.width - 1, right + padding);
+      top = Math.max(0, top - padding); bottom = Math.min(sourceCanvas.height - 1, bottom + padding);
+      const sprite = document.createElement("canvas");
+      sprite.width = right - left + 1; sprite.height = bottom - top + 1;
+      sprite.getContext("2d").putImageData(pixels, -left, -top);
+      this.sprites[key] = sprite;
+    };
+    image.src = `${source}?v=manbun-pixel-v1`;
+  }
 
   resize() {
     const width = Math.max(320, this.canvas.clientWidth || 960);
@@ -338,10 +388,10 @@ class CharacterLifeScene {
     this.line([deskX + w * .205, deskY + h * .04, deskX + w * .215, h * .71], "#251e1b", 6);
     // A proper chair keeps the seated desk pose inside the same room rather
     // than looking like a character laid over the furniture.
-    this.rounded(deskX + w * .1, h * .52, w * .072, h * .16, 7, "#18243a", "rgba(86, 144, 224, .35)");
-    this.rounded(deskX + w * .118, h * .65, w * .07, h * .045, 5, "#162037");
-    this.line([deskX + w * .145, h * .69, deskX + w * .145, h * .74], "#101827", 3);
-    this.line([deskX + w * .115, h * .745, deskX + w * .175, h * .745], "#101827", 2);
+    this.rounded(deskX + w * .1, h * .43, w * .072, h * .16, 7, "#18243a", "rgba(86, 144, 224, .35)");
+    this.rounded(deskX + w * .118, h * .56, w * .07, h * .045, 5, "#162037");
+    this.line([deskX + w * .145, h * .60, deskX + w * .145, h * .68], "#101827", 3);
+    this.line([deskX + w * .115, h * .685, deskX + w * .175, h * .685], "#101827", 2);
     for (let monitor = 0; monitor < (tech >= 4 ? 2 : 1); monitor += 1) {
       const mx = deskX + w * (.035 + monitor * .09);
       this.rounded(mx, h * .31, w * .078, h * .14, 3, "#09121e", "rgba(98, 193, 255, .55)");
@@ -363,10 +413,37 @@ class CharacterLifeScene {
     this.ctx.beginPath(); this.ctx.arc(x2, y2, Math.max(2, width * .16), 0, Math.PI * 2); this.ctx.fill();
   }
 
+  drawSprite(pose, x, ground, height, time, flip = false) {
+    const sprite = this.sprites[pose] || this.sprites.walking;
+    if (!sprite) return false;
+    const width = height * (sprite.width / sprite.height);
+    const moving = this.mode === "walking";
+    const bob = moving ? Math.abs(Math.sin(time / 105)) * -2 : Math.sin(time / 650) * .45;
+    const { ctx } = this;
+    ctx.save();
+    ctx.translate(x, ground + bob);
+    if (flip) ctx.scale(-1, 1);
+    ctx.fillStyle = "rgba(0, 0, 0, .34)";
+    ctx.beginPath(); ctx.ellipse(0, 2, width * .38, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.drawImage(sprite, -width / 2, -height, width, height);
+    ctx.restore();
+    return true;
+  }
+
   drawAvatar(time) {
     const { ctx, width: w, height: h } = this;
     const action = this.mode === "walking" ? "walking" : this.actions[this.index].id;
     const x = this.position * w;
+    const spriteSpec = {
+      walking: { ground: h * .79, height: h * .69 },
+      couch: { ground: h * .79, height: h * .57 },
+      fridge: { ground: h * .79, height: h * .70 },
+      desk: { ground: h * .79, height: h * .58 },
+    }[action];
+    if (spriteSpec && this.drawSprite(action, x, spriteSpec.ground, spriteSpec.height, time)) return;
+
+    // Brief load fallback only: the detailed sprites above replace this as
+    // soon as their local files are decoded.
     const bodyLevel = Number(this.levels.body || 0);
     const scale = clamp(w / 1100, .66, 1.05);
     const step = Math.sin(time / 120) * (action === "walking" ? 1 : .08);
