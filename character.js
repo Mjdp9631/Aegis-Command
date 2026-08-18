@@ -194,7 +194,11 @@ const starterRoomBundle = {
     fridge: "assets/generated/aegis-character-room-starter-fridge-action-v1.png",
     desk: "assets/generated/aegis-character-room-starter-desk-action-v1.png",
   },
-  loops: { fridge: "assets/generated/aegis-character-room-starter-fridge-lower-v1.png" },
+  loops: {
+    couch: "assets/generated/aegis-character-room-starter-couch-scroll-v1.png",
+    fridge: "assets/generated/aegis-character-room-starter-fridge-lower-v1.png",
+    desk: "assets/generated/aegis-character-room-starter-desk-typing-v1.png",
+  },
   walks: {
     "couch:fridge": [
       "assets/generated/aegis-character-room-starter-walk-couch-fridge-start-v1.png",
@@ -450,7 +454,7 @@ class CharacterLifeScene {
     };
     // Starter means worn and inexpensive, not unreadably dark. Keep enough
     // blue/amber separation to see the room, Mat, and the single monitor.
-    const brightFilter = "brightness(1.28) saturate(1.06) contrast(1.025)";
+    const brightFilter = "brightness(1.62) saturate(1.08) contrast(1.025)";
     const drawActionLoop = () => {
       const loopImage = this.roomActionLoopFrames[action];
       drawImageFrame(actionImage, 1, brightFilter);
@@ -460,9 +464,9 @@ class CharacterLifeScene {
       // the whole room at a different exposure.
       const alpha = (Math.sin((time - this.startedAt) * (Math.PI * 2 / 3600) - Math.PI / 2) + 1) / 2;
       const loopAreas = {
-        couch: { x: .10, y: .32, width: .25, height: .55, filter: "brightness(.75) saturate(1.02)" },
-        fridge: { x: .32, y: .18, width: .28, height: .68, filter: "brightness(.77) saturate(1.02)" },
-        desk: { x: .66, y: .30, width: .27, height: .60, filter: "brightness(.72) saturate(1.02)" },
+        couch: { x: .08, y: .30, width: .29, height: .58, filter: brightFilter },
+        fridge: { x: .32, y: .18, width: .28, height: .68, filter: brightFilter },
+        desk: { x: .63, y: .28, width: .31, height: .64, filter: brightFilter },
       }[action];
       if (!loopAreas) return;
       // The crop includes surrounding furniture so occlusion remains painted
