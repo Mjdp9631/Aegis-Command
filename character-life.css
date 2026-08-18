@@ -64,7 +64,7 @@
 .character-life-stage canvas {
   display: block;
   width: 100%;
-  min-height: 300px;
+  min-height: 250px;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }

@@ -173,84 +173,9 @@ function bindCharacterEvolution() {
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-// Full-scene art is intentionally grouped into a small number of earned
-// chapters. A scene is never assembled from furniture/character overlays:
-// every chapter will have complete room and action frames. The current
-// starter bundle is chapter zero; later bundles are added only at meaningful
-// thresholds, rather than for every possible combination of levels.
-const roomChapters = [
-  { min: 0, id: "survival", title: "SURVIVAL", summary: "Starter room / build the baseline." },
-  { min: 4, id: "foundation", title: "FOUNDATION", summary: "Order and consistency begin to show." },
-  { min: 9, id: "momentum", title: "MOMENTUM", summary: "The room becomes a deliberate workspace." },
-  { min: 16, id: "operator", title: "OPERATOR", summary: "Training, study, and execution share one base." },
-  { min: 25, id: "architect", title: "ARCHITECT", summary: "A serious command studio, earned over years." },
-  { min: 36, id: "sentinel", title: "SENTINEL", summary: "The final Batcave-era command environment." },
-];
-
-const starterRoomBundle = {
-  // Fixed base-level floor plan: couch under the left window facing the
-  // viewer, fridge beside it, single-monitor desk on the right, and a basic
-  // bench press/pull-up wall at far left. Every frame is a complete scene.
-  background: "assets/generated/aegis-character-room-base-v3.png",
-  actions: {
-    couch: "assets/generated/aegis-character-room-integrated-couch-v1.png",
-    fridge: "assets/generated/aegis-character-room-integrated-fridge-v1.png",
-    desk: "assets/generated/aegis-character-room-integrated-desk-v1.png",
-  },
-  loops: {
-    couch: "assets/generated/aegis-character-room-integrated-couch-v1.png",
-    fridge: "assets/generated/aegis-character-room-integrated-fridge-v1.png",
-    desk: "assets/generated/aegis-character-room-integrated-desk-v1.png",
-  },
-  walks: {
-    "couch:fridge": [
-      "assets/generated/aegis-character-room-integrated-walk-start-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-mid-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-end-v1.png",
-    ],
-    "fridge:desk": [
-      "assets/generated/aegis-character-room-integrated-walk-start-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-mid-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-end-v1.png",
-    ],
-    "desk:couch": [
-      "assets/generated/aegis-character-room-integrated-walk-end-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-mid-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-start-v1.png",
-    ],
-  },
-};
-
-// New chapter bundles are added here as the checkpoint art is authored. A
-// missing chapter deliberately falls back to the starter room, never to a
-// mismatched character or furniture layer.
-const roomBundles = { survival: starterRoomBundle };
-
-function roomVisualState(levels) {
-  const systems = ["discipline", "mind", "body", "trading", "ccfx"];
-  const total = systems.reduce((sum, key) => sum + Number(levels[key] || 0), 0);
-  const average = total / systems.length;
-  const earnedChapter = roomChapters.reduce((selected, candidate) => average >= candidate.min ? candidate : selected, roomChapters[0]);
-  const chapter = roomBundles[earnedChapter.id] ? earnedChapter : roomChapters[0];
-  return {
-    chapter,
-    earnedChapter,
-    total,
-    average,
-    disciplineTier: Math.floor(Number(levels.discipline || 0) / 3),
-    mindTier: Math.floor(Number(levels.mind || 0) / 3),
-    bodyTier: Math.floor(Number(levels.body || 0) / 3),
-    techTier: Math.floor((Number(levels.trading || 0) + Number(levels.ccfx || 0)) / 4),
-  };
-}
-
 function characterLifePanel(levels) {
   const averageLevel = Math.round(Object.values(levels).reduce((sum, level) => sum + Number(level || 0), 0) / Math.max(1, Object.keys(levels).length));
-  const visual = roomVisualState(levels);
-  return `<section class="character-life panel" data-character-life data-room-chapter="${visual.chapter.id}"><div class="character-life-heading"><div><p class="eyebrow amber">LIVING QUARTERS / PASSIVE VISUAL</p><h3>Watch the work change the room.</h3><p>One fixed apartment, upgraded at earned milestones. The couch, fridge, desk, and future training bay keep their positions while the surrounding room evolves.</p></div><div class="character-life-readout"><span>ROOM CHAPTER</span><strong>${visual.chapter.title}</strong><small>LV ${averageLevel} · ${visual.chapter.summary}</small><small data-life-activity>Resetting in the lounge</small></div></div><div class="character-life-stage"><canvas data-character-life-canvas aria-label="Animated character routine: couch, fridge, and trading desk"></canvas><div class="character-life-key" aria-hidden="true"><span>DISCIPLINE <b>ROOM</b></span><span>MIND <b>LIBRARY</b></span><span>BODY <b>PHYSIQUE / TRAINING BAY</b></span><span>TRADING + CCFX <b>TECH</b></span></div></div></section>`;
+  return `<section class="character-life panel" data-character-life><div class="character-life-heading"><div><p class="eyebrow amber">LIVING QUARTERS / PASSIVE VISUAL</p><h3>Watch the work change the room.</h3><p>One real-time scene: Mat walks to the couch, refuels at the fridge, then sits down to trade. Every level changes only the part of life it earned.</p></div><div class="character-life-readout"><span>LIVE ROUTINE</span><strong>LV ${averageLevel}</strong><small data-life-activity>Resetting in the lounge</small></div></div><div class="character-life-stage"><canvas data-character-life-canvas aria-label="Animated character routine: couch, fridge, and trading desk"></canvas><div class="character-life-key" aria-hidden="true"><span>DISCIPLINE <b>ROOM</b></span><span>MIND <b>LIBRARY</b></span><span>BODY <b>PHYSIQUE</b></span><span>TRADING + CCFX <b>TECH</b></span></div></div></section>`;
 }
 
 class CharacterLifeScene {
@@ -259,12 +184,10 @@ class CharacterLifeScene {
     this.outputCtx = canvas.getContext("2d");
     this.buffer = document.createElement("canvas");
     this.buffer.width = 480;
-    this.buffer.height = 270;
+    this.buffer.height = 206;
     this.ctx = this.buffer.getContext("2d");
     this.ctx.imageSmoothingEnabled = false;
     this.levels = levels;
-    this.visual = roomVisualState(levels);
-    this.roomBundle = roomBundles[this.visual.chapter.id] || starterRoomBundle;
     this.activityLabel = canvas.closest("[data-character-life]")?.querySelector("[data-life-activity]");
     this.actions = [
       { id: "couch", label: "Resetting in the lounge", target: "the couch", x: .22, dwell: 14000 },
@@ -292,36 +215,59 @@ class CharacterLifeScene {
     Object.entries(this.spriteSources).forEach(([key, source]) => this.loadSprite(key, source));
     this.roomBackground = new Image();
     this.roomBackground.decoding = "async";
-    this.roomBackground.src = `${this.roomBundle.background}?v=room-starter-v2`;
+    this.roomBackground.src = "assets/generated/aegis-character-room-pixel-v1.png?v=room-pixel-v1";
     this.roomActionFrames = {};
     {
-      const actionSources = this.roomBundle.actions;
+      const actionSources = {
+        couch: "assets/generated/aegis-character-room-couch-action-v2.png",
+        fridge: "assets/generated/aegis-character-room-fridge-action-v1.png",
+        desk: "assets/generated/aegis-character-room-desk-action-v1.png",
+      };
       Object.entries(actionSources).forEach(([action, source]) => {
         const image = new Image();
         image.decoding = "async";
-        image.fetchPriority = "high";
-        image.src = `${source}?v=room-starter-action-v2`;
+        image.src = `${source}?v=room-action-v1`;
         this.roomActionFrames[action] = image;
       });
     }
     this.roomActionLoopFrames = {};
     {
-      const loopSources = this.roomBundle.loops;
+      const loopSources = {
+        couch: "assets/generated/aegis-character-room-couch-scroll-v1.png",
+        fridge: "assets/generated/aegis-character-room-fridge-lower-v1.png",
+        desk: "assets/generated/aegis-character-room-desk-typing-v1.png",
+      };
       Object.entries(loopSources).forEach(([action, source]) => {
         const image = new Image();
         image.decoding = "async";
-        image.src = `${source}?v=room-starter-action-loop-v2`;
+        image.src = `${source}?v=room-action-loop-v1`;
         this.roomActionLoopFrames[action] = image;
       });
     }
     this.roomWalkFrames = {};
     {
-      const walkSources = this.roomBundle.walks;
+      const walkSources = {
+        "couch:fridge": [
+          "assets/generated/aegis-character-room-walk-couch-fridge-start-v2.png",
+          "assets/generated/aegis-character-room-walk-couch-fridge-v2.png",
+          "assets/generated/aegis-character-room-walk-couch-fridge-end-v2.png",
+        ],
+        "fridge:desk": [
+          "assets/generated/aegis-character-room-walk-fridge-desk-start-v1.png",
+          "assets/generated/aegis-character-room-walk-fridge-desk-v1.png",
+          "assets/generated/aegis-character-room-walk-fridge-desk-end-v1.png",
+        ],
+        "desk:couch": [
+          "assets/generated/aegis-character-room-walk-desk-couch-start-v1.png",
+          "assets/generated/aegis-character-room-walk-desk-couch-v1.png",
+          "assets/generated/aegis-character-room-walk-desk-couch-end-v1.png",
+        ],
+      };
       Object.entries(walkSources).forEach(([route, sources]) => {
         this.roomWalkFrames[route] = sources.map((source) => {
           const image = new Image();
           image.decoding = "async";
-          image.src = `${source}?v=room-starter-walk-v2`;
+          image.src = `${source}?v=room-walk-v2`;
           return image;
         });
       });
@@ -380,7 +326,7 @@ class CharacterLifeScene {
 
   resize() {
     const width = Math.max(320, this.canvas.clientWidth || 960);
-    const height = Math.round(clamp(width * .5625, 300, 560));
+    const height = Math.round(clamp(width * .43, 250, 460));
     const scale = Math.min(window.devicePixelRatio || 1, 2);
     this.canvas.width = Math.round(width * scale);
     this.canvas.height = Math.round(height * scale);
@@ -458,9 +404,7 @@ class CharacterLifeScene {
       ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, w, h);
       ctx.restore();
     };
-    // Starter means worn and inexpensive, not unreadably dark. Keep enough
-    // blue/amber separation to see the room, Mat, and the single monitor.
-    const brightFilter = "brightness(1.62) saturate(1.08) contrast(1.025)";
+    const brightFilter = "brightness(1.1) saturate(1.04) contrast(1.015)";
     const drawActionLoop = () => {
       const loopImage = this.roomActionLoopFrames[action];
       drawImageFrame(actionImage, 1, brightFilter);
@@ -468,11 +412,11 @@ class CharacterLifeScene {
       // A gentle 3.6s base -> action -> base loop: phone scroll/head bob,
       // water down/sip, or finger movement/monitor pulse, without repainting
       // the whole room at a different exposure.
-      const alpha = (Math.sin((time - this.startedAt) * (Math.PI * 2 / 2200) - Math.PI / 2) + 1) / 2;
+      const alpha = (Math.sin((time - this.startedAt) * (Math.PI * 2 / 3600) - Math.PI / 2) + 1) / 2;
       const loopAreas = {
-        couch: { x: .08, y: .30, width: .29, height: .58, filter: brightFilter },
-        fridge: { x: .32, y: .18, width: .28, height: .68, filter: brightFilter },
-        desk: { x: .63, y: .28, width: .31, height: .64, filter: brightFilter },
+        couch: { x: .10, y: .32, width: .25, height: .55, filter: "brightness(.75) saturate(1.02)" },
+        fridge: { x: .34, y: .20, width: .21, height: .65, filter: "brightness(.77) saturate(1.02)" },
+        desk: { x: .66, y: .30, width: .27, height: .60, filter: "brightness(.72) saturate(1.02)" },
       }[action];
       if (!loopAreas) return;
       // The crop includes surrounding furniture so occlusion remains painted
@@ -517,7 +461,7 @@ class CharacterLifeScene {
       // making the painted room look like it has been overlaid by an effect.
       const floorShade = ctx.createLinearGradient(0, h * .56, 0, h);
       floorShade.addColorStop(0, "rgba(2, 5, 11, 0)");
-      floorShade.addColorStop(1, "rgba(2, 5, 11, .035)");
+      floorShade.addColorStop(1, "rgba(2, 5, 11, .09)");
       ctx.fillStyle = floorShade; ctx.fillRect(0, 0, w, h);
       return;
     }
