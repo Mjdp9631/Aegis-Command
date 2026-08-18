@@ -385,6 +385,12 @@ class CharacterLifeScene {
     const previousAction = this.actions[this.previousIndex]?.id;
     const previousImage = this.mode === "transition" ? this.roomActionFrames[previousAction] : null;
     const walkImages = this.mode === "transition" ? this.roomWalkFrames[`${previousAction}:${action}`] : null;
+    const routeWalkImages = walkImages && `${previousAction}:${action}` === "fridge:desk"
+      ? [walkImages[0], walkImages[1], walkImages[1]]
+      : walkImages;
+    const walkFilter = (index) => `${previousAction}:${action}` === "fridge:desk" && index === 1
+      ? "brightness(1.72) saturate(1.08) contrast(1.02)"
+      : brightFilter;
     const drawImageFrame = (image, alpha = 1, filter = "none") => {
       // Render a single painted room rather than layering unrelated canvas
       // furniture.  Cover preserves the full width of the walk route while
@@ -434,23 +440,23 @@ class CharacterLifeScene {
     };
     if (actionImage?.complete && actionImage.naturalWidth) {
       this.usingActionFrame = true;
-      if (previousImage?.complete && previousImage.naturalWidth && Array.isArray(walkImages) && walkImages.every((image) => image.complete && image.naturalWidth)) {
+      if (previousImage?.complete && previousImage.naturalWidth && Array.isArray(routeWalkImages) && routeWalkImages.every((image) => image.complete && image.naturalWidth)) {
         const progress = clamp((time - this.startedAt) / 3000, 0, 1);
         // A walk frame is a complete painted scene, not a character layer.
         // The room, furniture, contact shadows, Mat, and window weather are
         // authored together in every frame so nothing slides independently.
         if (progress < .16) {
           drawImageFrame(previousImage, 1, brightFilter);
-          drawImageFrame(walkImages[0], progress / .16, brightFilter);
+          drawImageFrame(routeWalkImages[0], progress / .16, walkFilter(0));
         } else if (progress < .84) {
-          const stridePosition = ((progress - .16) / .68) * (walkImages.length - 1);
-          const strideIndex = Math.min(walkImages.length - 2, Math.floor(stridePosition));
+          const stridePosition = ((progress - .16) / .68) * (routeWalkImages.length - 1);
+          const strideIndex = Math.min(routeWalkImages.length - 2, Math.floor(stridePosition));
           const strideBlend = stridePosition - strideIndex;
-          drawImageFrame(walkImages[strideIndex], 1, brightFilter);
-          drawImageFrame(walkImages[strideIndex + 1], strideBlend, brightFilter);
+          drawImageFrame(routeWalkImages[strideIndex], 1, walkFilter(strideIndex));
+          drawImageFrame(routeWalkImages[strideIndex + 1], strideBlend, walkFilter(strideIndex + 1));
         } else {
           const settle = (progress - .84) / .16;
-          drawImageFrame(walkImages[walkImages.length - 1], 1, brightFilter);
+          drawImageFrame(routeWalkImages[routeWalkImages.length - 1], 1, walkFilter(routeWalkImages.length - 1));
           drawImageFrame(actionImage, settle, brightFilter);
         }
       } else if (previousImage?.complete && previousImage.naturalWidth) {
