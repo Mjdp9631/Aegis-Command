@@ -258,8 +258,8 @@ class CharacterLifeScene {
           "assets/generated/aegis-character-room-layout-v2-walk-fridge-desk-end.png",
         ],
         "desk:couch": [
+          "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-depart.png",
           "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-start.png",
-          "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-end.png",
           "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-end.png",
         ],
       };
