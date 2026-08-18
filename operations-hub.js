@@ -208,11 +208,6 @@ const inferredMetricForOperation = (operation) => {
   return explicit || null;
 };
 const dateOnly = (value) => value ? String(value).slice(0, 10) : "";
-const newYorkWeekday = (date = new Date()) => new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York", weekday: "short",
-}).format(date);
-const isPreMarketDay = (date = new Date()) => !["Fri", "Sat"].includes(newYorkWeekday(date));
-
 function operationIsOngoing(operation) {
   return !operation?.completed
     && String(operation?.status || "").toLowerCase() === "ongoing"
@@ -308,28 +303,37 @@ function scheduleLabel(operation, fromKey = todayKey()) {
   return `${date}${time}`;
 }
 
-// Forex preparation is deliberate calendar work, not a generic everyday
-// placeholder.  It belongs at 18:00 ET Sunday through Thursday only.
+// Pre-market preparation is a standing daily path.  It is deliberately
+// materialized as a dated daily row (rather than a single recurring row), so
+// one day's completion can never hide the next day's analysis.
 const preMarketOperationForToday = () => {
   const operationDay = operatingDayKey();
-  return isPreMarketDay(dateForKey(operationDay)) ? ({
-  title: "Pre-market analysis",
-  category: "Trading",
-  priority: "High",
-  brief: "Mark the higher-timeframe condition, key liquidity/reaction levels, and the valid setup before active price reaches the area.",
-  status: "Scheduled",
-  completed: false,
-  is_daily: true,
-  operation_date: operationDay,
-  scheduled_date: operationDay,
-  scheduled_time: "18:00",
-  schedule_mode: "recurring",
-  }) : null;
+  return {
+    title: "Pre-market analysis",
+    category: "Trading",
+    priority: "High",
+    brief: "Mark the higher-timeframe condition, key liquidity/reaction levels, and the valid setup before active price reaches the area.",
+    status: "Scheduled",
+    completed: false,
+    is_daily: true,
+    operation_date: operationDay,
+    scheduled_date: operationDay,
+    scheduled_time: "18:00",
+    schedule_mode: "one_time",
+  };
 };
+function ensureCachedPreMarketPath(records = []) {
+  const activeDay = operatingDayKey();
+  const exists = records.some((operation) => String(operation?.title || "").trim().toLowerCase() === "pre-market analysis"
+    && (dateOnly(operation.operation_date) === activeDay || dateOnly(operation.scheduled_date) === activeDay));
+  if (exists) return records;
+  const planned = preMarketOperationForToday();
+  return appendOperationsWithoutTouchingExisting(records, [{ ...planned, id: `local-${activeDay}-pre-market-analysis` }]);
+}
 
 const starterOperations = () => {
   return [
-    ...(preMarketOperationForToday() ? [["Pre-market analysis", "Trading"]] : []),
+    ["Pre-market analysis", "Trading"],
     ["Review charts and document one lesson", "Trading"],
     ["Conquer the morning", "Self Mastery"],
     ["Read one chapter", "Self Mastery"],
@@ -338,19 +342,54 @@ const starterOperations = () => {
     ["Complete evening debrief", "Self Mastery"],
   ].map(([title, category]) => title === "Pre-market analysis"
     ? preMarketOperationForToday()
-    : ({ title, category, completed: false, scheduled_date: operatingDayKey(), scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, schedule_mode: "daily", status: "Queued" }))
+    : ({ title, category, completed: false, scheduled_date: operatingDayKey(), scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, schedule_mode: "one_time", status: "Queued" }))
     .concat(gymOperationForToday());
 };
 
-const gymSplitForDay = (operationDay = operatingDayKey()) => {
-  // Monday through Sunday: Legs, Push, Pull, Rest, Lower Body, Upper Body, Rest.
-  const split = ["Rest", "Legs", "Push", "Pull", "Rest", "Lower Body", "Upper Body"];
-  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short" }).format(dateForKey(operationDay));
-  return split[["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday)];
+const GYM_WEEKLY_SPLITS = ["Legs", "Push", "Pull", "Lower Body", "Upper Body"];
+const GYM_REST_DAYS_PER_WEEK = 2;
+const GYM_MAX_CONSECUTIVE_TRAINING_DAYS = 3;
+const gymWeekStart = (operationDay = operatingDayKey()) => {
+  const date = dateForKey(operationDay);
+  if (!date) return operationDay;
+  const daysSinceMonday = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - daysSinceMonday);
+  return dayKey(date);
 };
-const gymSplitForToday = () => gymSplitForDay(operatingDayKey());
-const gymOperationForDay = (operationDay = operatingDayKey()) => {
-  const split = gymSplitForDay(operationDay);
+const gymSlotDate = (operation) => dateOnly(operation?.operation_date || operation?.scheduled_date);
+const isGymTrainingSlot = (operation) => /^gym\s*(?:-|\u2013|\u2014)/i.test(String(operation?.title || "").trim());
+const isGymRestSlot = (operation) => /^(?:rest\s*(?:-|\u2013|\u2014).*recovery|recovery\s*(?:-|\u2013|\u2014).*rest)/i.test(String(operation?.title || "").trim());
+const isFlexibleRestDay = (operation) => /flexible rest day/i.test(String(operation?.brief || operation?.notes || ""));
+const isFlexibleTrainingDay = (operation) => /flexible training day/i.test(String(operation?.brief || operation?.notes || ""));
+
+// The split order is fixed, but the two recovery days are not.  We read the
+// current week's generated slots, then pick the next split instead of tying a
+// body part to a weekday.  A rest selected early in the week therefore keeps
+// the next training day on the next split (Legs -> Push -> Pull), rather than
+// skipping or duplicating a body part.
+function gymPlanForDay(operationDay = operatingDayKey(), records = operations) {
+  const weekStart = gymWeekStart(operationDay);
+  const history = (records || [])
+    .filter((operation) => isGeneratedGymSplit(operation) && !isLegacyRecurringGymTemplate(operation))
+    .filter((operation) => {
+      const day = gymSlotDate(operation);
+      return day >= weekStart && day < operationDay;
+    })
+    .sort((a, b) => gymSlotDate(a).localeCompare(gymSlotDate(b)));
+  const trainingDays = history.filter(isGymTrainingSlot).length;
+  const restDays = history.filter(isGymRestSlot).length;
+  const weekEnd = shiftDayKey(weekStart, 6);
+  const daysRemaining = Math.floor((dateForKey(weekEnd) - dateForKey(operationDay)) / 86400000) + 1;
+  const workoutsRemaining = Math.max(0, GYM_WEEKLY_SPLITS.length - trainingDays);
+  const recentSlots = history.slice(-GYM_MAX_CONSECUTIVE_TRAINING_DAYS);
+  const trainingStreak = recentSlots.length === GYM_MAX_CONSECUTIVE_TRAINING_DAYS && recentSlots.every(isGymTrainingSlot);
+  const mustTrainToFinishWeek = daysRemaining <= workoutsRemaining;
+  const shouldRest = trainingDays >= GYM_WEEKLY_SPLITS.length
+    || (!mustTrainToFinishWeek && restDays < GYM_REST_DAYS_PER_WEEK && trainingStreak);
+  return shouldRest ? "Rest" : (GYM_WEEKLY_SPLITS[trainingDays] || "Rest");
+}
+const gymOperationForDay = (operationDay = operatingDayKey(), records = operations) => {
+  const split = gymPlanForDay(operationDay, records);
   const isRest = split === "Rest";
   return {
     title: isRest ? "Rest - recovery and reset" : `Gym - ${split}`,
@@ -359,7 +398,7 @@ const gymOperationForDay = (operationDay = operatingDayKey()) => {
     status: "Queued",
     completed: false,
     is_daily: true,
-    schedule_mode: "daily",
+    schedule_mode: "one_time",
     operation_date: operationDay,
     scheduled_date: operationDay,
     brief: isRest
@@ -367,25 +406,32 @@ const gymOperationForDay = (operationDay = operatingDayKey()) => {
       : `Complete the ${split} session selected in Self Mastery. Log every exercise with weight, reps, and sets so AEGIS can evaluate progressive improvement.`,
   };
 };
-const gymOperationForToday = () => gymOperationForDay(operatingDayKey());
+const gymOperationForToday = () => gymOperationForDay(operatingDayKey(), operations);
 
 // Daily gym rows are generated one calendar day at a time. Earlier versions
 // only checked whether *any* gym row existed today, so an old "Gym - Legs"
 // row could survive onto Saturday and suppress the Saturday Upper Body row.
 // Treat those generated rows as a single rotating slot and repair the slot
-// from the actual New York weekday. This leaves manually scheduled workouts
-// alone and never rewrites completed history.
+// from the current week's flexible split sequence. This leaves manually
+// scheduled workouts and an intentionally selected flexible rest day alone.
 function isGeneratedGymSplit(operation) {
   if (!operation?.is_daily || operation?._occurrence) return false;
   const title = String(operation.title || "").trim();
   const brief = String(operation.brief || operation.notes || "");
-  return /^gym\s*[-–—]/i.test(title)
-    || /^rest\s*[-–—].*recovery/i.test(title)
+  return /^gym\s*(?:-|\u2013|\u2014)/i.test(title)
+    || /^(?:rest\s*(?:-|\u2013|\u2014).*recovery|recovery\s*(?:-|\u2013|\u2014).*rest)/i.test(title)
     || /(?:complete the (?:legs|push|pull|lower body|upper body) session selected in self mastery|protect recovery: light mobility only)/i.test(brief);
 }
 
+function isLegacyRecurringGymTemplate(operation) {
+  const title = String(operation?.title || "").trim();
+  const brief = String(operation?.brief || operation?.notes || "").trim();
+  const isOldFamilyTemplate = /^gym\s*(?:-|\u2013|\u2014)\s*(legs|push|pull|lower body|upper body)$/i.test(title)
+    && /^complete the (legs|push|pull|lower body|upper body) session selected in self mastery\. log every exercise, weight, reps, and completed sets\.?$/i.test(brief);
+  return isGeneratedGymSplit(operation) && (scheduleMode(operation) !== "one_time" || isOldFamilyTemplate);
+}
+
 async function repairTodayGymSplit(records, activeDay) {
-  const expected = gymOperationForDay(activeDay);
   const candidates = records.filter((operation) => {
     const day = dateOnly(operation.operation_date || operation.scheduled_date);
     return day === activeDay && isGeneratedGymSplit(operation);
@@ -394,6 +440,10 @@ async function repairTodayGymSplit(records, activeDay) {
   // history, even if it was created by the old split logic.
   const stale = candidates.find((operation) => normalizedStatus(operation) !== "Complete") || null;
   if (!stale) return records;
+  // A rest day the director explicitly selected is a planning decision, not
+  // stale weekday data. Keep it so tomorrow advances to the next split.
+  if (isGymRestSlot(stale) && isFlexibleRestDay(stale)) return records;
+  const expected = gymOperationForDay(activeDay, records);
   const differs = String(stale.title || "") !== expected.title
     || String(stale.category || "") !== expected.category
     || String(stale.brief || stale.notes || "") !== expected.brief;
@@ -407,6 +457,90 @@ async function repairTodayGymSplit(records, activeDay) {
   });
   await persist(stale);
   return records;
+}
+
+// Materialize the rest of this week so the calendar shows the actual split
+// path instead of waiting for each morning's rollover.  Future generated rows
+// are replanned whenever an earlier day becomes a flexible rest day.
+async function ensureWeeklyGymPlan(records = [], activeDay = operatingDayKey()) {
+  const weekStart = gymWeekStart(activeDay);
+  const weekEnd = shiftDayKey(weekStart, 6);
+  const plannedDays = [];
+  for (let day = activeDay; day && day <= weekEnd; day = shiftDayKey(day, 1)) plannedDays.push(day);
+
+  // Only past work plus completed/flexible future decisions may influence the
+  // next split. Old pending rows are outputs of the plan, not inputs to it.
+  const working = records.filter((operation) => {
+    if (!isGeneratedGymSplit(operation) || isLegacyRecurringGymTemplate(operation)) return true;
+    const day = gymSlotDate(operation);
+    return day < activeDay || normalizedStatus(operation) === "Complete" || isFlexibleRestDay(operation) || isFlexibleTrainingDay(operation);
+  });
+  // A retired legacy template does not represent an actual calendar slot.
+  // Fill any already-passed gaps with the default sequence in memory, so a
+  // Tuesday plan still starts at Push even when Monday's old template is the
+  // only remaining record.
+  for (let day = weekStart; day < activeDay; day = shiftDayKey(day, 1)) {
+    const hasDatedSlot = records.some((operation) => gymSlotDate(operation) === day
+      && isGeneratedGymSplit(operation)
+      && !isLegacyRecurringGymTemplate(operation));
+    if (!hasDatedSlot) working.push({ ...gymOperationForDay(day, working), _virtual_gym_plan: true });
+  }
+  const updates = [];
+  const additions = [];
+  const removals = [];
+
+  plannedDays.forEach((day) => {
+    const candidates = records.filter((operation) => gymSlotDate(operation) === day
+      && isGeneratedGymSplit(operation)
+      && !isLegacyRecurringGymTemplate(operation));
+    const preserved = candidates.find((operation) => normalizedStatus(operation) === "Complete" || isFlexibleRestDay(operation) || isFlexibleTrainingDay(operation));
+    const expected = gymOperationForDay(day, working);
+    const existing = preserved || candidates.find((operation) => normalizedStatus(operation) !== "Complete") || null;
+    candidates
+      .filter((operation) => operation !== existing && normalizedStatus(operation) !== "Complete" && !isFlexibleRestDay(operation) && !isFlexibleTrainingDay(operation))
+      .forEach((operation) => removals.push(operation));
+    if (preserved) {
+      if (!working.includes(preserved)) working.push(preserved);
+      return;
+    }
+    if (existing) {
+      const differs = existing.title !== expected.title
+        || existing.category !== expected.category
+        || String(existing.brief || existing.notes || "") !== expected.brief
+        || scheduleMode(existing) !== "one_time";
+      if (differs) {
+        Object.assign(existing, { ...expected, status: existing.status, completed: Boolean(existing.completed), completed_on: existing.completed_on || null });
+        updates.push(existing);
+      }
+      working.push(existing);
+      return;
+    }
+    const addition = { ...expected, id: `local-${day}-gym-plan` };
+    additions.push(addition);
+    working.push(addition);
+  });
+
+  if (updates.length) await Promise.all(updates.map((operation) => persist(operation)));
+  const removalIds = new Set(removals.map((operation) => String(operation.id)).filter((id) => id && !id.startsWith("local-")));
+  if (removalIds.size && client && currentUser) {
+    const { error } = await client.from("operations").delete().eq("user_id", currentUser.id).in("id", [...removalIds]);
+    if (error) console.warn("Could not remove duplicate generated gym slots", error.message);
+  }
+  const cleanedRecords = records.filter((operation) => !removals.includes(operation));
+  if (!additions.length) return cleanedRecords;
+  if (!client || !currentUser) return [...cleanedRecords, ...additions];
+  const prepared = additions.map(({ id, priority, ...operation }) => ({
+    ...operation,
+    user_id: currentUser.id,
+    mission_id: operation.mission_id || null,
+    operation_family_key: operationFamilyKey(operation),
+  }));
+  const { data, error } = await client.from("operations").insert(prepared).select();
+  if (error) {
+    console.warn("Could not create this week's gym plan", error.message);
+    return [...cleanedRecords, ...additions];
+  }
+  return [...cleanedRecords, ...(data || prepared)];
 }
 
 let operations = [];
@@ -592,13 +726,17 @@ const normalizedOperationTitle = (value) => String(value || "").toLowerCase().re
 const isAutoDailyFitnessOperation = (operation) => {
   const series = operation?._series || operation;
   if (!Boolean(series?.is_daily) && scheduleMode(series) !== "daily") return false;
-  return /^(?:gym\b|recovery\b.*\brest\b.*\breset\b)/i.test(String(series?.title || ""));
+  return /^(?:gym\b|rest\b.*\brecovery\b.*\breset\b|recovery\b.*\brest\b.*\breset\b)/i.test(String(series?.title || ""));
 };
 
 // Old versions wrote each gym split as an open-ended daily template. Keep the
 // expected split for each calendar day and hide the stale templates, preserving
 // their saved records without letting them create multiple workouts per day.
 function keepExpectedDailyFitnessOperation(items, fallbackDay = operatingDayKey()) {
+  // Old mission-link templates were stored as open-ended daily operations.
+  // They represent available split families, not calendar commitments; hiding
+  // them prevents one template from inventing a rest/workout on every date.
+  items = items.filter((operation) => !isLegacyRecurringGymTemplate(operation));
   const groups = new Map();
   items.forEach((operation) => {
     if (!isAutoDailyFitnessOperation(operation)) return;
@@ -611,7 +749,8 @@ function keepExpectedDailyFitnessOperation(items, fallbackDay = operatingDayKey(
   groups.forEach((group, day) => {
     const expectedTitle = normalizedOperationTitle(gymOperationForDay(day).title);
     const expected = group.find((operation) => normalizedOperationTitle(operation.title) === expectedTitle);
-    keep.add(expected || group[0]);
+    const flexibleRest = group.find((operation) => isGymRestSlot(operation) && isFlexibleRestDay(operation));
+    keep.add(flexibleRest || expected || group[0]);
   });
   return items.filter((operation) => !isAutoDailyFitnessOperation(operation) || keep.has(operation));
 }
@@ -1503,7 +1642,106 @@ function showOperationDetail(key) {
   const checklist = checklistFor(operation).map((item, index) => `${index + 1}. ${item}`).join("\n");
   const missionList = linked;
   const advances = missionList.length ? `\n\nADVANCES:\n${missionList.map((item) => `• ${item.title}${item.completion_type === "units" ? ` (${Number(item.completed_count || 0)}/${Number(item.target_count || 0)} ${item.unit_label || "units"})` : ""}`).join("\n")}` : "";
-  window.alert(`${operationDisplayTitle(operation)}${advances}\n\nDEFINITION OF DONE\n${checklist}`);
+  const detail = `${operationDisplayTitle(operation)}${advances}\n\nDEFINITION OF DONE\n${checklist}`;
+  const isTodayGeneratedGym = isGeneratedGymSplit(operation)
+    && isGymTrainingSlot(operation)
+    && gymSlotDate(operation) === operatingDayKey()
+    && normalizedStatus(operation) !== "Complete";
+  if (!isTodayGeneratedGym) {
+    const isTodayGeneratedRest = isGeneratedGymSplit(operation)
+      && isGymRestSlot(operation)
+      && gymSlotDate(operation) === operatingDayKey()
+      && normalizedStatus(operation) !== "Complete";
+    if (isTodayGeneratedRest && window.confirm(`${detail}\n\nTrain today instead and move this rest day later in the week?`)) void takeGymTrainingDay(operation);
+    else window.alert(detail);
+    return;
+  }
+  if (window.confirm(`${detail}\n\nUse today as a flexible rest day instead?`)) void takeGymRestDay(operation);
+}
+
+function flexibleRestDaysThisWeek(day = operatingDayKey()) {
+  const weekStart = gymWeekStart(day);
+  return new Set(operations
+    .filter((operation) => isGeneratedGymSplit(operation) && isFlexibleRestDay(operation))
+    .map(gymSlotDate)
+    .filter((slotDay) => slotDay >= weekStart && slotDay <= shiftDayKey(weekStart, 6))).size;
+}
+
+function nextWorkoutSplitForDay(day = operatingDayKey()) {
+  const weekStart = gymWeekStart(day);
+  const trainingCount = operations.filter((operation) => isGeneratedGymSplit(operation)
+    && !isLegacyRecurringGymTemplate(operation)
+    && gymSlotDate(operation) >= weekStart
+    && gymSlotDate(operation) < day
+    && isGymTrainingSlot(operation)).length;
+  return GYM_WEEKLY_SPLITS[trainingCount] || null;
+}
+
+async function takeGymRestDay(operation) {
+  const source = operation?._base || operation;
+  if (!source || !isGeneratedGymSplit(source) || !isGymTrainingSlot(source)) return;
+  if (flexibleRestDaysThisWeek() >= GYM_REST_DAYS_PER_WEEK) {
+    window.alert("This week already has two flexible rest days. Keep the next scheduled training split so recovery does not keep moving forward.");
+    return;
+  }
+  const restDay = {
+    title: "Rest - recovery and reset",
+    category: "Recovery",
+    priority: "Medium",
+    brief: "Flexible rest day. Protect recovery: light mobility only if it feels good, hydrate, sleep on time, and do not turn rest into a missed plan.",
+    metric_key: null,
+    schedule_mode: "one_time",
+  };
+  Object.assign(source, restDay);
+  if (source !== operation) Object.assign(operation, restDay);
+  attachMissionLink(source);
+  source.local_updated_at = new Date().toISOString();
+  saveCachedOperations();
+  renderQueue();
+  renderCalendar();
+  const saved = await persist(source);
+  if (saved && currentUser) {
+    operations = await seedIfEmpty();
+    await loadOperationMissionLinks();
+    saveCachedOperations();
+  }
+  renderQueue();
+  renderCalendar();
+  window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "operations-hub", operations, offline: !saved } }));
+}
+
+async function takeGymTrainingDay(operation) {
+  const source = operation?._base || operation;
+  if (!source || !isGeneratedGymSplit(source) || !isGymRestSlot(source)) return;
+  const split = nextWorkoutSplitForDay(gymSlotDate(source));
+  if (!split) {
+    window.alert("All five training splits are already scheduled this week. Keep this as recovery.");
+    return;
+  }
+  const trainingDay = {
+    title: `Gym - ${split}`,
+    category: "Self Mastery",
+    priority: "High",
+    brief: `Flexible training day. Complete the ${split} session selected in Self Mastery. Log every exercise with weight, reps, and sets so AEGIS can evaluate progressive improvement.`,
+    metric_key: "gym_session",
+    schedule_mode: "one_time",
+  };
+  Object.assign(source, trainingDay);
+  if (source !== operation) Object.assign(operation, trainingDay);
+  attachMissionLink(source);
+  source.local_updated_at = new Date().toISOString();
+  saveCachedOperations();
+  renderQueue();
+  renderCalendar();
+  const saved = await persist(source);
+  if (saved && currentUser) {
+    operations = await seedIfEmpty();
+    await loadOperationMissionLinks();
+    saveCachedOperations();
+  }
+  renderQueue();
+  renderCalendar();
+  window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "operations-hub", operations, offline: !saved } }));
 }
 
 async function persist(operation) {
@@ -2105,6 +2343,7 @@ async function ensureTodayOperations(records = []) {
   await repairTodayGymSplit(records, activeDay);
 
   const hasTodayPlan = (planned) => records.some((operation) => {
+    if (isLegacyRecurringGymTemplate(operation)) return false;
     const sameTitle = String(operation.title || "").trim().toLowerCase() === planned.title.toLowerCase()
       || (planned.title === "Today's focus" && isTomorrowFocusOperation(operation))
       || (isEveningDebriefOperation(planned) && isEveningDebriefOperation(operation));
@@ -2133,8 +2372,11 @@ async function ensureTodayOperations(records = []) {
   // Measured work such as PT sessions is deliberately scheduled from Mission
   // Control.  Auto-creating an undated next session made the calendar invent
   // appointments and caused duplicate recovery operations.
-  if (!additions.length) return records;
-  if (!client || !currentUser) return appendOperationsWithoutTouchingExisting(records, additions.map((item, index) => ({ ...item, id: `local-${activeDay}-${index}-${item.title}` })));
+  if (!additions.length) return ensureWeeklyGymPlan(records, activeDay);
+  if (!client || !currentUser) {
+    const combined = appendOperationsWithoutTouchingExisting(records, additions.map((item, index) => ({ ...item, id: `local-${activeDay}-${index}-${item.title}` })));
+    return ensureWeeklyGymPlan(combined, activeDay);
+  }
   const prepared = additions.map((item) => {
     const { priority, ...operationFields } = item;
     return { ...operationFields, user_id: currentUser.id, mission_id: item.mission_id || null, metric_key: item.metric_key || null, operation_family_key: operationFamilyKey(item) };
@@ -2142,9 +2384,10 @@ async function ensureTodayOperations(records = []) {
   const { data, error } = await client.from("operations").insert(prepared).select();
   if (error) {
     console.warn("Could not create today's operations", error.message);
-    return appendOperationsWithoutTouchingExisting(records, prepared.map((item, index) => ({ ...item, id: `local-${activeDay}-${index}-${item.title}` })));
+    const combined = appendOperationsWithoutTouchingExisting(records, prepared.map((item, index) => ({ ...item, id: `local-${activeDay}-${index}-${item.title}` })));
+    return ensureWeeklyGymPlan(combined, activeDay);
   }
-  return appendOperationsWithoutTouchingExisting(records, data || prepared);
+  return ensureWeeklyGymPlan(appendOperationsWithoutTouchingExisting(records, data || prepared), activeDay);
 }
 
 async function loadMissions() {
@@ -2854,7 +3097,10 @@ async function boot() {
     // background without locking input immediately after login.
     const local = cachedOperations();
     if (currentUser) {
-      if (!operations.length) operations = local.length ? local : starterOperations();
+      // Make the daily pre-market path visible from cache immediately. The
+      // full cloud hydration persists it shortly after, but it must not look
+      // missing while that deferred sync is still waiting for idle time.
+      if (!operations.length) operations = ensureCachedPreMarketPath(local.length ? local : starterOperations());
       if (!operationOccurrences.length) operationOccurrences = cachedOccurrences();
     } else {
       operations = await ensureTodayOperations(local.length ? local : starterOperations());
@@ -2870,7 +3116,7 @@ async function boot() {
     if (currentUser) scheduleOperationHydration();
   } catch (error) {
     console.warn("Operations hub recovered from a load error", error);
-    operations = cachedOperations();
+    operations = ensureCachedPreMarketPath(cachedOperations());
     if (!operations.length) operations = starterOperations();
     operationsReady = true;
     announceOperationsLoaded();

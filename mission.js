@@ -98,7 +98,7 @@ function operationFamilyTemplateRows() {
     category: "Self Mastery",
     status: "Queued",
     completed: false,
-    schedule_mode: "daily",
+    schedule_mode: "one_time",
     is_daily: true,
     operation_date: easternDateKey(),
     scheduled_date: easternDateKey(),
@@ -681,7 +681,7 @@ async function materializeOperationFamily(operation, mission) {
     brief: operation.brief,
     date: easternDateKey(),
     time: "",
-    cadence: "daily",
+    cadence: "one_time",
     endDate: "",
   });
   const { data, error } = await insertMissionOperation({ ...payload, mission_id: null, allow_unlinked: true, operation_family_key: operation.operation_family_key });

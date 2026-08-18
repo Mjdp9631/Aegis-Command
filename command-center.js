@@ -56,7 +56,7 @@ function fallbackOperationTemplateRows() {
     category: "Self Mastery",
     status: "Queued",
     completed: false,
-    schedule_mode: "daily",
+    schedule_mode: "one_time",
     is_daily: true,
     scheduled_date: new Date().toISOString().slice(0, 10),
     operation_date: new Date().toISOString().slice(0, 10),
@@ -131,7 +131,7 @@ async function applyFallbackOperationLinkage(mission, form) {
       let operation = fallbackOperationRows().find((row) => String(row.id) === String(operationId));
       if (!operation) continue;
       if (operation.is_operation_family_template && String(operation.id).startsWith("local-")) {
-        const inserted = await supabase.from("operations").insert({ user_id: userId, title: operation.title, category: operation.category, brief: operation.brief, mission_id: null, status: "Queued", completed: false, scheduled_date: operation.scheduled_date, operation_date: operation.operation_date, is_daily: true, schedule_mode: "daily", allow_unlinked: true }).select().single();
+        const inserted = await supabase.from("operations").insert({ user_id: userId, title: operation.title, category: operation.category, brief: operation.brief, mission_id: null, status: "Queued", completed: false, scheduled_date: operation.scheduled_date, operation_date: operation.operation_date, is_daily: true, schedule_mode: "one_time", allow_unlinked: true }).select().single();
         if (inserted.error) throw new Error(inserted.error.message);
         operation = inserted.data;
       }

@@ -287,18 +287,114 @@ function operationIdentity(operation) {
     .map((value) => String(value || "").trim().toLowerCase()).join("|");
 }
 
-function dailySeedFor(date) {
-  const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
-  const splits = ["Rest", "Legs", "Push", "Pull", "Rest", "Upper Body", "Lower Body"];
-  const split = splits[weekday];
+const GYM_WEEKLY_SPLITS = ["Legs", "Push", "Pull", "Lower Body", "Upper Body"];
+const GYM_REST_DAYS_PER_WEEK = 2;
+const GYM_MAX_CONSECUTIVE_TRAINING_DAYS = 3;
+const gymWeekStart = (date) => {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() - ((value.getUTCDay() + 6) % 7));
+  return value.toISOString().slice(0, 10);
+};
+const shiftDate = (date, days) => {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+};
+const gymSlotDate = (operation) => dateOnly(operation?.operation_date || operation?.scheduled_date);
+const gymTitle = (operation) => String(operation?.title || "").trim();
+const isGymTrainingSlot = (operation) => /^gym\s*(?:-|\u2013|\u2014)/i.test(gymTitle(operation));
+const isGymRestSlot = (operation) => /^(?:rest\s*(?:-|\u2013|\u2014).*recovery|recovery\s*(?:-|\u2013|\u2014).*rest)/i.test(gymTitle(operation));
+const isFlexibleRestDay = (operation) => /flexible rest day/i.test(String(operation?.brief || operation?.notes || ""));
+const isGeneratedGymSlot = (operation) => {
+  if (!operation?.is_daily) return false;
+  const brief = String(operation.brief || operation.notes || "");
+  return isGymTrainingSlot(operation)
+    || isGymRestSlot(operation)
+    || /(?:complete the (?:legs|push|pull|lower body|upper body) session selected in self mastery|protect recovery: light mobility only)/i.test(brief);
+};
+const isLegacyRecurringGymTemplate = (operation) => {
+  const title = gymTitle(operation);
+  const brief = String(operation?.brief || operation?.notes || "").trim();
+  const isOldFamilyTemplate = /^gym\s*(?:-|\u2013|\u2014)\s*(legs|push|pull|lower body|upper body)$/i.test(title)
+    && /^complete the (legs|push|pull|lower body|upper body) session selected in self mastery\. log every exercise, weight, reps, and completed sets\.?$/i.test(brief);
+  return isGeneratedGymSlot(operation) && (scheduleMode(operation) !== "one_time" || isOldFamilyTemplate);
+};
+
+function gymSplitFromHistory(date, history = []) {
+  const weekStart = gymWeekStart(date);
+  const trainingDays = history.filter(isGymTrainingSlot).length;
+  const restDays = history.filter(isGymRestSlot).length;
+  const weekEnd = shiftDate(weekStart, 6);
+  const daysRemaining = Math.floor((new Date(`${weekEnd}T12:00:00Z`) - new Date(`${date}T12:00:00Z`)) / 86400000) + 1;
+  const workoutsRemaining = Math.max(0, GYM_WEEKLY_SPLITS.length - trainingDays);
+  const recentSlots = history.slice(-GYM_MAX_CONSECUTIVE_TRAINING_DAYS);
+  const trainingStreak = recentSlots.length === GYM_MAX_CONSECUTIVE_TRAINING_DAYS && recentSlots.every(isGymTrainingSlot);
+  const mustTrainToFinishWeek = daysRemaining <= workoutsRemaining;
+  const shouldRest = trainingDays >= GYM_WEEKLY_SPLITS.length
+    || (!mustTrainToFinishWeek && restDays < GYM_REST_DAYS_PER_WEEK && trainingStreak);
+  return shouldRest ? "Rest" : (GYM_WEEKLY_SPLITS[trainingDays] || "Rest");
+}
+
+function gymSplitForDate(date, records = []) {
+  const weekStart = gymWeekStart(date);
+  const usable = records.filter((operation) => isGeneratedGymSlot(operation) && !isLegacyRecurringGymTemplate(operation));
+  const history = [];
+  // A day without a dated generated slot still has a default place in the
+  // weekly sequence. This prevents retired recurring templates from making
+  // Tuesday restart at Legs instead of continuing from Monday's Legs slot.
+  for (let day = weekStart; day < date; day = shiftDate(day, 1)) {
+    const daySlots = usable.filter((operation) => gymSlotDate(operation) === day);
+    if (daySlots.length) history.push(...daySlots);
+    else {
+      const split = gymSplitFromHistory(day, history);
+      history.push({ is_daily: true, operation_date: day, title: split === "Rest" ? "Rest - recovery and reset" : `Gym - ${split}` });
+    }
+  }
+  return gymSplitFromHistory(date, history);
+}
+
+function gymSeedFor(date, records = []) {
+  const split = gymSplitForDate(date, records);
   const isRest = split === "Rest";
+  return {
+    title: isRest ? "Rest - recovery and reset" : `Gym - ${split}`,
+    category: isRest ? "Recovery" : "Self Mastery",
+    brief: isRest
+      ? "Protect recovery: light mobility only if it feels good, hydrate, sleep on time, and do not turn rest into a missed plan."
+      : `Complete the ${split} session selected in Self Mastery. Log every exercise with weight, reps, and sets so AEGIS can evaluate progressive improvement.`,
+    metric_key: "gym_session",
+  };
+}
+
+function dailySeedFor(date, records = []) {
   return [
+    { title: "Pre-market analysis", category: "Trading", brief: "Mark the higher-timeframe condition, key liquidity/reaction levels, and the valid setup before active price reaches the area.", metric_key: null, scheduled_time: "18:00" },
     { title: "Review charts and document one lesson", category: "Trading", brief: "Review one relevant chart or completed trade, capture one process lesson, and file it in Detective or Self Mastery.", metric_key: null },
     { title: "Conquer the morning", category: "Self Mastery", brief: "Begin the day with one deliberate first action, protect the first block from avoidable distraction, and execute the morning standard before reactive work.", metric_key: null },
     { title: "Read one chapter", category: "Self Mastery", brief: "Read one chapter from your current book without notifications, then capture one useful idea, quote, or action in Self Mastery.", metric_key: "chapters_read" },
     { title: "Journal", category: "Self Mastery", brief: "Write the facts, name what is within your control, and record one lesson or next right action.", metric_key: "mastery.entry" },
-    { title: isRest ? "Recovery — rest and reset" : `Gym — ${split}`, category: isRest ? "Recovery" : "Body", brief: isRest ? "Protect recovery: light mobility only if it feels good, hydrate, sleep on time, and do not turn rest into a missed plan." : `Complete the ${split} session selected in Self Mastery. Log every exercise with weight, reps, and sets so AEGIS can evaluate progressive improvement.`, metric_key: "gym_session" },
+    gymSeedFor(date, records),
   ];
+}
+
+async function reconcileDailyGymSlot(serviceKey, userId, date, records) {
+  const candidates = records.filter((operation) => gymSlotDate(operation) === date && isGeneratedGymSlot(operation) && !isLegacyRecurringGymTemplate(operation));
+  const current = candidates.find((operation) => !operation.completed && String(operation.status || "").toLowerCase() !== "complete");
+  if (!current || (isGymRestSlot(current) && isFlexibleRestDay(current))) return;
+  const expected = gymSeedFor(date, records);
+  if (current.title === expected.title && current.category === expected.category && current.brief === expected.brief) return;
+  const response = await rest(serviceKey, `operations?id=eq.${encodeURIComponent(current.id)}&user_id=eq.${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    // `operations` predates the application-wide audit timestamp and does
+    // not have an `updated_at` column in the deployed schema. Including it
+    // makes PostgREST reject the complete patch and aborts the daily rollover
+    // before it reaches the Pre-market insert.
+    body: JSON.stringify(expected),
+  });
+  if (!response.ok) throw new Error("Could not repair today's generated gym operation.");
+  const [updated] = await response.json();
+  if (updated) Object.assign(current, updated);
 }
 
 async function rolloverOngoingOperations(serviceKey, userId, date, records) {
@@ -310,12 +406,12 @@ async function rolloverOngoingOperations(serviceKey, userId, date, records) {
     if (last === date && current === date) continue;
     const started = dateOnly(operation.started_on || operation.scheduled_date || operation.operation_date) || date;
     const rolloverCount = Math.max(0, Number(operation.rollover_count || 0)) + (last && last < date ? 1 : 0);
-    const payload = { scheduled_date: date, operation_date: date, started_on: started, last_rollover_on: date, rollover_count: rolloverCount, updated_at: new Date().toISOString() };
+    const payload = { scheduled_date: date, operation_date: date, started_on: started, last_rollover_on: date, rollover_count: rolloverCount };
     let response = await rest(serviceKey, `operations?id=eq.${encodeURIComponent(operation.id)}&user_id=eq.${encodeURIComponent(userId)}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(payload) });
     // Keep the scheduled scan usable while an older project is waiting for
     // migration 059. The client will retry the durable fields after migration.
     if (!response.ok) {
-      response = await rest(serviceKey, `operations?id=eq.${encodeURIComponent(operation.id)}&user_id=eq.${encodeURIComponent(userId)}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ scheduled_date: date, operation_date: date, updated_at: payload.updated_at }) });
+      response = await rest(serviceKey, `operations?id=eq.${encodeURIComponent(operation.id)}&user_id=eq.${encodeURIComponent(userId)}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ scheduled_date: date, operation_date: date }) });
     }
     if (response.ok) rolled += 1;
   }
@@ -339,11 +435,12 @@ async function rolloverOperations(serviceKey, userId, date) {
       }
     }
   });
+  await reconcileDailyGymSlot(serviceKey, userId, date, records);
   const current = records.filter((operation) => dateOnly(operation.operation_date) === date || dateOnly(operation.scheduled_date) === date);
   const currentKeys = new Set(current.map(operationIdentity));
   const inserts = [];
 
-  dailySeedFor(date).forEach((seed) => {
+  dailySeedFor(date, records).forEach((seed) => {
     if (current.some((operation) => String(operation.title || "").trim().toLowerCase() === seed.title.toLowerCase() && (dateOnly(operation.operation_date) === date || dateOnly(operation.scheduled_date) === date))) return;
     const source = records
       .filter((operation) => String(operation.title || "").trim().toLowerCase() === seed.title.toLowerCase() && Boolean(operation.is_daily))
@@ -359,7 +456,7 @@ async function rolloverOperations(serviceKey, userId, date) {
       status: "Queued",
       completed: false,
       scheduled_date: date,
-      scheduled_time: source?.scheduled_time || null,
+      scheduled_time: seed.scheduled_time || source?.scheduled_time || null,
       schedule_mode: "one_time",
       scheduled_end_date: null,
       operation_date: date,
@@ -370,7 +467,7 @@ async function rolloverOperations(serviceKey, userId, date) {
   const customDaily = records
     .filter((operation) => Boolean(operation.is_daily) && scheduleMode(operation) === "one_time")
     .filter((operation) => dateOnly(operation.operation_date) && dateOnly(operation.operation_date) < date)
-    .filter((operation) => !/^gym — |^recovery — rest and reset$/i.test(String(operation.title || "")))
+    .filter((operation) => !isGeneratedGymSlot(operation))
     .sort((left, right) => String(right.operation_date || right.created_at || "").localeCompare(String(left.operation_date || left.created_at || "")));
   const latestDaily = new Map();
   customDaily.forEach((operation) => {
@@ -410,7 +507,7 @@ async function rolloverOperations(serviceKey, userId, date) {
     created = await inserted.json();
   }
 
-  const recurring = records.filter((operation) => scheduleMode(operation) !== "one_time" && operation.id && scheduledOn(operation, date));
+  const recurring = records.filter((operation) => scheduleMode(operation) !== "one_time" && !isLegacyRecurringGymTemplate(operation) && operation.id && scheduledOn(operation, date));
   let occurrences = 0;
   if (recurring.length) {
     const occurrenceResponse = await rest(serviceKey, `operation_occurrences?user_id=eq.${encodeURIComponent(userId)}&occurrence_date=eq.${date}&select=operation_id`);
