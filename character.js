@@ -195,7 +195,7 @@ const starterRoomBundle = {
     desk: "assets/generated/aegis-character-room-starter-desk-action-v1.png",
   },
   loops: {
-    couch: "assets/generated/aegis-character-room-starter-couch-scroll-v1.png",
+    couch: "assets/generated/aegis-character-room-starter-couch-scroll-v2.png",
     fridge: "assets/generated/aegis-character-room-starter-fridge-lower-v1.png",
     desk: "assets/generated/aegis-character-room-starter-desk-typing-v1.png",
   },
