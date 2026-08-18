@@ -244,7 +244,7 @@ function roomVisualState(levels) {
 function characterLifePanel(levels) {
   const averageLevel = Math.round(Object.values(levels).reduce((sum, level) => sum + Number(level || 0), 0) / Math.max(1, Object.keys(levels).length));
   const visual = roomVisualState(levels);
-  return `<section class="character-life panel" data-character-life data-room-chapter="${visual.chapter.id}"><div class="character-life-heading"><div><p class="eyebrow amber">LIVING QUARTERS / PASSIVE VISUAL</p><h3>Watch the work change the room.</h3><p>One fixed apartment, upgraded at earned milestones. The couch, fridge, desk, and future training bay keep their positions while the surrounding room evolves.</p></div><div class="character-life-readout"><span>ROOM CHAPTER</span><strong>${visual.chapter.title}</strong><small>LV ${averageLevel} · ${visual.chapter.summary}</small><small data-life-activity>Resetting in the lounge</small></div></div><div class="character-life-stage"><canvas data-character-life-canvas data-render-mode="integrated-scene-frame" aria-label="Animated integrated room scene: couch, fridge, and trading desk"></canvas><div class="character-life-key" aria-hidden="true"><span>DISCIPLINE <b>ROOM</b></span><span>MIND <b>LIBRARY</b></span><span>BODY <b>PHYSIQUE / TRAINING BAY</b></span><span>TRADING + CCFX <b>TECH</b></span></div></div></section>`;
+  return `<section class="character-life panel" data-character-life data-room-chapter="${visual.chapter.id}"><div class="character-life-heading"><div><p class="eyebrow amber">LIVING QUARTERS / PASSIVE VISUAL</p><h3>Watch the work change the room.</h3><p>One fixed apartment, upgraded at earned milestones. The couch, fridge, desk, and future training bay keep their positions while the surrounding room evolves.</p></div><div class="character-life-readout"><span>ROOM CHAPTER</span><strong>${visual.chapter.title}</strong><small>LV ${averageLevel} · ${visual.chapter.summary}</small><small data-life-activity>Resetting in the lounge</small></div></div><div class="character-life-stage"><canvas data-character-life-canvas aria-label="Animated character routine: couch, fridge, and trading desk"></canvas><div class="character-life-key" aria-hidden="true"><span>DISCIPLINE <b>ROOM</b></span><span>MIND <b>LIBRARY</b></span><span>BODY <b>PHYSIQUE / TRAINING BAY</b></span><span>TRADING + CCFX <b>TECH</b></span></div></div></section>`;
 }
 
 class CharacterLifeScene {
@@ -374,7 +374,7 @@ class CharacterLifeScene {
 
   resize() {
     const width = Math.max(320, this.canvas.clientWidth || 960);
-    const height = Math.round(clamp(width * .5625, 300, 675));
+    const height = Math.round(clamp(width * .5625, 300, 560));
     const scale = Math.min(window.devicePixelRatio || 1, 2);
     this.canvas.width = Math.round(width * scale);
     this.canvas.height = Math.round(height * scale);
@@ -466,10 +466,7 @@ class CharacterLifeScene {
       const loopAreas = {
         couch: { x: .08, y: .30, width: .29, height: .58, filter: brightFilter },
         fridge: { x: .32, y: .18, width: .28, height: .68, filter: brightFilter },
-        // Desk typing redraws the arm independently from the torso, creating
-        // a detached-arm/forward-growing effect. Keep the static action until
-        // an aligned full-scene typing loop exists.
-        desk: null,
+        desk: { x: .63, y: .28, width: .31, height: .64, filter: brightFilter },
       }[action];
       if (!loopAreas) return;
       // The crop includes surrounding furniture so occlusion remains painted
@@ -493,10 +490,11 @@ class CharacterLifeScene {
           drawImageFrame(previousImage, 1, brightFilter);
           drawImageFrame(walkImages[0], progress / .16, brightFilter);
         } else if (progress < .84) {
-          // These are independently redrawn full-scene paintings, not rigged
-          // frames. Blending them makes the character morph between designs.
-          // Hold one locked walk design for the stride instead.
-          drawImageFrame(walkImages[1] || walkImages[0], 1, brightFilter);
+          const stridePosition = ((progress - .16) / .68) * (walkImages.length - 1);
+          const strideIndex = Math.min(walkImages.length - 2, Math.floor(stridePosition));
+          const strideBlend = stridePosition - strideIndex;
+          drawImageFrame(walkImages[strideIndex], 1, brightFilter);
+          drawImageFrame(walkImages[strideIndex + 1], strideBlend, brightFilter);
         } else {
           const settle = (progress - .84) / .16;
           drawImageFrame(walkImages[walkImages.length - 1], 1, brightFilter);

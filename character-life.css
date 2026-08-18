@@ -40,7 +40,7 @@
 .character-life-stage {
   position: relative;
   margin-top: 19px;
-  width: min(100%, 1200px);
+  width: min(100%, 995px);
   margin-right: auto;
   margin-left: auto;
   overflow: hidden;
