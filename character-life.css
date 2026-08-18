@@ -40,6 +40,9 @@
 .character-life-stage {
   position: relative;
   margin-top: 19px;
+  width: min(100%, 995px);
+  margin-right: auto;
+  margin-left: auto;
   overflow: hidden;
   border: 1px solid rgba(116, 183, 232, .26);
   border-radius: 9px;
@@ -64,6 +67,7 @@
 .character-life-stage canvas {
   display: block;
   width: 100%;
+  aspect-ratio: 16 / 9;
   min-height: 300px;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
