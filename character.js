@@ -219,9 +219,9 @@ class CharacterLifeScene {
     this.roomActionFrames = {};
     {
       const actionSources = {
-        couch: "assets/generated/aegis-character-room-layout-v2-couch.png",
-        fridge: "assets/generated/aegis-character-room-layout-v2-fridge.png",
-        desk: "assets/generated/aegis-character-room-layout-v2-desk.png",
+        couch: "assets/generated/aegis-character-room-layout-v2-couch-loop.png",
+        fridge: "assets/generated/aegis-character-room-layout-v2-fridge-loop.png",
+        desk: "assets/generated/aegis-character-room-layout-v2-desk-loop.png",
       };
       Object.entries(actionSources).forEach(([action, source]) => {
         const image = new Image();
@@ -258,8 +258,8 @@ class CharacterLifeScene {
           "assets/generated/aegis-character-room-layout-v2-walk-fridge-desk-end.png",
         ],
         "desk:couch": [
-          "assets/generated/aegis-character-room-layout-v2-walk-fridge-desk-end.png",
-          "assets/generated/aegis-character-room-layout-v2-walk-fridge-desk-start.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-start.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-end.png",
           "assets/generated/aegis-character-room-layout-v2-walk-couch-fridge-start.png",
         ],
       };
