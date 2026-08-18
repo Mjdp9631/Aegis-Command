@@ -188,32 +188,38 @@ const roomChapters = [
 ];
 
 const starterRoomBundle = {
-  background: "assets/generated/aegis-character-room-starter-v1.png",
+  // Fixed base-level floor plan: couch under the left window facing the
+  // viewer, fridge beside it, single-monitor desk on the right, and a basic
+  // bench press/pull-up wall at far left. Every frame is a complete scene.
+  background: "assets/generated/aegis-character-room-base-v2.png",
   actions: {
-    couch: "assets/generated/aegis-character-room-starter-couch-action-v1.png",
-    fridge: "assets/generated/aegis-character-room-starter-fridge-action-v1.png",
-    desk: "assets/generated/aegis-character-room-starter-desk-action-v1.png",
+    couch: "assets/generated/aegis-character-room-base-couch-v3.png",
+    fridge: "assets/generated/aegis-character-room-base-fridge-v3.png",
+    desk: "assets/generated/aegis-character-room-base-desk-v3.png",
   },
   loops: {
-    couch: "assets/generated/aegis-character-room-starter-couch-scroll-v3.png",
-    fridge: "assets/generated/aegis-character-room-starter-fridge-lower-v1.png",
-    desk: "assets/generated/aegis-character-room-starter-desk-typing-v1.png",
+    // Keep the base pass visually unified; detailed action clips can be
+    // added without changing the floor plan or mixing room generations.
+    couch: "assets/generated/aegis-character-room-base-couch-v3.png",
+    fridge: "assets/generated/aegis-character-room-base-fridge-v3.png",
+    desk: "assets/generated/aegis-character-room-base-desk-v3.png",
   },
   walks: {
     "couch:fridge": [
-      "assets/generated/aegis-character-room-starter-walk-couch-fridge-start-v1.png",
-      "assets/generated/aegis-character-room-starter-walk-couch-fridge-v1.png",
-      "assets/generated/aegis-character-room-starter-walk-couch-fridge-end-v1.png",
+      "assets/generated/aegis-character-room-base-walk-couch-fridge-start-v2.png",
+      "assets/generated/aegis-character-room-base-walk-couch-fridge-v2.png",
+      "assets/generated/aegis-character-room-base-walk-couch-fridge-mid-v2.png",
+      "assets/generated/aegis-character-room-base-walk-couch-fridge-end-v2.png",
     ],
     "fridge:desk": [
-      "assets/generated/aegis-character-room-starter-walk-fridge-desk-start-v1.png",
-      "assets/generated/aegis-character-room-starter-walk-fridge-desk-v1.png",
-      "assets/generated/aegis-character-room-starter-walk-fridge-desk-end-v1.png",
+      "assets/generated/aegis-character-room-base-fridge-v3.png",
+      "assets/generated/aegis-character-room-base-fridge-v3.png",
+      "assets/generated/aegis-character-room-base-desk-v3.png",
     ],
     "desk:couch": [
-      "assets/generated/aegis-character-room-starter-walk-desk-couch-start-v1.png",
-      "assets/generated/aegis-character-room-starter-walk-desk-couch-v1.png",
-      "assets/generated/aegis-character-room-starter-walk-desk-couch-end-v1.png",
+      "assets/generated/aegis-character-room-base-desk-v3.png",
+      "assets/generated/aegis-character-room-base-desk-v3.png",
+      "assets/generated/aegis-character-room-base-couch-v3.png",
     ],
   },
 };
