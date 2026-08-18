@@ -193,33 +193,33 @@ const starterRoomBundle = {
   // bench press/pull-up wall at far left. Every frame is a complete scene.
   background: "assets/generated/aegis-character-room-base-v3.png",
   actions: {
-    couch: "assets/generated/aegis-character-room-base-couch-v3.png",
-    fridge: "assets/generated/aegis-character-room-base-fridge-v3.png",
-    desk: "assets/generated/aegis-character-room-base-desk-v3.png",
+    couch: "assets/generated/aegis-character-room-integrated-couch-v1.png",
+    fridge: "assets/generated/aegis-character-room-integrated-fridge-v1.png",
+    desk: "assets/generated/aegis-character-room-integrated-desk-v1.png",
   },
   loops: {
-    // Keep the base pass visually unified; detailed action clips can be
-    // added without changing the floor plan or mixing room generations.
-    couch: "assets/generated/aegis-character-room-base-couch-v3.png",
-    fridge: "assets/generated/aegis-character-room-base-fridge-v3.png",
-    desk: "assets/generated/aegis-character-room-base-desk-v3.png",
+    couch: "assets/generated/aegis-character-room-integrated-couch-v1.png",
+    fridge: "assets/generated/aegis-character-room-integrated-fridge-v1.png",
+    desk: "assets/generated/aegis-character-room-integrated-desk-v1.png",
   },
   walks: {
     "couch:fridge": [
-      "assets/generated/aegis-character-room-base-walk-couch-fridge-start-v2.png",
-      "assets/generated/aegis-character-room-base-walk-couch-fridge-v2.png",
-      "assets/generated/aegis-character-room-base-walk-couch-fridge-mid-v2.png",
-      "assets/generated/aegis-character-room-base-walk-couch-fridge-end-v2.png",
+      "assets/generated/aegis-character-room-integrated-walk-start-v1.png",
+      "assets/generated/aegis-character-room-integrated-walk-v1.png",
+      "assets/generated/aegis-character-room-integrated-walk-mid-v1.png",
+      "assets/generated/aegis-character-room-integrated-walk-end-v1.png",
     ],
     "fridge:desk": [
-      "assets/generated/aegis-character-room-base-fridge-v3.png",
-      "assets/generated/aegis-character-room-base-fridge-v3.png",
-      "assets/generated/aegis-character-room-base-desk-v3.png",
+      "assets/generated/aegis-character-room-integrated-walk-start-v1.png",
+      "assets/generated/aegis-character-room-integrated-walk-v1.png",
+      "assets/generated/aegis-character-room-integrated-walk-mid-v1.png",
+      "assets/generated/aegis-character-room-integrated-walk-end-v1.png",
     ],
     "desk:couch": [
-      "assets/generated/aegis-character-room-base-desk-v3.png",
-      "assets/generated/aegis-character-room-base-desk-v3.png",
-      "assets/generated/aegis-character-room-base-couch-v3.png",
+      "assets/generated/aegis-character-room-integrated-walk-end-v1.png",
+      "assets/generated/aegis-character-room-integrated-walk-mid-v1.png",
+      "assets/generated/aegis-character-room-integrated-walk-v1.png",
+      "assets/generated/aegis-character-room-integrated-walk-start-v1.png",
     ],
   },
 };
@@ -267,9 +267,9 @@ class CharacterLifeScene {
     this.roomBundle = roomBundles[this.visual.chapter.id] || starterRoomBundle;
     this.activityLabel = canvas.closest("[data-character-life]")?.querySelector("[data-life-activity]");
     this.actions = [
-      { id: "couch", label: "Resetting in the lounge", target: "the couch", x: .30, dwell: 14000 },
-      { id: "fridge", label: "Refueling at the fridge", target: "the fridge", x: .52, dwell: 10000 },
-      { id: "desk", label: "Reviewing charts at the desk", target: "the trading desk", x: .79, dwell: 18000 },
+      { id: "couch", label: "Resetting in the lounge", target: "the couch", x: .22, dwell: 14000 },
+      { id: "fridge", label: "Refueling at the fridge", target: "the fridge", x: .505, dwell: 10000 },
+      { id: "desk", label: "Reviewing charts at the desk", target: "the trading desk", x: .77, dwell: 18000 },
     ];
     this.index = 0;
     this.previousIndex = 0;
@@ -284,18 +284,15 @@ class CharacterLifeScene {
     // character sits inside the furniture the room renderer already owns.
     this.sprites = {};
     this.spriteSources = {
-      walking: "assets/generated/aegis-character-base-walking-source-v1.png",
-      couch: "assets/generated/aegis-character-base-couch-source-v1.png",
-      fridge: "assets/generated/aegis-character-base-fridge-source-v1.png",
-      desk: "assets/generated/aegis-character-base-desk-source-v1.png",
+      walking: "assets/generated/aegis-character-manbun-pixel-standing-source.png",
+      couch: "assets/generated/aegis-character-manbun-pixel-couch-front-source.png",
+      fridge: "assets/generated/aegis-character-manbun-pixel-fridge-source.png",
+      desk: "assets/generated/aegis-character-manbun-pixel-desk-source.png",
     };
     Object.entries(this.spriteSources).forEach(([key, source]) => this.loadSprite(key, source));
     this.roomBackground = new Image();
     this.roomBackground.decoding = "async";
     this.roomBackground.src = `${this.roomBundle.background}?v=room-starter-v2`;
-    this.fridgeOpenBackground = new Image();
-    this.fridgeOpenBackground.decoding = "async";
-    this.fridgeOpenBackground.src = "assets/generated/aegis-character-room-base-fridge-open-v1.png?v=base-fridge-open-v1";
     this.roomActionFrames = {};
     {
       const actionSources = this.roomBundle.actions;
@@ -419,30 +416,20 @@ class CharacterLifeScene {
   update(timestamp) {
     const action = this.actions[this.index];
     const elapsed = timestamp - this.startedAt;
-    if (this.mode === "transition") {
-      const progress = clamp(elapsed / 3600, 0, 1);
-      const eased = progress * progress * (3 - 2 * progress);
-      this.position = this.from + (this.to - this.from) * eased;
-      if (progress >= 1) {
-        this.mode = "acting";
-        this.position = this.to;
-        this.startedAt = timestamp;
-        this.activityLabel.textContent = this.actions[this.index].label;
-      }
-      return;
-    }
     if (this.mode === "acting" && elapsed >= action.dwell) {
       this.mode = "transition";
       this.previousIndex = this.index;
       this.index = (this.index + 1) % this.actions.length;
-      this.from = action.x;
-      this.to = this.actions[this.index].x;
-      this.position = this.from;
       this.startedAt = timestamp;
       this.activityLabel.textContent = `Walking to ${this.actions[this.index].target}`;
       return;
     }
-    this.position = action.x;
+    if (this.mode !== "transition") return;
+    const progress = clamp(elapsed / 3000, 0, 1);
+    if (progress < 1) return;
+    this.mode = "acting";
+    this.startedAt = timestamp;
+    this.activityLabel.textContent = this.actions[this.index].label;
   }
 
   drawRoom(time) {
@@ -638,10 +625,8 @@ class CharacterLifeScene {
     const sprite = this.sprites[pose] || this.sprites.walking;
     if (!sprite) return false;
     const width = height * (sprite.width / sprite.height);
-    const moving = this.mode === "transition";
-    // Keep the character grounded while walking; the path interpolation does
-    // the movement, so a vertical bounce would read as hopping between spots.
-    const bob = moving ? 0 : Math.sin(time / 650) * .45;
+    const moving = this.mode === "walking";
+    const bob = moving ? Math.abs(Math.sin(time / 105)) * -2 : Math.sin(time / 650) * .45;
     const { ctx } = this;
     ctx.save();
     ctx.translate(x, ground + bob);
@@ -651,47 +636,6 @@ class CharacterLifeScene {
     ctx.drawImage(sprite, -width / 2, -height, width, height);
     ctx.restore();
     return true;
-  }
-
-  drawFixedRoom(time) {
-    const { ctx, width: w, height: h } = this;
-    const action = this.actions[this.index]?.id || "couch";
-    const background = this.mode === "acting" && action === "fridge" && this.fridgeOpenBackground.complete && this.fridgeOpenBackground.naturalWidth
-      ? this.fridgeOpenBackground
-      : this.roomBackground;
-    if (!background.complete || !background.naturalWidth) {
-      ctx.fillStyle = "#080d14";
-      ctx.fillRect(0, 0, w, h);
-      return;
-    }
-    const imageAspect = background.naturalWidth / background.naturalHeight;
-    const stageAspect = w / h;
-    let sourceX = 0; let sourceY = 0; let sourceWidth = background.naturalWidth; let sourceHeight = background.naturalHeight;
-    if (imageAspect > stageAspect) {
-      sourceWidth = background.naturalHeight * stageAspect;
-      sourceX = (background.naturalWidth - sourceWidth) / 2;
-    } else {
-      sourceHeight = background.naturalWidth / stageAspect;
-      sourceY = (background.naturalHeight - sourceHeight) / 2;
-    }
-    ctx.save();
-    ctx.filter = "brightness(1.45) saturate(1.06) contrast(1.02)";
-    ctx.drawImage(background, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, w, h);
-    ctx.restore();
-
-    const movingRight = this.to > this.from;
-    const pose = this.mode === "transition" ? "walking" : action;
-    const position = this.mode === "transition" ? this.position : this.actions[this.index].x;
-    const specs = {
-      couch: { ground: h * .83, height: h * .52, flip: false },
-      fridge: { ground: h * .91, height: h * .70, flip: false },
-      desk: { ground: h * .91, height: h * .58, flip: false },
-      walking: { ground: h * .91, height: h * .70, flip: !movingRight },
-    };
-    const spec = specs[pose];
-    if (spec) this.drawSprite(pose, position * w, spec.ground, spec.height, time, spec.flip);
-    this.roomFrame = null;
-    this.usingActionFrame = false;
   }
 
   drawRoomForeground(action) {
@@ -785,10 +729,9 @@ class CharacterLifeScene {
 
   draw(time) {
     this.ctx.clearRect(0, 0, this.width, this.height);
-    // One locked room canvas plus one reusable character pose set. The output
-    // is still a single unified canvas, but room geometry and character scale
-    // cannot drift independently between actions.
-    this.drawFixedRoom(time);
+    this.drawRoom(time);
+    this.drawAvatar(time);
+    this.drawRoomForeground(this.mode === "walking" ? "walking" : this.actions[this.index].id);
     this.outputCtx.clearRect(0, 0, this.displayWidth, this.displayHeight);
     this.outputCtx.drawImage(this.buffer, 0, 0, this.width, this.height, 0, 0, this.displayWidth, this.displayHeight);
   }
