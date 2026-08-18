@@ -374,7 +374,7 @@ class CharacterLifeScene {
 
   resize() {
     const width = Math.max(320, this.canvas.clientWidth || 960);
-    const height = Math.round(clamp(width * .5625, 300, 560));
+    const height = Math.round(clamp(width * .5625, 300, 675));
     const scale = Math.min(window.devicePixelRatio || 1, 2);
     this.canvas.width = Math.round(width * scale);
     this.canvas.height = Math.round(height * scale);
@@ -466,7 +466,9 @@ class CharacterLifeScene {
       const loopAreas = {
         couch: { x: .08, y: .30, width: .29, height: .58, filter: brightFilter },
         fridge: { x: .32, y: .18, width: .28, height: .68, filter: brightFilter },
-        desk: { x: .63, y: .28, width: .31, height: .64, filter: brightFilter },
+        // Keep the desk loop restricted to hands/keyboard. Repainting the
+        // chair, monitor, or desk edge makes the room appear to move.
+        desk: { x: .735, y: .44, width: .205, height: .20, filter: brightFilter },
       }[action];
       if (!loopAreas) return;
       // The crop includes surrounding furniture so occlusion remains painted
