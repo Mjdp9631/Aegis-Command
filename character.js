@@ -487,8 +487,9 @@ class CharacterLifeScene {
         // The room, furniture, contact shadows, Mat, and window weather are
         // authored together in every frame so nothing slides independently.
         if (progress < .16) {
-          drawImageFrame(previousImage, 1, brightFilter);
-          drawImageFrame(walkImages[0], progress / .16, brightFilter);
+          // Full-scene frames cannot be alpha-blended: that produces a
+          // ghosted character and duplicate furniture. Hand off atomically.
+          drawImageFrame(walkImages[0], 1, brightFilter);
         } else if (progress < .84) {
           const stridePosition = ((progress - .16) / .68) * (walkImages.length - 1);
           const strideIndex = Math.min(walkImages.length - 2, Math.floor(stridePosition));
@@ -496,9 +497,7 @@ class CharacterLifeScene {
           drawImageFrame(walkImages[strideIndex], 1, brightFilter);
           drawImageFrame(walkImages[strideIndex + 1], strideBlend, brightFilter);
         } else {
-          const settle = (progress - .84) / .16;
-          drawImageFrame(walkImages[walkImages.length - 1], 1, brightFilter);
-          drawImageFrame(actionImage, settle, brightFilter);
+          drawImageFrame(actionImage, 1, brightFilter);
         }
       } else if (previousImage?.complete && previousImage.naturalWidth) {
         const progress = clamp((time - this.startedAt) / 720, 0, 1);
