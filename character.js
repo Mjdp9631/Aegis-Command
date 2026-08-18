@@ -215,13 +215,13 @@ class CharacterLifeScene {
     Object.entries(this.spriteSources).forEach(([key, source]) => this.loadSprite(key, source));
     this.roomBackground = new Image();
     this.roomBackground.decoding = "async";
-    this.roomBackground.src = "assets/generated/aegis-character-room-pixel-v1.png?v=room-pixel-v1";
+    this.roomBackground.src = "assets/generated/aegis-character-room-layout-v2-couch.png?v=layout-v2";
     this.roomActionFrames = {};
     {
       const actionSources = {
-        couch: "assets/generated/aegis-character-room-couch-action-v2.png",
-        fridge: "assets/generated/aegis-character-room-fridge-action-v1.png",
-        desk: "assets/generated/aegis-character-room-desk-action-v1.png",
+        couch: "assets/generated/aegis-character-room-layout-v2-couch.png",
+        fridge: "assets/generated/aegis-character-room-layout-v2-fridge.png",
+        desk: "assets/generated/aegis-character-room-layout-v2-desk.png",
       };
       Object.entries(actionSources).forEach(([action, source]) => {
         const image = new Image();
@@ -233,9 +233,9 @@ class CharacterLifeScene {
     this.roomActionLoopFrames = {};
     {
       const loopSources = {
-        couch: "assets/generated/aegis-character-room-couch-scroll-v1.png",
-        fridge: "assets/generated/aegis-character-room-fridge-lower-v1.png",
-        desk: "assets/generated/aegis-character-room-desk-typing-v1.png",
+        couch: "assets/generated/aegis-character-room-layout-v2-couch.png",
+        fridge: "assets/generated/aegis-character-room-layout-v2-fridge.png",
+        desk: "assets/generated/aegis-character-room-layout-v2-desk.png",
       };
       Object.entries(loopSources).forEach(([action, source]) => {
         const image = new Image();
@@ -248,19 +248,19 @@ class CharacterLifeScene {
     {
       const walkSources = {
         "couch:fridge": [
-          "assets/generated/aegis-character-room-walk-couch-fridge-start-v2.png",
-          "assets/generated/aegis-character-room-walk-couch-fridge-v2.png",
-          "assets/generated/aegis-character-room-walk-couch-fridge-end-v2.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-couch-fridge-start.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-couch-fridge-start.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-couch-fridge-end.png",
         ],
         "fridge:desk": [
-          "assets/generated/aegis-character-room-walk-fridge-desk-start-v1.png",
-          "assets/generated/aegis-character-room-walk-fridge-desk-v1.png",
-          "assets/generated/aegis-character-room-walk-fridge-desk-end-v1.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-fridge-desk-start.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-fridge-desk-start.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-fridge-desk-end.png",
         ],
         "desk:couch": [
-          "assets/generated/aegis-character-room-walk-desk-couch-start-v1.png",
-          "assets/generated/aegis-character-room-walk-desk-couch-v1.png",
-          "assets/generated/aegis-character-room-walk-desk-couch-end-v1.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-fridge-desk-end.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-fridge-desk-start.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-couch-fridge-start.png",
         ],
       };
       Object.entries(walkSources).forEach(([route, sources]) => {
