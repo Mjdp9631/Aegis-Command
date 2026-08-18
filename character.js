@@ -282,14 +282,15 @@ class CharacterLifeScene {
     Object.entries(this.spriteSources).forEach(([key, source]) => this.loadSprite(key, source));
     this.roomBackground = new Image();
     this.roomBackground.decoding = "async";
-    this.roomBackground.src = `${this.roomBundle.background}?v=room-starter-v1`;
+    this.roomBackground.src = `${this.roomBundle.background}?v=room-starter-v2`;
     this.roomActionFrames = {};
     {
       const actionSources = this.roomBundle.actions;
       Object.entries(actionSources).forEach(([action, source]) => {
         const image = new Image();
         image.decoding = "async";
-        image.src = `${source}?v=room-starter-action-v1`;
+        image.fetchPriority = "high";
+        image.src = `${source}?v=room-starter-action-v2`;
         this.roomActionFrames[action] = image;
       });
     }
@@ -299,7 +300,7 @@ class CharacterLifeScene {
       Object.entries(loopSources).forEach(([action, source]) => {
         const image = new Image();
         image.decoding = "async";
-        image.src = `${source}?v=room-starter-action-loop-v1`;
+        image.src = `${source}?v=room-starter-action-loop-v2`;
         this.roomActionLoopFrames[action] = image;
       });
     }
@@ -310,7 +311,7 @@ class CharacterLifeScene {
         this.roomWalkFrames[route] = sources.map((source) => {
           const image = new Image();
           image.decoding = "async";
-          image.src = `${source}?v=room-starter-walk-v1`;
+          image.src = `${source}?v=room-starter-walk-v2`;
           return image;
         });
       });
@@ -447,7 +448,9 @@ class CharacterLifeScene {
       ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, w, h);
       ctx.restore();
     };
-    const brightFilter = "brightness(1.1) saturate(1.04) contrast(1.015)";
+    // Starter means worn and inexpensive, not unreadably dark. Keep enough
+    // blue/amber separation to see the room, Mat, and the single monitor.
+    const brightFilter = "brightness(1.28) saturate(1.06) contrast(1.025)";
     const drawActionLoop = () => {
       const loopImage = this.roomActionLoopFrames[action];
       drawImageFrame(actionImage, 1, brightFilter);
@@ -504,7 +507,7 @@ class CharacterLifeScene {
       // making the painted room look like it has been overlaid by an effect.
       const floorShade = ctx.createLinearGradient(0, h * .56, 0, h);
       floorShade.addColorStop(0, "rgba(2, 5, 11, 0)");
-      floorShade.addColorStop(1, "rgba(2, 5, 11, .09)");
+      floorShade.addColorStop(1, "rgba(2, 5, 11, .035)");
       ctx.fillStyle = floorShade; ctx.fillRect(0, 0, w, h);
       return;
     }
