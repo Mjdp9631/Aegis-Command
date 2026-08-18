@@ -654,7 +654,7 @@ class CharacterLifeScene {
   drawFixedRoom(time) {
     const { ctx, width: w, height: h } = this;
     const action = this.actions[this.index]?.id || "couch";
-    const background = action === "fridge" && this.fridgeOpenBackground.complete && this.fridgeOpenBackground.naturalWidth
+    const background = this.mode === "acting" && action === "fridge" && this.fridgeOpenBackground.complete && this.fridgeOpenBackground.naturalWidth
       ? this.fridgeOpenBackground
       : this.roomBackground;
     if (!background.complete || !background.naturalWidth) {
