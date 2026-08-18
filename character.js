@@ -195,7 +195,7 @@ const starterRoomBundle = {
     desk: "assets/generated/aegis-character-room-starter-desk-action-v1.png",
   },
   loops: {
-    couch: "assets/generated/aegis-character-room-starter-couch-scroll-v2.png",
+    couch: "assets/generated/aegis-character-room-starter-couch-scroll-v3.png",
     fridge: "assets/generated/aegis-character-room-starter-fridge-lower-v1.png",
     desk: "assets/generated/aegis-character-room-starter-desk-typing-v1.png",
   },
@@ -462,7 +462,7 @@ class CharacterLifeScene {
       // A gentle 3.6s base -> action -> base loop: phone scroll/head bob,
       // water down/sip, or finger movement/monitor pulse, without repainting
       // the whole room at a different exposure.
-      const alpha = (Math.sin((time - this.startedAt) * (Math.PI * 2 / 3600) - Math.PI / 2) + 1) / 2;
+      const alpha = (Math.sin((time - this.startedAt) * (Math.PI * 2 / 2200) - Math.PI / 2) + 1) / 2;
       const loopAreas = {
         couch: { x: .08, y: .30, width: .29, height: .58, filter: brightFilter },
         fridge: { x: .32, y: .18, width: .28, height: .68, filter: brightFilter },
