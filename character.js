@@ -254,13 +254,13 @@ class CharacterLifeScene {
         ],
         "fridge:desk": [
           "assets/generated/aegis-character-room-layout-v2-walk-fridge-desk-start.png",
-          "assets/generated/aegis-character-room-layout-v2-walk-fridge-desk-start.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-fridge-desk-end.png",
           "assets/generated/aegis-character-room-layout-v2-walk-fridge-desk-end.png",
         ],
         "desk:couch": [
           "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-start.png",
           "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-end.png",
-          "assets/generated/aegis-character-room-layout-v2-walk-couch-fridge-start.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-end.png",
         ],
       };
       Object.entries(walkSources).forEach(([route, sources]) => {
