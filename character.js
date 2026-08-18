@@ -404,7 +404,10 @@ class CharacterLifeScene {
       ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, w, h);
       ctx.restore();
     };
-    const brightFilter = "brightness(1.1) saturate(1.04) contrast(1.015)";
+    // The source room is intentionally moody, but it was too dark at normal
+    // display brightness. Lift the whole scene substantially while keeping
+    // the blue windows and warm practical lights readable.
+    const brightFilter = "brightness(1.42) saturate(1.08) contrast(1.02)";
     const drawActionLoop = () => {
       const loopImage = this.roomActionLoopFrames[action];
       drawImageFrame(actionImage, 1, brightFilter);
@@ -414,9 +417,9 @@ class CharacterLifeScene {
       // the whole room at a different exposure.
       const alpha = (Math.sin((time - this.startedAt) * (Math.PI * 2 / 3600) - Math.PI / 2) + 1) / 2;
       const loopAreas = {
-        couch: { x: .10, y: .32, width: .25, height: .55, filter: "brightness(.75) saturate(1.02)" },
-        fridge: { x: .34, y: .20, width: .21, height: .65, filter: "brightness(.77) saturate(1.02)" },
-        desk: { x: .66, y: .30, width: .27, height: .60, filter: "brightness(.72) saturate(1.02)" },
+        couch: { x: .10, y: .32, width: .25, height: .55, filter: "brightness(1.20) saturate(1.05)" },
+        fridge: { x: .34, y: .20, width: .21, height: .65, filter: "brightness(1.18) saturate(1.05)" },
+        desk: { x: .66, y: .30, width: .27, height: .60, filter: "brightness(1.15) saturate(1.05)" },
       }[action];
       if (!loopAreas) return;
       // The crop includes surrounding furniture so occlusion remains painted
