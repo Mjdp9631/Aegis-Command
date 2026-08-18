@@ -188,38 +188,32 @@ const roomChapters = [
 ];
 
 const starterRoomBundle = {
-  // Fixed base-level floor plan: couch under the left window facing the
-  // viewer, fridge beside it, single-monitor desk on the right, and a basic
-  // bench press/pull-up wall at far left. Every frame is a complete scene.
-  background: "assets/generated/aegis-character-room-base-v3.png",
+  background: "assets/generated/aegis-character-room-starter-v1.png",
   actions: {
-    couch: "assets/generated/aegis-character-room-integrated-couch-v1.png",
-    fridge: "assets/generated/aegis-character-room-integrated-fridge-v1.png",
-    desk: "assets/generated/aegis-character-room-integrated-desk-v1.png",
+    couch: "assets/generated/aegis-character-room-starter-couch-action-v1.png",
+    fridge: "assets/generated/aegis-character-room-starter-fridge-action-v1.png",
+    desk: "assets/generated/aegis-character-room-starter-desk-action-v1.png",
   },
   loops: {
-    couch: "assets/generated/aegis-character-room-integrated-couch-v1.png",
-    fridge: "assets/generated/aegis-character-room-integrated-fridge-v1.png",
-    desk: "assets/generated/aegis-character-room-integrated-desk-v1.png",
+    couch: "assets/generated/aegis-character-room-starter-couch-scroll-v3.png",
+    fridge: "assets/generated/aegis-character-room-starter-fridge-lower-v1.png",
+    desk: "assets/generated/aegis-character-room-starter-desk-typing-v1.png",
   },
   walks: {
     "couch:fridge": [
-      "assets/generated/aegis-character-room-integrated-walk-start-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-mid-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-end-v1.png",
+      "assets/generated/aegis-character-room-starter-walk-couch-fridge-start-v1.png",
+      "assets/generated/aegis-character-room-starter-walk-couch-fridge-v1.png",
+      "assets/generated/aegis-character-room-starter-walk-couch-fridge-end-v1.png",
     ],
     "fridge:desk": [
-      "assets/generated/aegis-character-room-integrated-walk-start-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-mid-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-end-v1.png",
+      "assets/generated/aegis-character-room-starter-walk-fridge-desk-start-v1.png",
+      "assets/generated/aegis-character-room-starter-walk-fridge-desk-v1.png",
+      "assets/generated/aegis-character-room-starter-walk-fridge-desk-end-v1.png",
     ],
     "desk:couch": [
-      "assets/generated/aegis-character-room-integrated-walk-end-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-mid-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-v1.png",
-      "assets/generated/aegis-character-room-integrated-walk-start-v1.png",
+      "assets/generated/aegis-character-room-starter-walk-desk-couch-start-v1.png",
+      "assets/generated/aegis-character-room-starter-walk-desk-couch-v1.png",
+      "assets/generated/aegis-character-room-starter-walk-desk-couch-end-v1.png",
     ],
   },
 };
@@ -379,13 +373,11 @@ class CharacterLifeScene {
   }
 
   resize() {
-    const requestedWidth = Math.max(320, this.canvas.clientWidth || 960);
-    const width = Math.min(requestedWidth, 995);
+    const width = Math.max(320, this.canvas.clientWidth || 960);
     const height = Math.round(clamp(width * .5625, 300, 560));
     const scale = Math.min(window.devicePixelRatio || 1, 2);
     this.canvas.width = Math.round(width * scale);
     this.canvas.height = Math.round(height * scale);
-    this.canvas.style.width = `${width}px`;
     this.canvas.style.height = `${height}px`;
     this.outputCtx.setTransform(scale, 0, 0, scale, 0, 0);
     this.outputCtx.imageSmoothingEnabled = false;
