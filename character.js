@@ -466,9 +466,10 @@ class CharacterLifeScene {
       const loopAreas = {
         couch: { x: .08, y: .30, width: .29, height: .58, filter: brightFilter },
         fridge: { x: .32, y: .18, width: .28, height: .68, filter: brightFilter },
-        // Keep the desk loop restricted to hands/keyboard. Repainting the
-        // chair, monitor, or desk edge makes the room appear to move.
-        desk: { x: .735, y: .44, width: .205, height: .20, filter: brightFilter },
+        // Desk typing redraws the arm independently from the torso, creating
+        // a detached-arm/forward-growing effect. Keep the static action until
+        // an aligned full-scene typing loop exists.
+        desk: null,
       }[action];
       if (!loopAreas) return;
       // The crop includes surrounding furniture so occlusion remains painted
@@ -492,11 +493,10 @@ class CharacterLifeScene {
           drawImageFrame(previousImage, 1, brightFilter);
           drawImageFrame(walkImages[0], progress / .16, brightFilter);
         } else if (progress < .84) {
-          const stridePosition = ((progress - .16) / .68) * (walkImages.length - 1);
-          const strideIndex = Math.min(walkImages.length - 2, Math.floor(stridePosition));
-          const strideBlend = stridePosition - strideIndex;
-          drawImageFrame(walkImages[strideIndex], 1, brightFilter);
-          drawImageFrame(walkImages[strideIndex + 1], strideBlend, brightFilter);
+          // These are independently redrawn full-scene paintings, not rigged
+          // frames. Blending them makes the character morph between designs.
+          // Hold one locked walk design for the stride instead.
+          drawImageFrame(walkImages[1] || walkImages[0], 1, brightFilter);
         } else {
           const settle = (progress - .84) / .16;
           drawImageFrame(walkImages[walkImages.length - 1], 1, brightFilter);
