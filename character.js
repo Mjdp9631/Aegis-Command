@@ -379,11 +379,13 @@ class CharacterLifeScene {
   }
 
   resize() {
-    const width = Math.max(320, this.canvas.clientWidth || 960);
+    const requestedWidth = Math.max(320, this.canvas.clientWidth || 960);
+    const width = Math.min(requestedWidth, 995);
     const height = Math.round(clamp(width * .5625, 300, 560));
     const scale = Math.min(window.devicePixelRatio || 1, 2);
     this.canvas.width = Math.round(width * scale);
     this.canvas.height = Math.round(height * scale);
+    this.canvas.style.width = `${width}px`;
     this.canvas.style.height = `${height}px`;
     this.outputCtx.setTransform(scale, 0, 0, scale, 0, 0);
     this.outputCtx.imageSmoothingEnabled = false;
