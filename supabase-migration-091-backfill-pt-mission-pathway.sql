@@ -31,7 +31,7 @@ with pt_families as (
     and lower(coalesce(mission.title, '') || ' ' || coalesce(mission.completion_definition, '') || ' ' || coalesce(mission.unit_label, ''))
       ~ '(physical therapy|orthopedic|pt[[:space:]]*sessions?|rehab)'
 ), resolved_paths as (
-  select user_id, operation_family_key, min(mission_id) as mission_id
+  select user_id, operation_family_key, min(mission_id::text)::uuid as mission_id
   from pt_candidates
   group by user_id, operation_family_key
   having count(distinct mission_id) = 1
