@@ -1520,6 +1520,30 @@ function formatRemaining(milliseconds) {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+// A workout row needs an explicit planning control, not a hidden action in
+// its detail popup. Taking rest preserves the split and replans the week;
+// resuming training does the inverse for an elected rest day.
+function gymRolloverControlMarkup(operation, activeDay = operatingDayKey()) {
+  if (!isGeneratedGymSplit(operation)
+    || gymSlotDate(operation) !== activeDay
+    || normalizedStatus(operation) === "Complete") return "";
+  const key = esc(operation.id || operation.title);
+  if (isGymTrainingSlot(operation)) {
+    return `<button type="button" class="gym-rollover-action" data-hub-gym-rest="${key}" title="Convert today to a rest day and move this split to the next training day">↻ Take rest day</button>`;
+  }
+  if (isGymRestSlot(operation)) {
+    return `<button type="button" class="gym-rollover-action" data-hub-gym-train="${key}" title="Train today and move this rest day later in the week">↻ Resume workout</button>`;
+  }
+  return "";
+}
+
+function operationTitleControlMarkup(operation, detailKey, gateNote = "") {
+  return `<div class="hub-operation-cell">
+    <button type="button" class="hub-operation-title" data-hub-detail="${esc(detailKey)}">${esc(operationDisplayTitle(operation))}${gateNote}</button>
+    ${gymRolloverControlMarkup(operation)}
+  </div>`;
+}
+
 // This intentionally does not depend on Supabase, missions, or calendar
 // state.  It is the last-resort queue paint used if a non-critical renderer
 // throws during a refresh.  Command Center must always show the day's work.
@@ -1532,7 +1556,7 @@ function emergencyQueueMarkup() {
     const focusClass = isTomorrowFocusOperation(operation) ? " operation-tomorrow-focus" : "";
     return `<article class="operation operation-table-row operation-table-v2${focusClass}">
       ${statusControlMarkup(operation, operatingDayKey(), operation.title)}
-      <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.title)}">${esc(operationDisplayTitle(operation))}</button>
+      ${operationTitleControlMarkup(operation, operation.title)}
       <button type="button" class="operation-schedule-control" data-hub-schedule="${esc(operation.title)}">+ Schedule</button>
       <span>${esc(operation.category || "Mission")}</span>
       <b class="${priorityClass(priority)}">${esc(priority)}</b>
@@ -1580,7 +1604,7 @@ function renderQueue() {
           : "";
       return `<article class="operation operation-table-row operation-table-v2${doneClass}${focusClass}">
         ${statusControlMarkup(operation, operatingDayKey(), operation.id || operation.title)}
-        <button type="button" class="hub-operation-title" data-hub-detail="${esc(operation.id || operation.title)}">${esc(operationDisplayTitle(operation))}${gateNote}</button>
+        ${operationTitleControlMarkup(operation, operation.id || operation.title, gateNote)}
         <button type="button" class="operation-schedule-control ${scheduled ? "is-scheduled" : ""}" data-hub-schedule="${esc(operation.id || operation.title)}">${esc(timing)}</button>
         <span>${esc(operation.category || "Mission")}</span>
         <b class="${priorityClass(priority)}">${esc(priority)}</b>
@@ -1597,6 +1621,8 @@ function renderQueue() {
       target.querySelectorAll("[data-hub-set-status]").forEach((select) => select.addEventListener("change", () => setOperationStatus(select.dataset.hubSetStatus, select.value, select.dataset.hubStatusDay)));
       target.querySelectorAll("[data-hub-schedule]").forEach((button) => button.addEventListener("click", () => openScheduleDialog(findOperation(button.dataset.hubSchedule))));
       target.querySelectorAll("[data-hub-detail]").forEach((button) => button.addEventListener("click", () => showOperationDetail(button.dataset.hubDetail)));
+      target.querySelectorAll("[data-hub-gym-rest]").forEach((button) => button.addEventListener("click", () => void takeGymRestDay(findOperation(button.dataset.hubGymRest))));
+      target.querySelectorAll("[data-hub-gym-train]").forEach((button) => button.addEventListener("click", () => void takeGymTrainingDay(findOperation(button.dataset.hubGymTrain))));
     });
   } catch (error) {
     console.warn("Operations Queue failed its normal render; applying local safety feed.", error);
@@ -1606,6 +1632,8 @@ function renderQueue() {
       target.querySelectorAll("[data-hub-set-status]").forEach((select) => select.addEventListener("change", () => setOperationStatus(select.dataset.hubSetStatus, select.value, select.dataset.hubStatusDay)));
       target.querySelectorAll("[data-hub-schedule]").forEach((button) => button.addEventListener("click", () => openScheduleDialog(findOperation(button.dataset.hubSchedule))));
       target.querySelectorAll("[data-hub-detail]").forEach((button) => button.addEventListener("click", () => showOperationDetail(button.dataset.hubDetail)));
+      target.querySelectorAll("[data-hub-gym-rest]").forEach((button) => button.addEventListener("click", () => void takeGymRestDay(findOperation(button.dataset.hubGymRest))));
+      target.querySelectorAll("[data-hub-gym-train]").forEach((button) => button.addEventListener("click", () => void takeGymTrainingDay(findOperation(button.dataset.hubGymTrain))));
     });
   }
 }
