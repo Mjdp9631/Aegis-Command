@@ -440,7 +440,8 @@ async function rolloverOperations(serviceKey, userId, date) {
   const currentKeys = new Set(current.map(operationIdentity));
   const inserts = [];
 
-  dailySeedFor(date, records).forEach((seed) => {
+  const dailySeeds = dailySeedFor(date, records);
+  dailySeeds.forEach((seed) => {
     if (current.some((operation) => String(operation.title || "").trim().toLowerCase() === seed.title.toLowerCase() && (dateOnly(operation.operation_date) === date || dateOnly(operation.scheduled_date) === date))) return;
     const source = records
       .filter((operation) => String(operation.title || "").trim().toLowerCase() === seed.title.toLowerCase() && Boolean(operation.is_daily))
@@ -464,9 +465,14 @@ async function rolloverOperations(serviceKey, userId, date) {
     });
   });
 
+  const seededDailyTitles = new Set(dailySeeds.map((seed) => String(seed.title || "").trim().toLowerCase()));
   const customDaily = records
     .filter((operation) => Boolean(operation.is_daily) && scheduleMode(operation) === "one_time")
     .filter((operation) => dateOnly(operation.operation_date) && dateOnly(operation.operation_date) < date)
+    // Canonical daily paths are already handled by dailySeeds. Cloning a
+    // prior dated copy here can differ only by time or a legacy metric, which
+    // created a second Pre-market analysis row.
+    .filter((operation) => !seededDailyTitles.has(String(operation.title || "").trim().toLowerCase()))
     .filter((operation) => !isGeneratedGymSlot(operation))
     .sort((left, right) => String(right.operation_date || right.created_at || "").localeCompare(String(left.operation_date || left.created_at || "")));
   const latestDaily = new Map();

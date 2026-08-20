@@ -709,7 +709,16 @@ function reconcileOperationIdentity(operation) {
 function dedupeOperationInstances(items) {
   const unique = new Map();
   items.forEach((operation) => {
-    const key = operationDisplayIdentity(operation);
+    // Pre-market analysis is a single daily path. Older client/server races
+    // could save it with different times, making the normal title+date+time
+    // identity show both rows. Render one authoritative row while the durable
+    // migration removes the historical duplicate.
+    const isDailyPreMarket = Boolean(operation?.is_daily)
+      && String(operation?.title || "").trim().toLowerCase() === "pre-market analysis";
+    const preMarketDay = dateOnly(operation?._occurrence?.occurrence_date || operation?.scheduled_date || operation?.operation_date);
+    const key = isDailyPreMarket && preMarketDay
+      ? `daily-pre-market|${preMarketDay}`
+      : operationDisplayIdentity(operation);
     const existing = unique.get(key);
     const completion = normalizedStatus(operation) === "Complete" || operation.completed ? 1 : 0;
     const timestamp = Date.parse(operation.updated_at || operation.created_at || operation.local_updated_at || 0) || 0;
@@ -2972,8 +2981,10 @@ function renderCalendar() {
   const selected = displayOperations.filter((operation) => isScheduledOn(operation, selectedDay));
   if (agendaLabel) agendaLabel.textContent = selectedDay ? formatKey(selectedDay, { weekday: "long", month: "long", day: "numeric" }) : "Select a day";
   if (agenda) {
-    agenda.innerHTML = selected.length ? `<div class="calendar-agenda-list">${selected.map((operation) => `<article class="calendar-agenda-item">${calendarStatusMarkup(operation, selectedDay)}<strong>${esc(operation.title)}</strong><small>${esc(operation.category || "Mission")} · choose status</small></article>`).join("")}</div>` : '<p class="calendar-empty">No operations scheduled. Select another day or schedule an operation in Mission Control.</p>';
+    agenda.innerHTML = selected.length ? `<div class="calendar-agenda-list">${selected.map((operation) => `<article class="calendar-agenda-item">${calendarStatusMarkup(operation, selectedDay)}<div class="calendar-agenda-operation"><strong>${esc(operation.title)}</strong>${gymRolloverControlMarkup(operation)}</div><small>${esc(operation.category || "Mission")} · choose status</small></article>`).join("")}</div>` : '<p class="calendar-empty">No operations scheduled. Select another day or schedule an operation in Mission Control.</p>';
     agenda.querySelectorAll("[data-hub-set-status]").forEach((select) => select.addEventListener("change", () => setOperationStatus(select.dataset.hubSetStatus, select.value, select.dataset.hubStatusDay)));
+    agenda.querySelectorAll("[data-hub-gym-rest]").forEach((button) => button.addEventListener("click", () => void takeGymRestDay(findOperation(button.dataset.hubGymRest))));
+    agenda.querySelectorAll("[data-hub-gym-train]").forEach((button) => button.addEventListener("click", () => void takeGymTrainingDay(findOperation(button.dataset.hubGymTrain))));
   }
   if (needsScheduling) {
     const measured = missions
