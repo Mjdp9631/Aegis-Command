@@ -1974,6 +1974,23 @@ async function updateMissionEvidence(operation, direction) {
   window.dispatchEvent(new CustomEvent("aegis:missions-refresh", { detail: { source: "operations-hub" } }));
 }
 
+// Explicit family links always win. A small number of pre-family PT records
+// have no durable link, though; when exactly one measured mission shares the
+// operation's metric, it is a safe recovery path for that legacy evidence.
+function missionIdsForCompletedOperation(operation) {
+  const explicit = operationMissionIds(operation);
+  if (explicit.length) return explicit;
+  const operationMetric = inferredMetricForOperation(operation) || operation?.metric_key;
+  if (!operationMetric) return [];
+  const metricMatches = missions.filter((mission) => (
+    String(mission?.completion_type || "").toLowerCase() === "units"
+    && Number(mission?.target_count || 0) > 0
+    && !mission.completed
+    && metricsMatch(mission.metric_key, operationMetric)
+  ));
+  return metricMatches.length === 1 ? [metricMatches[0].id] : [];
+}
+
 // Reconcile every measured mission from completed operation instances. This
 // shared path covers PT sessions, chapters, workouts, reviews, and future
 // unit-based missions while deduplicating recurring occurrence rows.
@@ -1986,7 +2003,7 @@ async function reconcileMeasuredMissionCounts() {
     reconcileOperationIdentity(operation);
     // Only explicit durable links count. A matching category or an active book
     // is a suggestion, never evidence for a mission.
-    const linkedMissionIds = operationMissionIds(operation);
+    const linkedMissionIds = missionIdsForCompletedOperation(operation);
     if (!linkedMissionIds.length) return;
     // Occurrence rows are already unique by their durable occurrence id.
     // Legacy/one-time rows need a semantic key instead of their database id,
@@ -2005,6 +2022,10 @@ async function reconcileMeasuredMissionCounts() {
   const updates = [];
   missions.forEach((mission) => {
     if (String(mission.completion_type || "").toLowerCase() !== "units") return;
+    // A director-set count is a deliberate correction, not an invitation for
+    // old operations to replay over it. New completions still advance it
+    // through the normal completion path below.
+    if (mission.manual_progress_override) return;
     const target = Math.max(0, Number(mission.target_count || 0));
     if (!target) return;
     const evidence = completedByMission.get(String(mission.id));
@@ -2055,7 +2076,7 @@ async function advanceLinkedMissionsFromCompletion(operation, countsBeforeComple
       .eq("operation_id", durableOperationId);
     missionIds = (operationLinks || []).map((link) => link.mission_id);
   }
-  if (!missionIds.length) missionIds = operationMissionIds(linkedOperation);
+  if (!missionIds.length) missionIds = missionIdsForCompletedOperation(linkedOperation);
   const uniqueMissionIds = [...new Set(missionIds.map(String))];
   const ledgerIdentity = {
     user_id: currentUser.id,

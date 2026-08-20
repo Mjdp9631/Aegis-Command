@@ -221,6 +221,8 @@ function ensureFallbackMissionEditor() {
     const measured = values.get("completion_type") === "units";
     const completedCount = measured ? Math.min(target, Math.max(0, Number(values.get("completed_count") || 0))) : 0;
     const completed = measured ? completedCount >= target : form.elements.completed.checked;
+    const manualProgressOverride = measured
+      && (Boolean(mission.manual_progress_override) || completedCount !== Number(mission.completed_count || 0));
     const payload = {
       title: String(values.get("title") || "").trim(),
       category: normalizeCategory(values.get("category") || mission.category),
@@ -228,7 +230,7 @@ function ensureFallbackMissionEditor() {
       completion_type: measured ? "units" : "binary",
       completion_definition: String(values.get("definition") || "").trim() || null,
       completed,
-      ...(measured ? { metric_key: mission.metric_key || "operation.complete", unit_label: String(values.get("unit_label") || "").trim() || "units", completed_count: completedCount, target_count: target, progress: Math.round((completedCount / target) * 100) } : { metric_key: null, unit_label: null, completed_count: 0, target_count: null, progress: completed ? 100 : 0 }),
+      ...(measured ? { metric_key: mission.metric_key || "operation.complete", unit_label: String(values.get("unit_label") || "").trim() || "units", completed_count: completedCount, target_count: target, progress: Math.round((completedCount / target) * 100), manual_progress_override: manualProgressOverride } : { metric_key: null, unit_label: null, completed_count: 0, target_count: null, progress: completed ? 100 : 0, manual_progress_override: false }),
     };
     if (!payload.title) return;
     if (!supabase) return alert("Sign in before editing a mission.");
