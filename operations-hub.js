@@ -1530,18 +1530,31 @@ function formatRemaining(milliseconds) {
 }
 
 // A workout row needs an explicit planning control, not a hidden action in
-// its detail popup. Taking rest preserves the split and replans the week;
-// resuming training does the inverse for an elected rest day.
+// its detail popup. It is available today and for earlier uncompleted days
+// of the current week, so a late log can correctly roll the remaining splits.
 function gymRolloverControlMarkup(operation, activeDay = operatingDayKey()) {
+  const slotDay = gymSlotDate(operation);
+  const currentWeekStart = gymWeekStart(activeDay);
   if (!isGeneratedGymSplit(operation)
-    || gymSlotDate(operation) !== activeDay
+    || !slotDay
+    || slotDay < currentWeekStart
+    || slotDay > activeDay
     || normalizedStatus(operation) === "Complete") return "";
+  const isPastCorrection = slotDay < activeDay;
   const key = esc(operation.id || operation.title);
   if (isGymTrainingSlot(operation)) {
-    return `<button type="button" class="gym-rollover-action" data-hub-gym-rest="${key}" title="Convert today to a rest day and move this split to the next training day">↻ Take rest day</button>`;
+    const label = isPastCorrection ? "↻ Mark rest day" : "↻ Take rest day";
+    const title = isPastCorrection
+      ? "Record this day as rest and replan every remaining split this week"
+      : "Convert today to a rest day and move this split to the next training day";
+    return `<button type="button" class="gym-rollover-action" data-hub-gym-rest="${key}" title="${title}">${label}</button>`;
   }
   if (isGymRestSlot(operation)) {
-    return `<button type="button" class="gym-rollover-action" data-hub-gym-train="${key}" title="Train today and move this rest day later in the week">↻ Resume workout</button>`;
+    const label = isPastCorrection ? "↻ Mark workout" : "↻ Resume workout";
+    const title = isPastCorrection
+      ? "Record training on this day and move the rest day later this week"
+      : "Train today and move this rest day later in the week";
+    return `<button type="button" class="gym-rollover-action" data-hub-gym-train="${key}" title="${title}">${label}</button>`;
   }
   return "";
 }
