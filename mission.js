@@ -580,13 +580,25 @@ function renderRecoveryMissions() {
 }
 
 function fieldMarkup(prefix, includeCategory) {
-  return `<label>Mission <input id="${prefix}-title" required /></label>${includeCategory ? `<label>Category <select id="${prefix}-category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Self Mastery</option><option>Life Admin</option></select></label>` : ""}<label>Matrix priority <select id="${prefix}-priority">${priorities}</select></label><label>Completion method <select id="${prefix}-method"><option value="binary">One-time completion</option><option value="units">Measured progress</option></select></label><label>What does complete mean? <textarea id="${prefix}-definition" placeholder="Describe the evidence for completion"></textarea></label><div class="unit-fields" data-unit-fields="${prefix}"><label>What is being measured? <input id="${prefix}-unit-label" placeholder="e.g. chapters, days, months, or notes" /></label><div class="two-col"><label>Total required <input id="${prefix}-target" type="number" min="1" step="1" value="1" /></label><label>Completed count <input id="${prefix}-completed-count" type="number" min="0" step="1" value="0" /></label></div><div class="two-col"><label>Cadence <select id="${prefix}-cadence"><option value="">No cadence</option><option value="daily">Daily</option><option value="weekly">Times per week</option></select></label><label>Cadence target <input id="${prefix}-cadence-target" type="number" min="1" step="1" value="1" /></label></div></div><label class="binary-fields" data-binary-fields="${prefix}"><input id="${prefix}-completed" type="checkbox" /> Mission complete</label>`;
+  return `<label>Mission <input id="${prefix}-title" required /></label>${includeCategory ? `<label>Category <select id="${prefix}-category"><option>Recovery</option><option>Trading</option><option>Business</option><option>Self Mastery</option><option>Life Admin</option></select></label>` : ""}<label>Completion method <select id="${prefix}-method"><option value="units" selected>Measured progress</option><option value="binary">One-time completion</option></select></label><label>What does complete mean? <textarea id="${prefix}-definition" placeholder="Describe the evidence for completion"></textarea></label><div class="unit-fields" data-unit-fields="${prefix}"><label>What is being tracked? <input id="${prefix}-unit-label" placeholder="e.g. chapters, sessions, days, or notes" /></label><div class="two-col"><label>Total required <input id="${prefix}-target" type="number" min="1" step="1" value="1" /></label><label>Completed count <input id="${prefix}-completed-count" type="number" min="0" step="1" value="0" /></label></div><div class="two-col"><label>Cadence <select id="${prefix}-cadence"><option value="">No cadence</option><option value="daily">Daily</option><option value="weekly">Times per week</option></select></label><label>Cadence target <input id="${prefix}-cadence-target" type="number" min="1" step="1" value="1" /></label></div></div><label>Matrix priority <select id="${prefix}-priority">${priorities}</select></label><label class="binary-fields" data-binary-fields="${prefix}"><input id="${prefix}-completed" type="checkbox" /> Mission complete</label>`;
 }
 
 function updateTrackingFields(root, prefix) {
   const measured = $(`#${prefix}-method`).value === "units";
-  root.querySelector(`[data-unit-fields="${prefix}"]`).hidden = !measured;
+  const unitFields = root.querySelector(`[data-unit-fields="${prefix}"]`);
+  unitFields.hidden = !measured;
+  const unitLabel = root.querySelector(`#${prefix}-unit-label`);
+  if (unitLabel) {
+    unitLabel.required = measured;
+    unitLabel.disabled = !measured;
+  }
   root.querySelector(`[data-binary-fields="${prefix}"]`).hidden = measured;
+}
+
+function closeMissionDialog(dialog) {
+  if (!dialog) return;
+  if (dialog.open) dialog.close();
+  dialog.removeAttribute("open");
 }
 
 function readMission(root, prefix, includeCategory, existing = null) {
@@ -885,7 +897,7 @@ function configureCreateDialog() {
   const dialog = $("#mission-dialog");
   dialog.innerHTML = `<form id="mission-create-form" class="dialog-card mission-editor-card"><button class="dialog-close" type="button" aria-label="Close">x</button><p class="eyebrow amber">NEW MISSION</p><h2>Define the finish line.</h2>${fieldMarkup("new-mission", true)}${operationPlanMarkup("new-mission")}<button class="primary" type="submit">Open mission</button></form>`;
   const form = $("#mission-create-form");
-  form.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
+  form.querySelector(".dialog-close").addEventListener("click", () => closeMissionDialog(dialog));
   $(`#new-mission-method`).addEventListener("change", () => updateTrackingFields(form, "new-mission"));
   $(`#new-mission-operation-mode`).addEventListener("change", () => { populateOperationPlanChoices(form, "new-mission"); syncOperationPlanFields(form, "new-mission"); });
   $(`#new-mission-operation-cadence`).addEventListener("change", () => syncOperationPlanFields(form, "new-mission"));
@@ -904,7 +916,14 @@ function configureCreateDialog() {
     const mission = normalize(data);
     const operationResult = await applyMissionOperationPlan(mission, readOperationPlan(form, "new-mission"));
     missions.unshift(mission);
-    dialog.close(); renderMissions(); renderCommandMissions(); publishMissionChange();
+    window.AEGIS_MISSIONS = missions;
+    closeMissionDialog(dialog); renderMissions(); renderCommandMissions(); renderRecoveryMissions(); publishMissionChange();
+    requestAnimationFrame(() => {
+      const card = [...document.querySelectorAll("[data-mission-ledger-card]")]
+        .find((item) => String(item.dataset.missionId) === String(mission.id));
+      card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      card?.focus({ preventScroll: true });
+    });
     if (!operationResult.ok) alert(`Mission created, but its operation was not linked: ${operationResult.message}`);
     else if (operationResult.data) announceMissionOperationChange();
   });
@@ -926,7 +945,7 @@ function buildMissionEditor() {
   dialog.querySelector("#mission-edit-form button[type=submit]").insertAdjacentHTML("beforebegin", outcomeMarkup("edit-mission"));
   document.body.appendChild(dialog);
   const form = $("#mission-edit-form");
-  form.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
+  form.querySelector(".dialog-close").addEventListener("click", () => closeMissionDialog(dialog));
   $(`#edit-mission-method`).addEventListener("change", () => updateTrackingFields(form, "edit-mission"));
   $(`#edit-mission-operation-mode`).addEventListener("change", () => { populateOperationPlanChoices(form, "edit-mission"); syncOperationPlanFields(form, "edit-mission"); });
   $(`#edit-mission-operation-cadence`).addEventListener("change", () => syncOperationPlanFields(form, "edit-mission"));
@@ -1170,6 +1189,13 @@ function bindDialogs() {
   configureCreateDialog();
   const editor = buildMissionEditor();
   missionEditor = editor;
+  document.addEventListener("click", (event) => {
+    const close = event.target.closest("#mission-dialog .dialog-close, #mission-editor-dialog .dialog-close, #mission-details-dialog .dialog-close");
+    if (!close) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeMissionDialog(close.closest("dialog"));
+  }, true);
   const openMission = (id) => {
     if (!session) return alert("Sign in before opening a mission.");
     const mission = missionForId(id);
