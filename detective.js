@@ -286,9 +286,15 @@ function tradeNumberFor(tradeId) {
   return [...loadedTrades].sort((a, b) => tradeTime(a) - tradeTime(b)).findIndex((trade) => trade.id === tradeId) + 1;
 }
 
-function closedUnlinkedTrades() {
-  const linkedIds = new Set(groupTradeLinks.map((link) => link.trade_id));
-  return loadedTrades.filter((trade) => !isTheoretical(trade) && resolvedOutcome(trade) !== "Open" && !linkedIds.has(trade.id));
+function closedTradesAvailableForGroup(groupId) {
+  // Trade links are allocations, not ownership. A journal trade can belong
+  // to several account groups, but only once within each individual group.
+  const linkedToThisGroup = new Set(groupTradeLinks
+    .filter((link) => String(link.group_id) === String(groupId))
+    .map((link) => String(link.trade_id)));
+  return loadedTrades.filter((trade) => !isTheoretical(trade)
+    && resolvedOutcome(trade) !== "Open"
+    && !linkedToThisGroup.has(String(trade.id)));
 }
 
 function groupWithdrawalLedger(group) {
@@ -438,10 +444,10 @@ function renderGroupedAccountBalances() {
     const withdrawals = groupWithdrawalLedger(group);
     const links = groupTradeLinks.filter((link) => link.group_id === group.id);
     const split = group.account_type === "Prop Firm" ? Number(group.profit_split_percent) : 100;
-    const tradeOptions = closedUnlinkedTrades().map((trade) => `<option value="${trade.id}">#${String(tradeNumberFor(trade.id)).padStart(3, "0")} · ${escapeHtml(trade.pair)} · ${escapeHtml(resolvedOutcome(trade))}</option>`).join("");
+    const tradeOptions = closedTradesAvailableForGroup(group.id).map((trade) => `<option value="${trade.id}">#${String(tradeNumberFor(trade.id)).padStart(3, "0")} · ${escapeHtml(trade.pair)} · ${escapeHtml(resolvedOutcome(trade))}</option>`).join("");
     const ledger = withdrawals.length ? withdrawals.map((withdrawal) => `<div class="withdrawal-ledger-row"><div><strong>${new Date(withdrawal.withdrawn_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</strong><small>${withdrawal.account_count} account${withdrawal.account_count === 1 ? "" : "s"} · ${Number(withdrawal.profit_split_percent).toFixed(2).replace(/\.00$/, "")}% payout${withdrawal.note ? ` · ${escapeHtml(withdrawal.note)}` : ""}</small></div><span><b>-${money(withdrawal.gross_total_usd)}</b><em>tracked ${money(withdrawal.payout_total_usd)}</em></span></div>`).join("") : '<p class="ledger-empty">No withdrawals recorded for this group.</p>';
     const memberRows = members.length ? members.map((account) => `<div class="group-account-row"><span>${escapeHtml(account.account_name)}${account.is_primary ? " · PRIMARY" : ""}</span><select data-account-move="${account.id}" aria-label="Move ${escapeHtml(account.account_name)}"><option value="${group.id}">${escapeHtml(group.name)}</option>${accountGroups.filter((candidate) => candidate.id !== group.id && candidate.account_type === account.account_type).map((candidate) => `<option value="${candidate.id}">${escapeHtml(candidate.name)}</option>`).join("")}</select><b>${money(calculatedBalance(account))}</b><span class="account-actions"><button type="button" class="account-action" data-account-edit="${account.id}">Edit</button><button type="button" class="account-action danger" data-account-delete="${account.id}">Delete</button></span></div>`).join("") : '<p class="ledger-empty">Add a matching account to activate this group.</p>';
-    const linkRows = links.length ? links.map((link) => { const trade = loadedTrades.find((item) => item.id === link.trade_id); return `<div class="group-account-row"><span>#${String(tradeNumberFor(link.trade_id)).padStart(3, "0")} · ${escapeHtml(trade?.pair || "Trade")} · ${escapeHtml(resolvedOutcome(trade || {}))}</span><b>${Number(link.actual_pnl_usd) >= 0 ? "+" : ""}${money(link.actual_pnl_usd)} / acct</b></div>`; }).join("") : '<p class="ledger-empty">No group trades attached yet.</p>';
+    const linkRows = links.length ? links.map((link) => { const trade = loadedTrades.find((item) => item.id === link.trade_id); return `<div class="group-account-row"><span>#${String(tradeNumberFor(link.trade_id)).padStart(3, "0")} · ${escapeHtml(trade?.pair || "Trade")} · ${escapeHtml(resolvedOutcome(trade || {}))}</span><b>${Number(link.actual_pnl_usd) >= 0 ? "+" : ""}${money(link.actual_pnl_usd)} / acct</b><button type="button" class="account-action danger" data-group-trade-unlink="${link.id}" title="Remove this trade from the group without deleting the journal trade">Unlink</button></div>`; }).join("") : '<p class="ledger-empty">No group trades attached yet.</p>';
     return `<article class="account-group-card" data-group-id="${group.id}"><div class="account-group-header"><div><p class="account-group-kicker">${escapeHtml(group.account_type)} GROUP</p><h4>${escapeHtml(group.name)}</h4><small>${members.length} account${members.length === 1 ? "" : "s"} · ${group.account_type === "Prop Firm" ? `${split}% payout` : "100% payout"}</small></div><div class="account-group-total"><span>GROUP BALANCE</span><strong>${money(total)}</strong></div></div><div class="group-accounts">${memberRows}</div><form class="group-trade-form" data-group-trade-form="${group.id}"><label>Attach journal trade <select data-group-trade-select="${group.id}"><option value="">Choose a closed trade</option>${tradeOptions}</select></label><label>Exact PnL / account <input data-group-trade-pnl="${group.id}" type="number" step="0.01" placeholder="e.g. 250.00" /></label><button class="primary compact" type="submit">Add trade</button></form><details class="group-withdrawal-details"><summary>Record / view withdrawals <span>${withdrawals.length} record${withdrawals.length === 1 ? "" : "s"}</span></summary><form class="group-withdrawal-form" data-group-withdrawal-form="${group.id}"><label>Gross withdrawal / account <input data-withdrawal-gross="${group.id}" type="number" min="0.01" step="0.01" required placeholder="1000.00" /></label><label>Withdrawal date <input data-withdrawal-date="${group.id}" type="datetime-local" value="${localDateTimeInput()}" required /></label><label>Note <input data-withdrawal-note="${group.id}" maxlength="240" placeholder="Optional" /></label><button class="primary compact" type="submit">Record withdrawal</button><small class="withdrawal-preview" data-withdrawal-preview="${group.id}">Gross deduction and net payout will calculate from the group split.</small></form><div class="withdrawal-ledger">${ledger}</div></details><details class="group-trade-details"><summary>Linked journal trades <span>${links.length} trade${links.length === 1 ? "" : "s"}</span></summary><div class="withdrawal-ledger">${linkRows}</div></details></article>`;
   }).join("");
   const ungrouped = accountBalances.filter((account) => !currentMembership(account.id)).map((account) => { const current = calculatedBalance(account); const delta = current - Number(account.starting_balance); const tradeCount = accountTrades(account.account_name).length; const options = accountGroups.filter((group) => group.account_type === account.account_type).map((group) => `<option value="${group.id}">${escapeHtml(group.name)}</option>`).join(""); return `<article class="account-balance-card"><div><p>${escapeHtml(account.account_name)} ${account.is_primary ? '<span>COMMAND CENTER</span>' : ""}</p><strong>${money(current)}</strong><small>${escapeHtml(account.account_type || "Live")} · Started at ${money(account.starting_balance)} · ${tradeCount} closed trade${tradeCount === 1 ? "" : "s"}</small></div><label class="account-move-control">Move to <select data-account-move="${account.id}"><option value="">Choose group</option>${options}</select></label><b class="${delta >= 0 ? "result-positive" : "result-negative"}">${delta >= 0 ? "+" : ""}${money(delta)}</b><span class="account-actions"><button type="button" class="account-action" data-account-edit="${account.id}">Edit</button><button type="button" class="account-action danger" data-account-delete="${account.id}">Delete</button></span></article>`; }).join("");
@@ -676,10 +682,28 @@ async function saveGroupTrade(groupId, form) {
   const tradeId = form.querySelector(`[data-group-trade-select="${groupId}"]`)?.value;
   const pnl = numberOrNull(form.querySelector(`[data-group-trade-pnl="${groupId}"]`)?.value);
   if (!tradeId || pnl == null || !Number.isFinite(pnl)) return alert("Choose a closed journal trade and enter its exact dollar PnL per account.");
+  if (groupTradeLinks.some((link) => String(link.group_id) === String(groupId) && String(link.trade_id) === String(tradeId))) return alert("This journal trade is already linked to this group.");
   const { data: sessionData } = await supabase.auth.getSession();
   const { error } = await supabase.from("account_group_trade_links").insert({ user_id: sessionData.session.user.id, group_id: groupId, trade_id: tradeId, actual_pnl_usd: cents(pnl) });
   if (error) return alert(`The trade could not be attached: ${error.message}`);
   await loadAccountLedger();
+}
+
+async function unlinkGroupTrade(linkId) {
+  const link = groupTradeLinks.find((item) => String(item.id) === String(linkId));
+  if (!link || !supabase) return;
+  const trade = loadedTrades.find((item) => String(item.id) === String(link.trade_id));
+  const label = trade ? `#${String(tradeNumberFor(trade.id)).padStart(3, "0")} ${trade.pair || "trade"}` : "this trade";
+  if (!window.confirm(`Unlink ${label} from this account group? The journal trade will remain saved.`)) return;
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) return alert("Please sign in before changing a group trade.");
+  const { error } = await supabase.from("account_group_trade_links")
+    .delete()
+    .eq("id", link.id)
+    .eq("user_id", sessionData.session.user.id);
+  if (error) return alert(`The trade could not be unlinked: ${error.message}`);
+  await loadAccountLedger();
+  window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
 }
 
 async function saveTheoreticalTrade(accountId, form) {
@@ -1317,6 +1341,8 @@ function init() {
     if (groupEditButton) editGroup(groupEditButton.dataset.groupEdit);
     const groupDeleteButton = event.target.closest("[data-group-delete]");
     if (groupDeleteButton) deleteGroup(groupDeleteButton.dataset.groupDelete);
+    const groupTradeUnlinkButton = event.target.closest("[data-group-trade-unlink]");
+    if (groupTradeUnlinkButton) unlinkGroupTrade(groupTradeUnlinkButton.dataset.groupTradeUnlink);
     const theoreticalDeleteButton = event.target.closest("[data-theoretical-trade-delete]");
     if (theoreticalDeleteButton) deleteTheoreticalTrade(theoreticalDeleteButton.dataset.theoreticalTradeDelete);
     if (event.target.closest("#detective-trade-dialog .dialog-close")) dialog.close();
