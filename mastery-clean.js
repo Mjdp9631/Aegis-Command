@@ -192,20 +192,22 @@ function previousSetRows(session, exerciseName, resistanceType) {
 
 function progressForExercise(session, rows, exerciseName, resistanceType) {
   const previous = previousSetRows(session, exerciseName, resistanceType);
-  if (!previous) return "BASELINE · first logged comparison";
+  if (!previous) return { label: "BASELINE · first logged comparison", trend: "neutral" };
   const currentReps = rows.reduce((sum, row) => sum + Number(row.reps || 0) * Math.max(1, Number(row.sets || 1)), 0);
   const previousReps = previous.rows.reduce((sum, row) => sum + Number(row.reps || 0) * Math.max(1, Number(row.sets || 1)), 0);
   if (["Bands", "Bodyweight"].includes(resistanceType)) {
     const delta = currentReps - previousReps;
-    return delta ? `${delta > 0 ? "↑" : "↓"} ${Math.abs(delta)} total reps vs ${sessionLoggedDay(previous.session)}` : `→ holding reps vs ${sessionLoggedDay(previous.session)}`;
+    return delta
+      ? { label: `${delta > 0 ? "↑" : "↓"} ${Math.abs(delta)} total reps vs ${sessionLoggedDay(previous.session)}`, trend: delta > 0 ? "up" : "down" }
+      : { label: `→ holding reps vs ${sessionLoggedDay(previous.session)}`, trend: "neutral" };
   }
   const currentTop = Math.max(...rows.map(row => Number(row.weight_lbs || 0)));
   const previousTop = Math.max(...previous.rows.map(row => Number(row.weight_lbs || 0)));
   const currentVolume = rows.reduce((sum, row) => sum + Number(row.weight_lbs || 0) * Number(row.reps || 0) * Math.max(1, Number(row.sets || 1)), 0);
   const previousVolume = previous.rows.reduce((sum, row) => sum + Number(row.weight_lbs || 0) * Number(row.reps || 0) * Math.max(1, Number(row.sets || 1)), 0);
-  if (currentTop !== previousTop) return `${currentTop > previousTop ? "↑" : "↓"} ${Math.abs(currentTop - previousTop).toFixed(1).replace(/\.0$/, "")} lb top set vs ${sessionLoggedDay(previous.session)}`;
-  if (currentVolume !== previousVolume) return `${currentVolume > previousVolume ? "↑" : "↓"} ${Math.abs(currentVolume - previousVolume).toFixed(0)} lb volume vs ${sessionLoggedDay(previous.session)}`;
-  return `→ holding load and volume vs ${sessionLoggedDay(previous.session)}`;
+  if (currentTop !== previousTop) return { label: `${currentTop > previousTop ? "↑" : "↓"} ${Math.abs(currentTop - previousTop).toFixed(1).replace(/\.0$/, "")} lb top set vs ${sessionLoggedDay(previous.session)}`, trend: currentTop > previousTop ? "up" : "down" };
+  if (currentVolume !== previousVolume) return { label: `${currentVolume > previousVolume ? "↑" : "↓"} ${Math.abs(currentVolume - previousVolume).toFixed(0)} lb volume vs ${sessionLoggedDay(previous.session)}`, trend: currentVolume > previousVolume ? "up" : "down" };
+  return { label: `→ holding load and volume vs ${sessionLoggedDay(previous.session)}`, trend: "neutral" };
 }
 
 function trainingCard(session) {
@@ -220,7 +222,8 @@ function trainingCard(session) {
       const resistance = resistanceType === "Bands" ? (set.band_resistance || "Band") : resistanceType === "Bodyweight" ? "Bodyweight" : `${Number(set.weight_lbs || 0)} lb`;
       return `<span><b>S${setNumber}</b> ${escapeHtml(resistance)} × ${Number(set.reps || 0)} reps</span>`;
     }).join("");
-    return `<div class="training-exercise"><div class="training-exercise-head"><b>${escapeHtml(exerciseName)}</b><small>${escapeHtml(resistanceType)}</small></div><div class="training-set-summary">${detail}</div><small class="training-progress">${escapeHtml(progressForExercise(session, rows, exerciseName, resistanceType))}</small></div>`;
+    const progress = progressForExercise(session, rows, exerciseName, resistanceType);
+    return `<div class="training-exercise"><div class="training-exercise-head"><b>${escapeHtml(exerciseName)}</b><small>${escapeHtml(resistanceType)}</small></div><div class="training-set-summary">${detail}</div><small class="training-progress training-progress-${progress.trend}">${escapeHtml(progress.label)}</small></div>`;
   }).join("");
   return `<article class="mastery-entry training-entry"><div class="entry-meta"><span>${escapeHtml(session.workout_split || session.session_type || "GYM")}</span><b>${sessionLoggedDay(session)}</b></div><h3>${escapeHtml(session.title || "Training session")}</h3>${exerciseBlocks ? `<div class="training-exercise-list">${exerciseBlocks}</div>` : ""}${session.notes ? `<p>${escapeHtml(session.notes)}</p>` : ""}<button type="button" class="ghost compact mastery-entry-edit" data-mastery-edit-session="${escapeHtml(session.id)}">Edit session</button></article>`;
 }
