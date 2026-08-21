@@ -45,6 +45,21 @@ const projectMeta = (project) => {
   return `${project?.effort_band || "Standard"} · ${hours ? `${hours}+ hr` : "effort not estimated"} · ${projectReward(project)} XP on completion`;
 };
 
+function projectCard(project, releases = [], nested = false) {
+  const steps = projectSteps.filter((step) => String(step.project_id) === String(project.id));
+  const completeSteps = steps.filter((step) => step.status === "Complete").length;
+  const stepsLabel = steps.length ? `${completeSteps}/${steps.length} steps` : "No step list";
+  const controls = project._missionOnly ? "" : `
+    <button class="enterprise-edit" type="button" data-enterprise-edit="${escape(project.id)}">Edit</button>
+    ${project.status === "Complete" ? "" : `<button class="enterprise-operation" type="button" data-enterprise-operation="${escape(project.id)}">Add operation</button>`}
+    ${nested ? "" : `<button class="enterprise-upgrade" type="button" data-enterprise-upgrade="${escape(project.id)}">Upgrade</button>`}
+    <button class="enterprise-remove" type="button" data-enterprise-remove="${escape(project.id)}">Remove</button>`;
+  const releaseLedger = !nested && (project.project_mode === "Ongoing system" || releases.length)
+    ? `<section class="enterprise-release-ledger"><p class="eyebrow">RELEASE LEDGER · ${releases.length}</p>${releases.length ? releases.map((release) => projectCard(release, [], true)).join("") : '<p class="enterprise-empty">No linked releases yet. Add an upgrade when the system needs a focused improvement.</p>'}</section>`
+    : "";
+  return `<article class="enterprise-project ${nested ? "enterprise-release" : ""}"><div><strong>${escape(project.title)}</strong><small>${escape(project.project_type || "Real-world project")} · ${escape(project.priority)} · ${Number(project.progress || 0)}% · ${stepsLabel}</small><small>${escape(projectMeta(project))}</small>${project.next_action ? `<small>NEXT: ${escape(project.next_action)}</small>` : ""}${project.status === "Complete" && project.completion_evidence ? `<small>PROOF: ${escape(project.completion_evidence)}</small>` : ""}</div><div class="enterprise-project-actions">${controls}<span class="enterprise-status ${String(project.status || "").toLowerCase()}">${escape(project.status)}</span></div>${releaseLedger}</article>`;
+}
+
 function render() {
   const activeProjects = projects.filter((project) => project.status === "Active").length;
   const readyContent = content.filter((item) => item.status === "Ready").length;
@@ -56,15 +71,9 @@ function render() {
     ? `<div class="enterprise-finance-grid"><span><b>$${reserves.toFixed(2)}</b><small>Liquid reserves</small></span><span><b>${runway}</b><small>Months runway</small></span><span><b>$${Number(financialFoundation.business_revenue || 0).toFixed(2)}</b><small>Business revenue</small></span><span><b>$${Number(financialFoundation.debt_balance || 0).toFixed(2)}</b><small>Debt balance</small></span></div><p class="enterprise-xp-note">+20 XP for recording the financial foundation baseline.</p>`
     : '<p class="enterprise-empty">Set the baseline that protects the mission from financial fragility.</p>';
   const projectsById = new Map(projects.map((project) => [String(project.id), project]));
-  const projectList = projects.length
-    ? projects.map((project) => {
-      const steps = projectSteps.filter((step) => String(step.project_id) === String(project.id));
-      const completeSteps = steps.filter((step) => step.status === "Complete").length;
-      const stepsLabel = steps.length ? `${completeSteps}/${steps.length} steps` : "No step list";
-      const parent = project.parent_project_id ? projectsById.get(String(project.parent_project_id)) : null;
-      const lineage = parent ? `<small class="enterprise-lineage">UPGRADE OF: ${escape(parent.title)}</small>` : "";
-      return `<article><div><strong>${escape(project.title)}</strong><small>${escape(project.project_type || "Real-world project")} · ${escape(project.priority)} · ${Number(project.progress || 0)}% · ${stepsLabel}</small><small>${escape(projectMeta(project))}</small>${lineage}${project.next_action ? `<small>NEXT: ${escape(project.next_action)}</small>` : ""}${project.status === "Complete" && project.completion_evidence ? `<small>PROOF: ${escape(project.completion_evidence)}</small>` : ""}</div><div class="enterprise-project-actions">${project._missionOnly ? "" : `<button class="enterprise-edit" type="button" data-enterprise-edit="${escape(project.id)}">Edit</button><button class="enterprise-upgrade" type="button" data-enterprise-upgrade="${escape(project.id)}">Upgrade</button>`}<span class="enterprise-status ${String(project.status || "").toLowerCase()}">${escape(project.status)}</span></div></article>`;
-    }).join("")
+  const rootProjects = projects.filter((project) => !project.parent_project_id || !projectsById.has(String(project.parent_project_id)));
+  const projectList = rootProjects.length
+    ? rootProjects.map((project) => projectCard(project, projects.filter((candidate) => String(candidate.parent_project_id || "") === String(project.id)))).join("")
     : '<p class="enterprise-empty">Open a finite project that creates a useful asset, capability, or service.</p>';
   $("#enterprise").innerHTML = `<div class="section-intro"><p class="eyebrow amber">BUSINESS / SPECIAL PROJECTS</p><h2>Build assets that compound.</h2><p>Every Special Project has a Business mission; ordinary missions stay in Missions. Its ordered steps become the operations that advance it.</p></div><div class="metric-grid enterprise-metrics"><article class="metric"><p>ACTIVE PROJECTS</p><strong>${activeProjects}</strong><small>Few priorities. Clean execution.</small></article><article class="metric"><p>READY TO PUBLISH</p><strong>${readyContent}</strong><small>Content waiting for release</small></article><article class="metric"><p>PUBLISHED</p><strong>${published}</strong><small>Released content + completed projects</small></article><article class="metric"><p>RUNWAY</p><strong>${runway}${runway === "—" ? "" : " mo"}</strong><small>Liquid reserves ÷ monthly expenses</small></article></div><div class="content-grid enterprise-grid"><section class="panel"><div class="panel-head"><div><p class="eyebrow">01 - SPECIAL PROJECTS</p><h3>Finish useful milestones.</h3></div><button class="primary compact" data-enterprise-action="project">+ New project</button></div><div class="enterprise-list">${projectList}</div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">02 - FINANCIAL FOUNDATION</p><h3>Protect the mission.</h3></div><button class="primary compact" data-enterprise-action="finance">${financialFoundation ? "Edit foundation" : "Set foundation"}</button></div>${finance}</section><section class="panel"><div class="panel-head"><div><p class="eyebrow">03 - CONTENT PIPELINE</p><h3>Signal, not noise.</h3></div><button class="primary compact" data-enterprise-action="content">+ New content</button></div><div class="enterprise-list">${content.length ? content.map((item) => `<article><div><strong>${escape(item.title)}</strong><small>${escape(item.platform)} - ${escape(item.status)}</small></div><span class="enterprise-status ${String(item.status || "").toLowerCase()}">${escape(item.status)}</span></article>`).join("") : '<p class="enterprise-empty">One clear idea is enough to start the pipeline.</p>'}</div></section></div>`;
 }
@@ -112,13 +121,13 @@ const projectStepsFromInput = (value) => String(value || "").split(/\n+/).map((s
 const projectOperationPriority = (priority) => priority === "Do now" ? "High" : priority === "Schedule" ? "Medium" : "Low";
 const projectStepOperationTitle = (project, step) => `${project.title} — ${step.title}`;
 
-async function createProjectStepOperation(project, step) {
+async function createProjectStepOperation(project, step, scheduledDate = easternDateKey()) {
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user?.id;
   if (!userId) throw new Error("Sign in before creating project operations.");
   const payload = {
     user_id: userId, title: projectStepOperationTitle(project, step), category: "Business", priority: projectOperationPriority(project.priority),
-    status: "Queued", completed: false, scheduled_date: easternDateKey(), operation_date: easternDateKey(), schedule_mode: "one_time",
+    status: "Queued", completed: false, scheduled_date: scheduledDate, operation_date: scheduledDate, schedule_mode: "one_time",
     is_daily: false, mission_id: project.source_mission_id || null, allow_unlinked: !project.source_mission_id, brief: `Project step ${step.position}: ${step.title}`,
   };
   let { data, error } = await supabase.from("operations").insert(payload).select().single();
@@ -186,6 +195,88 @@ async function synchronizeProjectStep(operation) {
   await advanceProjectFromSteps(step.project_id);
 }
 
+function projectBranch(projectId) {
+  const ids = new Set([String(projectId)]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    projects.forEach((project) => {
+      if (ids.has(String(project.parent_project_id || "")) && !ids.has(String(project.id))) {
+        ids.add(String(project.id));
+        changed = true;
+      }
+    });
+  }
+  return [...ids];
+}
+
+async function removeProject(projectId) {
+  const project = projects.find((item) => String(item.id) === String(projectId));
+  if (!project || project._missionOnly) return;
+  const branchIds = projectBranch(project.id);
+  const releaseCount = Math.max(0, branchIds.length - 1);
+  const message = releaseCount
+    ? `Remove “${project.title}” and its ${releaseCount} linked release${releaseCount === 1 ? "" : "s"}? Their steps, generated operations, and linked project missions will also be removed.`
+    : `Remove “${project.title}”? Its steps, generated operations, and linked project mission will also be removed.`;
+  if (!window.confirm(message)) return;
+  const branchProjects = projects.filter((item) => branchIds.includes(String(item.id)));
+  const branchSteps = projectSteps.filter((step) => branchIds.includes(String(step.project_id)));
+  const operationIds = branchSteps.map((step) => step.operation_id).filter(Boolean);
+  const missionIds = branchProjects.map((item) => item.source_mission_id).filter(Boolean);
+  if (operationIds.length) {
+    const { error } = await supabase.from("operations").delete().in("id", operationIds);
+    if (error) return alert(`Project removal stopped: ${error.message}`);
+  }
+  const { error: projectError } = await supabase.from("business_projects").delete().in("id", branchIds);
+  if (projectError) return alert(`Project removal stopped: ${projectError.message}`);
+  if (missionIds.length) {
+    const { error } = await supabase.from("missions").delete().in("id", missionIds);
+    if (error) console.warn("Project removed, but a linked mission could not be removed", error.message);
+  }
+  await load();
+  window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "business-project-remove" } }));
+}
+
+function openProjectOperationDialog(project) {
+  if (!project || project._missionOnly || project.status === "Complete") return;
+  const dialog = $("#project-operation-dialog");
+  if (!dialog) return;
+  dialog.dataset.projectId = project.id;
+  $("#project-operation-project").value = project.title;
+  $("#project-operation-title").value = "";
+  $("#project-operation-date").value = easternDateKey();
+  dialog.showModal();
+}
+
+async function extendProjectMissionForStep(project) {
+  if (!project.source_mission_id) return;
+  const { data: mission, error: readError } = await supabase.from("missions")
+    .select("id,target_count,completed_count")
+    .eq("id", project.source_mission_id)
+    .maybeSingle();
+  if (readError || !mission) return;
+  const target = Math.max(1, Number(mission.target_count || 1)) + 1;
+  const completed = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
+  const { error } = await supabase.from("missions").update({
+    target_count: target,
+    completed: completed >= target,
+    progress: Math.round((completed / target) * 100),
+  }).eq("id", mission.id);
+  if (error) throw error;
+}
+
+async function rollBackProjectMissionStep(project) {
+  if (!project.source_mission_id) return;
+  const { data: mission } = await supabase.from("missions")
+    .select("id,target_count,completed_count")
+    .eq("id", project.source_mission_id)
+    .maybeSingle();
+  if (!mission) return;
+  const target = Math.max(1, Number(mission.target_count || 1) - 1);
+  const completed = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
+  await supabase.from("missions").update({ target_count: target, completed: completed >= target, progress: Math.round((completed / target) * 100) }).eq("id", mission.id);
+}
+
 function syncProjectReward() {
   const mode = $("#project-mode")?.value || "Milestone";
   const band = $("#project-effort-band")?.value || "Standard";
@@ -242,10 +333,41 @@ function buildDialogs() {
   const dialogs = document.createElement("div");
   dialogs.innerHTML = `<dialog id="project-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">NEW SPECIAL PROJECT</p><h2>Finish a useful milestone.</h2><input id="project-edit-id" type="hidden" /><input id="project-parent-id" type="hidden" /><p class="enterprise-parent-context" id="project-parent-context" aria-live="polite"></p><label>Log date <input id="project-logged-on" type="date" required /></label><label>Project <input id="project-title" required placeholder="e.g. Aegis Command v2" /></label><div class="two-col"><label>Type <select id="project-type"><option>Real-world project</option><option>Aegis system</option><option>CCFX system</option><option>Business asset</option><option>Learning build</option></select></label><label>Mode <select id="project-mode"><option value="Milestone">Finite milestone</option><option value="Ongoing system">Ongoing system</option></select></label></div><div class="two-col"><label>Weight <select id="project-effort-band"><option value="Minor">Minor — 2–8 hr / 10 XP</option><option value="Standard" selected>Standard — 8–24 hr / 25 XP</option><option value="Major">Major — 24–80 hr / 50 XP</option><option value="Flagship">Flagship — 80+ hr / 100 XP</option></select></label><label>Estimated effort (hours) <input id="project-estimated-hours" type="number" min="1" max="10000" placeholder="e.g. 120" /></label></div><p class="enterprise-xp-note" id="project-xp-reward"></p><label>Priority <select id="project-priority"><option>Do now</option><option selected>Schedule</option><option>Delegate</option><option>Eliminate</option></select></label><label>Definition of done <textarea id="project-outcome" required placeholder="What must exist, work, or be delivered for this milestone to be complete?"></textarea></label><label>Project steps — one per line <textarea id="project-steps" required placeholder="Deploy the first usable version&#10;Verify login and saved data&#10;Run a production walkthrough"></textarea></label><p class="body-copy">Only the next incomplete step enters Operations. Project progress is completed steps ÷ total steps, and the project closes automatically when every step is complete.</p><label>Due date <input id="project-due" type="date" /></label><button class="primary" id="project-submit" value="default">Open project and first operation</button></form></dialog><dialog id="content-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">NEW CONTENT ITEM</p><h2>Ship a useful signal.</h2><label>Log date <input id="content-logged-on" type="date" required /></label><label>Working title <input id="content-title" required placeholder="e.g. The risk rule that protects a funded account" /></label><div class="two-col"><label>Platform <select id="content-platform"><option>YouTube</option><option>Instagram</option><option>X</option><option>Newsletter</option></select></label><label>Status <select id="content-status"><option>Idea</option><option>Drafting</option><option>Ready</option><option>Published</option></select></label></div><button class="primary" value="default">Add to pipeline</button></form></dialog><dialog id="finance-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">FINANCIAL FOUNDATION</p><h2>Protect the mission.</h2><label>Log date <input id="finance-logged-on" type="date" required /></label><div class="two-col"><label>Monthly income <input id="finance-income" type="number" min="0" step="0.01" /></label><label>Monthly expenses <input id="finance-expenses" type="number" min="0" step="0.01" /></label><label>Liquid reserves <input id="finance-reserves" type="number" min="0" step="0.01" /></label><label>Emergency fund target <input id="finance-emergency" type="number" min="0" step="0.01" /></label><label>Debt balance <input id="finance-debt" type="number" min="0" step="0.01" /></label><label>Business revenue / month <input id="finance-revenue" type="number" min="0" step="0.01" /></label></div><label>Notes <textarea id="finance-notes" placeholder="Rules, obligations, or the next financial priority."></textarea></label><button class="primary" value="default">Save foundation</button></form></dialog>`;
   document.body.append(...Array.from(dialogs.children));
+  const projectOperationDialog = document.createElement("dialog");
+  projectOperationDialog.id = "project-operation-dialog";
+  projectOperationDialog.innerHTML = `<form class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">PROJECT OPERATION</p><h2>Add a concrete next action.</h2><label>Project <input id="project-operation-project" disabled /></label><label>Operation <input id="project-operation-title" required placeholder="What needs to happen?" /></label><label>Schedule date <input id="project-operation-date" type="date" required /></label><p class="body-copy">This is added to the project’s step ledger and the Operations Queue.</p><button class="primary" type="submit">Add operation</button></form>`;
+  document.body.append(projectOperationDialog);
   ["project", "content", "finance"].forEach((name) => { const input = $(`#${name}-logged-on`); if (input) input.value = easternDateKey(); });
   $("#project-mode")?.addEventListener("change", syncProjectReward);
   $("#project-effort-band")?.addEventListener("change", syncProjectReward);
   syncProjectReward();
+
+  projectOperationDialog.querySelector(".dialog-close")?.addEventListener("click", () => projectOperationDialog.close());
+  projectOperationDialog.querySelector("form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const project = projects.find((item) => String(item.id) === String(projectOperationDialog.dataset.projectId));
+    const title = $("#project-operation-title").value.trim();
+    if (!project || !title) return;
+    const position = Math.max(0, ...projectSteps.filter((step) => String(step.project_id) === String(project.id)).map((step) => Number(step.position || 0))) + 1;
+    const { data: step, error: stepError } = await supabase.from("business_project_steps")
+      .insert({ project_id: project.id, title, position })
+      .select()
+      .single();
+    if (stepError) return alert(`Project operation could not be added: ${stepError.message}`);
+    let missionExtended = false;
+    try {
+      await extendProjectMissionForStep(project);
+      missionExtended = true;
+      await createProjectStepOperation(project, step, $("#project-operation-date").value || easternDateKey());
+    } catch (error) {
+      await supabase.from("business_project_steps").delete().eq("id", step.id);
+      if (missionExtended) await rollBackProjectMissionStep(project);
+      return alert(`Project operation could not be created: ${error.message}`);
+    }
+    projectOperationDialog.close();
+    await load();
+    window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "business-project-operation" } }));
+  });
 
   $("#project-dialog form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -349,8 +471,12 @@ if (supabase) {
       const project = projects.find((item) => String(item.id) === String(editId));
       if (project) return openProjectEditor(project);
     }
+    const projectOperationId = event.target.closest("[data-enterprise-operation]")?.dataset.enterpriseOperation;
+    if (projectOperationId) return openProjectOperationDialog(projects.find((project) => String(project.id) === String(projectOperationId)) || null);
     const upgradeId = event.target.closest("[data-enterprise-upgrade]")?.dataset.enterpriseUpgrade;
     if (upgradeId) return openProjectDialog(projects.find((project) => String(project.id) === String(upgradeId)) || null);
+    const removeId = event.target.closest("[data-enterprise-remove]")?.dataset.enterpriseRemove;
+    if (removeId) return void removeProject(removeId);
     const action = event.target.closest("[data-enterprise-action]")?.dataset.enterpriseAction;
     if (!action) return;
     if (action === "project") return openProjectDialog();
