@@ -260,7 +260,7 @@ class CharacterLifeScene {
         "desk:couch": [
           "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-depart.png",
           "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-early.png",
-          "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-end.png",
+          "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-mid.png",
           "assets/generated/aegis-character-room-layout-v2-walk-desk-couch-start.png",
         ],
       };
@@ -268,7 +268,7 @@ class CharacterLifeScene {
         this.roomWalkFrames[route] = sources.map((source) => {
           const image = new Image();
           image.decoding = "async";
-          image.src = `${source}?v=room-walk-v3`;
+          image.src = `${source}?v=room-walk-v4`;
           return image;
         });
       });
