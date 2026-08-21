@@ -7,6 +7,7 @@ const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => 
 const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 const PROJECT_XP = Object.freeze({ Minor: 10, Standard: 25, Major: 50, Flagship: 100 });
 let projects = [], projectSteps = [], content = [], financialFoundation = null;
+let projectOperationRepairInFlight = false;
 
 const isLegacyAegisTitle = (title) => ["created aegis", "create aegis"].includes(String(title || "").trim().toLowerCase());
 const projectPriority = (priority) => ({ "do now": "Do now", delegate: "Delegate", eliminate: "Eliminate" }[String(priority || "").trim().toLowerCase()] || "Schedule");
@@ -104,6 +105,7 @@ async function load() {
   content = contentResult.data || [];
   financialFoundation = foundationResult.error ? null : foundationResult.data || null;
   render();
+  void repairMissingProjectOperations();
 }
 
 const projectStepsFromInput = (value) => String(value || "").split(/\n+/).map((step) => step.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim()).filter(Boolean);
@@ -114,16 +116,41 @@ async function createProjectStepOperation(project, step) {
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user?.id;
   if (!userId) throw new Error("Sign in before creating project operations.");
-  const { data, error } = await supabase.from("operations").insert({
+  const payload = {
     user_id: userId, title: projectStepOperationTitle(project, step), category: "Business", priority: projectOperationPriority(project.priority),
     status: "Queued", completed: false, scheduled_date: easternDateKey(), operation_date: easternDateKey(), schedule_mode: "one_time",
     is_daily: false, mission_id: project.source_mission_id || null, allow_unlinked: !project.source_mission_id, brief: `Project step ${step.position}: ${step.title}`,
-  }).select().single();
+  };
+  let { data, error } = await supabase.from("operations").insert(payload).select().single();
+  // Some established AEGIS databases predate operations.priority. Priority
+  // remains on the project, while the operation safely uses that older shape.
+  if (error && /priority.*(?:column|schema cache)|(?:column|schema cache).*priority/i.test(String(error.message || ""))) {
+    delete payload.priority;
+    ({ data, error } = await supabase.from("operations").insert(payload).select().single());
+  }
   if (error) throw error;
   const { error: stepError } = await supabase.from("business_project_steps").update({ operation_id: data.id, updated_at: new Date().toISOString() }).eq("id", step.id);
   if (stepError) throw stepError;
   window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "enterprise-project-step" } }));
   return data;
+}
+
+async function repairMissingProjectOperations() {
+  if (projectOperationRepairInFlight || !supabase) return;
+  const repairable = projects
+    .filter((project) => !project._missionOnly && project.status !== "Complete")
+    .map((project) => ({ project, step: projectSteps.find((step) => String(step.project_id) === String(project.id) && step.status !== "Complete" && !step.operation_id) }))
+    .filter(({ step }) => step);
+  if (!repairable.length) return;
+  projectOperationRepairInFlight = true;
+  try {
+    await Promise.all(repairable.map(({ project, step }) => createProjectStepOperation(project, step)));
+    await load();
+  } catch (error) {
+    console.warn("Could not repair a project step operation", error.message);
+  } finally {
+    projectOperationRepairInFlight = false;
+  }
 }
 
 async function advanceProjectFromSteps(projectId) {
