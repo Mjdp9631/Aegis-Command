@@ -11,6 +11,7 @@ let missionEditor = null;
 let missionDetails = null;
 let missionLoadTimer = null;
 let missionLoadInFlight = null;
+let missionLedgerView = "active";
 
 // A stalled optional query must never leave Mission Control on its static
 // loading shell. Supabase query builders are thenable, so Promise.race can
@@ -270,7 +271,8 @@ function renderMissions() {
   target.dataset.missionRenderer = "mission";
   const active = sortMissions(missions.filter((mission) => mission.progress < 100));
   const complete = sortMissions(missions.filter((mission) => mission.progress >= 100));
-  target.innerHTML = `<div class="mission-view-tabs"><button type="button" class="mission-view-tab active" data-mission-view="active">ACTIVE · ${active.length}</button><button type="button" class="mission-view-tab" data-mission-view="complete">COMPLETED · ${complete.length}</button></div><div class="mission-card-list" data-mission-list></div>`;
+  if (!["active", "complete"].includes(missionLedgerView)) missionLedgerView = "active";
+  target.innerHTML = `<div class="mission-view-tabs"><button type="button" class="mission-view-tab ${missionLedgerView === "active" ? "active" : ""}" data-mission-view="active">ACTIVE · ${active.length}</button><button type="button" class="mission-view-tab ${missionLedgerView === "complete" ? "active" : ""}" data-mission-view="complete">COMPLETED · ${complete.length}</button></div><div class="mission-card-list" data-mission-list></div>`;
   target.dataset.missionRenderer = "mission";
   const list = target.querySelector("[data-mission-list]");
   const draw = (items) => { list.innerHTML = items.length ? items.map((mission) => {
@@ -278,7 +280,8 @@ function renderMissions() {
     const attached = linked.length ? `${linked.length} attached operation${linked.length === 1 ? "" : "s"}: ${linked.slice(0, 2).map((operation) => escape(operation.title)).join(" · ")}${linked.length > 2 ? " · …" : ""}` : "No operation attached yet";
     return `<button type="button" class="mission-card mission-open" data-mission-ledger-card="true" data-mission-id="${escape(mission.id)}"><span class="eyebrow amber">${escape(mission.priority)}</span><h3>${escape(mission.title)}</h3><p>${escape(mission.category)} mission · ${escape(missionLabel(mission))}</p><div class="meter"><i style="width:${mission.progress}%"></i></div><small class="mission-definition">${mission.completion_definition ? escape(mission.completion_definition) : "Define what completion means"}</small><small class="mission-attachment-summary">${attached}</small></button>`;
   }).join("") : '<article class="mission-card"><h3>No missions in this view.</h3></article>'; };
-  draw(active);
+  const drawCurrentView = () => draw(missionLedgerView === "complete" ? complete : active);
+  drawCurrentView();
   list.querySelectorAll("[data-mission-ledger-card]").forEach((card) => card.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -286,7 +289,11 @@ function renderMissions() {
     const mission = missionRowsForLookup().find((item) => String(item.id) === String(card.dataset.missionId));
     openMissionDetails(mission);
   }, true));
-  target.querySelectorAll("[data-mission-view]").forEach((button) => button.addEventListener("click", () => { target.querySelectorAll("[data-mission-view]").forEach((item) => item.classList.toggle("active", item === button)); draw(button.dataset.missionView === "complete" ? complete : active); }));
+  target.querySelectorAll("[data-mission-view]").forEach((button) => button.addEventListener("click", () => {
+    missionLedgerView = button.dataset.missionView === "complete" ? "complete" : "active";
+    target.querySelectorAll("[data-mission-view]").forEach((item) => item.classList.toggle("active", item === button));
+    drawCurrentView();
+  }));
 }
 
 function renderCommandMissions() {
