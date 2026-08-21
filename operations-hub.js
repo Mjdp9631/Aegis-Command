@@ -1981,11 +1981,15 @@ function missionIdsForCompletedOperation(operation) {
   const explicit = operationMissionIds(operation);
   if (explicit.length) return explicit;
   const operationMetric = inferredMetricForOperation(operation) || operation?.metric_key;
-  if (!operationMetric) return [];
+  // The old catch-all key made unrelated historical completions look like
+  // evidence for a newly created mission. It is never a pathway; only an
+  // explicit operation-family link may use it.
+  if (!operationMetric || ["operation.complete", "operation_completion"].includes(String(operationMetric).toLowerCase())) return [];
   const metricMatches = missions.filter((mission) => (
     String(mission?.completion_type || "").toLowerCase() === "units"
     && Number(mission?.target_count || 0) > 0
     && !mission.completed
+    && !["operation.complete", "operation_completion"].includes(String(mission.metric_key || "").toLowerCase())
     && metricsMatch(mission.metric_key, operationMetric)
   ));
   return metricMatches.length === 1 ? [metricMatches[0].id] : [];

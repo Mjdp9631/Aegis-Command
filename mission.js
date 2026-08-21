@@ -618,7 +618,11 @@ function readMission(root, prefix, includeCategory, existing = null) {
   const priorCount = Number(existing?.completed_count || 0);
   const manualProgressOverride = method === "units"
     && (Boolean(existing?.manual_progress_override) || (Boolean(existing) && completedCount !== priorCount));
-  return { title: $(`#${prefix}-title`).value.trim(), priority: $(`#${prefix}-priority`).value, ...(includeCategory ? { category: missionCategory($(`#${prefix}-category`).value) } : {}), completion_type: method, completion_definition: $(`#${prefix}-definition`).value.trim() || null, unit_label: method === "units" ? $(`#${prefix}-unit-label`).value.trim() || "units" : null, target_count: method === "units" ? target : null, completed_count: method === "units" ? completedCount : 0, manual_progress_override: manualProgressOverride, metric_key: method === "units" ? (existing?.metric_key || "operation.complete") : null, cadence_type: method === "units" ? ($(`#${prefix}-cadence`).value || null) : null, cadence_target: method === "units" && $(`#${prefix}-cadence`).value ? Math.max(1, Number($(`#${prefix}-cadence-target`).value || 1)) : null, completed: method === "binary" ? completed : completedCount >= target, progress };
+  const existingMetric = String(existing?.metric_key || "").toLowerCase();
+  // A generic operation-complete key is not evidence. New missions remain at
+  // their entered count until the director explicitly links a pathway.
+  const metricKey = ["operation.complete", "operation_completion"].includes(existingMetric) ? null : (existing?.metric_key || null);
+  return { title: $(`#${prefix}-title`).value.trim(), priority: $(`#${prefix}-priority`).value, ...(includeCategory ? { category: missionCategory($(`#${prefix}-category`).value) } : {}), completion_type: method, completion_definition: $(`#${prefix}-definition`).value.trim() || null, unit_label: method === "units" ? $(`#${prefix}-unit-label`).value.trim() || "units" : null, target_count: method === "units" ? target : null, completed_count: method === "units" ? completedCount : 0, manual_progress_override: manualProgressOverride, metric_key: method === "units" ? metricKey : null, cadence_type: method === "units" ? ($(`#${prefix}-cadence`).value || null) : null, cadence_target: method === "units" && $(`#${prefix}-cadence`).value ? Math.max(1, Number($(`#${prefix}-cadence-target`).value || 1)) : null, completed: method === "binary" ? completed : completedCount >= target, progress };
 }
 
 function operationPlanMarkup(prefix) {
