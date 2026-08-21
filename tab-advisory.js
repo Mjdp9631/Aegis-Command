@@ -18,6 +18,10 @@ function advisoryMarkup([jarvis, alfred], label = "JARVIS / ALFRED PROTOCOL") {
   return `<section class="panel tab-advisory"><p class="eyebrow">${label}</p><div class="protocol-line"><p>&ldquo;${jarvis}&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;${alfred}&rdquo;</p><span>- ALFRED</span></div></section>`;
 }
 
+function characterProtocolMarkup([jarvis, alfred]) {
+  return `<p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;${jarvis}&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;${alfred}&rdquo;</p><span>- ALFRED</span></div>`;
+}
+
 function renderFooters(sectionAdvice = null) {
   if (sectionAdvice) currentSectionAdvice = sectionAdvice;
   Object.entries(messages).forEach(([view, message]) => {
@@ -27,7 +31,7 @@ function renderFooters(sectionAdvice = null) {
     const advice = savedAdvice ? [savedAdvice.jarvis, savedAdvice.alfred] : message;
     if (view === "character") {
       const note = target.querySelector(".evidence-note");
-      if (note && savedAdvice) note.innerHTML = `<p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;${savedAdvice.jarvis}&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;${savedAdvice.alfred}&rdquo;</p><span>- ALFRED</span></div>`;
+      if (note) note.innerHTML = characterProtocolMarkup(advice);
       return;
     }
     const existing = target.querySelector(":scope > .tab-advisory");
@@ -59,6 +63,7 @@ async function loadSectionAdvice() {
 }
 
 window.addEventListener("aegis:advisory-updated", (event) => renderFooters(event.detail?.sections));
+window.addEventListener("aegis:character-rendered", () => renderFooters());
 if (supabase) {
   supabase.auth.getSession().then(loadSectionAdvice);
   supabase.auth.onAuthStateChange((event, session) => { if (event === "INITIAL_SESSION") return; if (session) setTimeout(loadSectionAdvice, 120); });

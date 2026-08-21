@@ -10,6 +10,10 @@ let xpCampaign = null;
 let xpCampaignError = null;
 let directorReviews = [];
 let characterLifeAnimator = null;
+let lastCharacterRenderKey = "";
+let characterLoadTimer = null;
+let characterLoadInFlight = false;
+let characterLoadQueued = false;
 const quarterKey = () => `${new Date().getFullYear()}-Q${Math.floor(new Date().getMonth() / 3) + 1}`;
 
 function missionProgress(mission) {
@@ -751,6 +755,14 @@ function render({ operations, occurrences, trades, missions, projects, contentIt
   const { discipline, trading, ccfx, mastery } = metrics;
   const recovery = missions.find((mission) => mission.category === "Recovery");
   const levels = { discipline: levelFromXp(discipline.xp).level, trading: levelFromXp(trading.xp).level, ccfx: levelFromXp(ccfx.xp).level, mind: levelFromXp(mastery.mind.xp).level, body: levelFromXp(mastery.body.xp).level };
+  const renderKey = JSON.stringify({
+    xpCampaign: xpCampaign?.started_at || null,
+    directorReviews,
+    metrics,
+    recovery: recovery ? [recovery.id, recovery.title, recovery.completion_type, recovery.target_count, recovery.completed_count, recovery.completed] : null,
+  });
+  if (renderKey === lastCharacterRenderKey && $("#character")?.dataset.characterReady === "true") return;
+  lastCharacterRenderKey = renderKey;
   localStorage.setItem("aegis-character-levels", JSON.stringify(levels));
   window.dispatchEvent(new CustomEvent("aegis:character-levels-changed", { detail: levels }));
   const launch = !xpCampaign ? `<section class="panel xp-launch-panel"><p class="eyebrow amber">CAMPAIGN CALIBRATION</p><h3>XP is paused.</h3><p class="body-copy">Nothing logged before activation will count. When you are ready, start the five-year campaign and the ledger will begin from that moment forward.</p>${xpCampaignError ? `<p class="body-copy">${escape(xpCampaignError)}</p>` : `<button class="primary compact" type="button" id="start-xp-campaign">Start campaign tracking</button>`}</section>` : "";
@@ -760,10 +772,17 @@ function render({ operations, occurrences, trades, missions, projects, contentIt
   characterView.setAttribute("aria-busy", "false");
   bindCharacterFocusHover();
   bindCharacterLifeScene(levels);
+  window.dispatchEvent(new Event("aegis:character-rendered"));
 }
 
 async function load() {
   if (!supabase) return;
+  if (characterLoadInFlight) {
+    characterLoadQueued = true;
+    return;
+  }
+  characterLoadInFlight = true;
+  try {
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
   const [operationsResult, occurrenceResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, campaignResult, reviewResult, challengeResult, capabilityLogsResult, capabilityBenchmarkRewardsResult, financialFoundationResult] = await Promise.all([
@@ -786,6 +805,19 @@ async function load() {
   directorReviews = reviewResult.data || [];
   xpCampaignError = campaignResult.error ? "XP campaign setup is awaiting its one-time database migration." : null;
   render({ operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], trades: tradesResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], capabilityLogs: capabilityLogsResult.data || [], capabilityBenchmarkRewards: capabilityBenchmarkRewardsResult.data || [], financialFoundation: financialFoundationResult.data || null });
+  } finally {
+    characterLoadInFlight = false;
+    if (characterLoadQueued) {
+      characterLoadQueued = false;
+      clearTimeout(characterLoadTimer);
+      characterLoadTimer = setTimeout(() => { void load(); }, 80);
+    }
+  }
+}
+
+function scheduleCharacterLoad(delay = 120) {
+  clearTimeout(characterLoadTimer);
+  characterLoadTimer = setTimeout(() => { void load(); }, delay);
 }
 
 document.addEventListener("click", async (event) => {
@@ -810,9 +842,9 @@ document.addEventListener("click", async (event) => {
 }, true);
 
 if (supabase) {
-  load();
-  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 80); });
-  document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) setTimeout(load, 700); });
-  window.addEventListener("aegis:mastery-changed", () => setTimeout(load, 120));
-  window.addEventListener("aegis:data-changed", (event) => { if (["mastery", "operation-status"].includes(event.detail?.source)) return; setTimeout(load, 120); });
+  void load();
+  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; scheduleCharacterLoad(80); });
+  document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) scheduleCharacterLoad(700); });
+  window.addEventListener("aegis:mastery-changed", () => scheduleCharacterLoad(120));
+  window.addEventListener("aegis:data-changed", (event) => { if (["mastery", "operation-status"].includes(event.detail?.source)) return; scheduleCharacterLoad(120); });
 }
