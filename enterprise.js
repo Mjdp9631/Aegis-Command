@@ -277,6 +277,76 @@ async function rollBackProjectMissionStep(project) {
   await supabase.from("missions").update({ target_count: target, completed: completed >= target, progress: Math.round((completed / target) * 100) }).eq("id", mission.id);
 }
 
+async function syncProjectMissionTarget(project, targetCount) {
+  if (!project.source_mission_id) return;
+  const { data: mission, error: readError } = await supabase.from("missions")
+    .select("id,completed_count")
+    .eq("id", project.source_mission_id)
+    .maybeSingle();
+  if (readError || !mission) return;
+  const target = Math.max(1, targetCount);
+  const completed = Math.max(0, Math.min(target, Number(mission.completed_count || 0)));
+  const { error } = await supabase.from("missions").update({
+    target_count: target,
+    completed_count: completed,
+    completed: completed >= target,
+    progress: Math.round((completed / target) * 100),
+  }).eq("id", mission.id);
+  if (error) throw error;
+}
+
+async function saveProjectSteps(project, desiredTitles) {
+  const existing = projectSteps
+    .filter((step) => String(step.project_id) === String(project.id))
+    .sort((left, right) => Number(left.position || 0) - Number(right.position || 0));
+  if (!desiredTitles.length) throw new Error("Add at least one ordered project step.");
+
+  const changedCompleted = existing.some((step, index) => step.status === "Complete" && index < desiredTitles.length && step.title !== desiredTitles[index]);
+  const removedCompleted = existing.slice(desiredTitles.length).some((step) => step.status === "Complete");
+  if (changedCompleted || removedCompleted) {
+    throw new Error("Completed project steps are kept as history. Leave them unchanged; you can still edit, add, or remove pending steps.");
+  }
+
+  const retained = existing.slice(0, desiredTitles.length);
+  const removed = existing.slice(desiredTitles.length);
+  const removedOperationIds = removed.map((step) => step.operation_id).filter(Boolean);
+  if (removedOperationIds.length) {
+    const { error } = await supabase.from("operations").delete().in("id", removedOperationIds);
+    if (error) throw error;
+  }
+  if (removed.length) {
+    const { error } = await supabase.from("business_project_steps").delete().in("id", removed.map((step) => step.id));
+    if (error) throw error;
+  }
+
+  for (const [index, step] of retained.entries()) {
+    const title = desiredTitles[index];
+    const changed = step.title !== title || Number(step.position) !== index + 1;
+    if (!changed) continue;
+    const { error: stepError } = await supabase.from("business_project_steps").update({ title, position: index + 1, updated_at: new Date().toISOString() }).eq("id", step.id);
+    if (stepError) throw stepError;
+    if (step.operation_id) {
+      const { error: operationError } = await supabase.from("operations").update({
+        title: projectStepOperationTitle(project, { title }),
+        brief: `Project step ${index + 1}: ${title}`,
+      }).eq("id", step.operation_id);
+      if (operationError) throw operationError;
+    }
+  }
+
+  const additions = desiredTitles.slice(existing.length);
+  if (additions.length) {
+    const { error } = await supabase.from("business_project_steps").insert(additions.map((title, index) => ({
+      project_id: project.id,
+      title,
+      position: existing.length + index + 1,
+    })));
+    if (error) throw error;
+  }
+  await syncProjectMissionTarget(project, desiredTitles.length);
+  await advanceProjectFromSteps(project.id);
+}
+
 function syncProjectReward() {
   const mode = $("#project-mode")?.value || "Milestone";
   const band = $("#project-effort-band")?.value || "Standard";
@@ -320,11 +390,13 @@ function openProjectEditor(project) {
   $("#project-due").value = project.due_on || "";
   const savedSteps = projectSteps.filter((step) => String(step.project_id) === String(project.id)).map((step) => step.title);
   $("#project-steps").value = savedSteps.join("\n");
-  $("#project-steps").disabled = true;
+  $("#project-steps").disabled = project.status === "Complete";
   $("#project-dialog .eyebrow").textContent = "EDIT SPECIAL PROJECT";
   $("#project-dialog h2").textContent = "Refine the existing project.";
   $("#project-submit").textContent = "Save project";
-  $("#project-parent-context").textContent = "Edit project details in place. Its existing step sequence remains unchanged.";
+  $("#project-parent-context").textContent = project.status === "Complete"
+    ? "Completed projects keep their recorded step sequence. Create an upgrade for the next release."
+    : "Edit the step sequence here. Completed steps are locked as history; pending steps can be renamed, added, or removed.";
   syncProjectReward();
   $("#project-dialog").showModal();
 }
@@ -382,6 +454,8 @@ function buildDialogs() {
     if (editProjectId) {
       const original = projects.find((project) => String(project.id) === String(editProjectId));
       if (!original) return alert("This project is no longer available. Refresh and try again.");
+      const steps = projectStepsFromInput($("#project-steps").value);
+      if (!steps.length) return alert("Add at least one ordered project step.");
       const projectUpdate = {
         logged_on: loggedOn, title, project_type: $("#project-type").value, project_mode: projectMode,
         effort_band: effortBand, estimated_hours: Number($("#project-estimated-hours").value) || null,
@@ -393,6 +467,11 @@ function buildDialogs() {
       if (original.source_mission_id) {
         const { error: missionError } = await supabase.from("missions").update({ title, priority, completion_definition: outcome || null, description: `Special Project · ${$("#project-type").value} · ${projectMode}` }).eq("id", original.source_mission_id);
         if (missionError) console.warn("Project saved, but its linked mission could not be updated", missionError.message);
+      }
+      try {
+        await saveProjectSteps({ ...original, ...projectUpdate }, steps);
+      } catch (stepError) {
+        return alert(`Project details saved, but its steps could not be updated: ${stepError.message}`);
       }
       $("#project-dialog").close();
       await load();
