@@ -14,6 +14,7 @@ let accountBalances = [];
 let accountGroups = [];
 let accountMemberships = [];
 let groupTradeLinks = [];
+let groupTradeAllocations = [];
 let groupWithdrawals = [];
 let withdrawalAllocations = [];
 let accountDeposits = [];
@@ -199,7 +200,7 @@ function calculatedBalance(account) {
   balance += accountTestTrades
     .filter((trade) => trade.account_id === account.id)
     .reduce((total, trade) => total + Number(trade.pnl_usd || 0), 0);
-  balance += groupLinksForAccount(account.id).reduce((total, link) => total + Number(link.actual_pnl_usd || 0), 0);
+  balance += groupTradePnlForAccount(account.id);
   balance += accountDepositTotal(account.id);
   balance -= accountWithdrawalTotal(account.id);
   return cents(balance);
@@ -295,6 +296,19 @@ function closedTradesAvailableForGroup(groupId) {
   return loadedTrades.filter((trade) => !isTheoretical(trade)
     && resolvedOutcome(trade) !== "Open"
     && !linkedToThisGroup.has(String(trade.id)));
+}
+
+function groupTradePnlForAccount(accountId) {
+  return groupLinksForAccount(accountId).reduce((total, link) => {
+    const allocations = groupTradeAllocations.filter((allocation) => String(allocation.group_trade_link_id) === String(link.id));
+    if (!allocations.length) return total + Number(link.actual_pnl_usd || 0);
+    const allocation = allocations.find((item) => String(item.account_id) === String(accountId));
+    return total + Number(allocation?.pnl_usd || 0);
+  }, 0);
+}
+
+function tradeAllocationsForLink(linkId) {
+  return groupTradeAllocations.filter((allocation) => String(allocation.group_trade_link_id) === String(linkId));
 }
 
 function groupWithdrawalLedger(group) {
@@ -411,6 +425,63 @@ function decorateGroupAdminControls() {
   });
 }
 
+function groupAllocationInputs(groupId, type) {
+  const members = accountGroupAccounts(groupId);
+  const attribute = type === "trade" ? "data-group-trade-allocation" : "data-withdrawal-allocation";
+  const label = type === "trade" ? "Exact PnL" : "Gross withdrawal";
+  const placeholder = type === "trade" ? "e.g. 1000 or -500" : "e.g. 1000";
+  return `<div class="group-allocation-grid"><p>${label} by account</p>${members.map((account) => `<label><span>${escapeHtml(account.account_name)} · starts ${money(account.starting_balance)}</span><input ${attribute}="${groupId}" data-account-id="${account.id}" type="number" min="${type === "withdrawal" ? "0" : ""}" step="0.01" required placeholder="${placeholder}" /></label>`).join("")}</div>`;
+}
+
+function formAllocations(form, selector, { allowZero = true, allowNegative = false } = {}) {
+  const inputs = [...form.querySelectorAll(selector)];
+  const allocations = [];
+  for (const input of inputs) {
+    const raw = String(input.value || "").trim();
+    const value = numberOrNull(raw);
+    if (raw === "" || value == null || !Number.isFinite(value) || (!allowNegative && value < 0) || (!allowZero && value === 0)) return null;
+    if (value !== 0) allocations.push({ accountId: input.dataset.accountId, amount: cents(value) });
+  }
+  return allocations;
+}
+
+function decorateGroupAllocationForms() {
+  document.querySelectorAll("[data-group-trade-form]").forEach((form) => {
+    const group = accountGroups.find((item) => String(item.id) === String(form.dataset.groupTradeForm));
+    if (!group) return;
+    const selected = form.querySelector(`[data-group-trade-select="${group.id}"]`)?.value || "";
+    const options = closedTradesAvailableForGroup(group.id).map((trade) => `<option value="${trade.id}">#${String(tradeNumberFor(trade.id)).padStart(3, "0")} · ${escapeHtml(trade.pair)} · ${escapeHtml(resolvedOutcome(trade))}</option>`).join("");
+    form.innerHTML = `<label>Attach journal trade <select data-group-trade-select="${group.id}"><option value="">Choose a closed trade</option>${options}</select></label>${groupAllocationInputs(group.id, "trade")}<button class="primary compact" type="submit">Add trade allocations</button>`;
+    const select = form.querySelector(`[data-group-trade-select="${group.id}"]`);
+    if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+  });
+  document.querySelectorAll("[data-group-withdrawal-form]").forEach((form) => {
+    const group = accountGroups.find((item) => String(item.id) === String(form.dataset.groupWithdrawalForm));
+    if (!group) return;
+    form.innerHTML = `${groupAllocationInputs(group.id, "withdrawal")}<label>Withdrawal date <input data-withdrawal-date="${group.id}" type="datetime-local" value="${localDateTimeInput()}" required /></label><label>Note <input data-withdrawal-note="${group.id}" maxlength="240" placeholder="Optional" /></label><button class="primary compact" type="submit">Record withdrawal allocations</button><small class="withdrawal-preview" data-withdrawal-preview="${group.id}">Enter each account’s deduction to calculate the group total and net payout.</small>`;
+  });
+}
+
+function decorateGroupTradeAllocations() {
+  document.querySelectorAll("[data-group-trade-unlink]").forEach((button) => {
+    const link = groupTradeLinks.find((item) => String(item.id) === String(button.dataset.groupTradeUnlink));
+    const allocations = link ? tradeAllocationsForLink(link.id) : [];
+    if (!link || !allocations.length) return;
+    const row = button.closest(".group-account-row");
+    const total = Number(link.actual_pnl_usd || 0);
+    const amount = row?.querySelector("b");
+    if (amount) amount.textContent = `${total > 0 ? "+" : ""}${money(total)} total`;
+    const breakdown = document.createElement("small");
+    breakdown.className = "group-allocation-breakdown";
+    breakdown.textContent = allocations.map((allocation) => {
+      const account = accountBalances.find((item) => String(item.id) === String(allocation.account_id));
+      const pnl = Number(allocation.pnl_usd || 0);
+      return `${account?.account_name || "Account"}: ${pnl > 0 ? "+" : ""}${money(pnl)}`;
+    }).join(" · ");
+    row?.append(breakdown);
+  });
+}
+
 function renderAccountBalances() {
   const list = $("#account-balance-list");
   if (!list) return;
@@ -435,6 +506,8 @@ function renderGroupedAccountBalances() {
   renderEarnedSummary();
   renderBalanceSummary();
   renderTheoreticalTradeControls();
+  setTimeout(decorateGroupAllocationForms, 0);
+  setTimeout(decorateGroupTradeAllocations, 0);
   setTimeout(decorateTheoreticalWithdrawalForms, 0);
   setTimeout(decoratePropStatusControls, 0);
   setTimeout(decorateGroupAdminControls, 0);
@@ -497,11 +570,12 @@ async function loadAccountLedger() {
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
   const userId = sessionData.session.user.id;
-  const [accountsResult, groupsResult, membershipsResult, linksResult, withdrawalsResult, allocationsResult, depositsResult, testTradesResult] = await Promise.all([
+  const [accountsResult, groupsResult, membershipsResult, linksResult, tradeAllocationsResult, withdrawalsResult, allocationsResult, depositsResult, testTradesResult] = await Promise.all([
     supabase.from("account_balances").select("*").order("is_primary", { ascending: false }).order("created_at", { ascending: true }),
     supabase.from("account_groups").select("*").order("created_at", { ascending: true }),
     supabase.from("account_group_memberships").select("*").order("joined_at", { ascending: true }),
     supabase.from("account_group_trade_links").select("*").order("created_at", { ascending: true }),
+    supabase.from("account_group_trade_allocations").select("*").order("created_at", { ascending: true }),
     supabase.from("account_group_withdrawals").select("*").order("withdrawn_at", { ascending: false }),
     supabase.from("account_group_withdrawal_allocations").select("*").order("created_at", { ascending: true }),
     supabase.from("account_deposits").select("*").order("deposited_at", { ascending: false }),
@@ -512,6 +586,7 @@ async function loadAccountLedger() {
   accountGroups = groupsResult.data || [];
   accountMemberships = membershipsResult.data || [];
   groupTradeLinks = linksResult.data || [];
+  groupTradeAllocations = tradeAllocationsResult.error ? [] : tradeAllocationsResult.data || [];
   groupWithdrawals = withdrawalsResult.data || [];
   withdrawalAllocations = allocationsResult.data || [];
   accountDeposits = depositsResult.error ? [] : (depositsResult.data || []);
@@ -682,13 +757,27 @@ async function moveAccount(accountId, groupId) {
 
 async function saveGroupTrade(groupId, form) {
   const tradeId = form.querySelector(`[data-group-trade-select="${groupId}"]`)?.value;
-  const pnl = numberOrNull(form.querySelector(`[data-group-trade-pnl="${groupId}"]`)?.value);
-  if (!tradeId || pnl == null || !Number.isFinite(pnl)) return alert("Choose a closed journal trade and enter its exact dollar PnL per account.");
+  const allocations = formAllocations(form, `[data-group-trade-allocation="${groupId}"]`, { allowNegative: true });
+  if (!tradeId || !allocations?.length) return alert("Choose a closed journal trade and enter a non-zero exact dollar PnL for each participating account.");
   if (groupTradeLinks.some((link) => String(link.group_id) === String(groupId) && String(link.trade_id) === String(tradeId))) return alert("This journal trade is already linked to this group.");
   const { data: sessionData } = await supabase.auth.getSession();
-  const { error } = await supabase.from("account_group_trade_links").insert({ user_id: sessionData.session.user.id, group_id: groupId, trade_id: tradeId, actual_pnl_usd: cents(pnl) });
+  if (!sessionData.session) return alert("Please sign in before linking a group trade.");
+  const totalPnl = cents(allocations.reduce((total, allocation) => total + allocation.amount, 0));
+  const { data: link, error } = await supabase.from("account_group_trade_links").insert({ user_id: sessionData.session.user.id, group_id: groupId, trade_id: tradeId, actual_pnl_usd: totalPnl }).select().single();
   if (error) return alert(`The trade could not be attached: ${error.message}`);
+  const allocationResult = await supabase.from("account_group_trade_allocations").insert(allocations.map((allocation) => ({
+    user_id: sessionData.session.user.id,
+    group_trade_link_id: link.id,
+    account_id: allocation.accountId,
+    pnl_usd: allocation.amount,
+  })));
+  if (allocationResult.error) {
+    await supabase.from("account_group_trade_links").delete().eq("id", link.id);
+    const migrationHint = /relation|schema cache|does not exist/i.test(String(allocationResult.error.message || "")) ? " Run migration 094 first." : "";
+    return alert(`The trade could not be allocated: ${allocationResult.error.message}.${migrationHint}`);
+  }
   await loadAccountLedger();
+  window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
 }
 
 async function unlinkGroupTrade(linkId) {
@@ -729,21 +818,22 @@ async function deleteTheoreticalTrade(tradeId) {
 
 async function saveGroupWithdrawal(groupId, form) {
   const group = accountGroups.find((item) => item.id === groupId);
-  const accounts = accountGroupAccounts(groupId);
-  const gross = numberOrNull(form.querySelector(`[data-withdrawal-gross="${groupId}"]`)?.value);
+  const allocations = formAllocations(form, `[data-withdrawal-allocation="${groupId}"]`);
   const withdrawnAt = form.querySelector(`[data-withdrawal-date="${groupId}"]`)?.value;
   const note = form.querySelector(`[data-withdrawal-note="${groupId}"]`)?.value.trim() || null;
   const includeInEarned = group?.account_type === "Theoretical"
     ? Boolean(form.querySelector(`[data-withdrawal-include="${groupId}"]`)?.checked)
     : true;
-  if (!group || !accounts.length) return alert("Add at least one matching account to this group before recording a withdrawal.");
-  if (!gross || gross <= 0 || !withdrawnAt) return alert("Enter a positive gross withdrawal and date.");
+  if (!group || !accountGroupAccounts(groupId).length) return alert("Add at least one matching account to this group before recording a withdrawal.");
+  if (!allocations?.length || !withdrawnAt) return alert("Enter the gross withdrawal for every account involved and a withdrawal date.");
   const split = group.account_type === "Prop Firm" ? Number(group.profit_split_percent) : 100;
-  const net = cents(gross * split / 100);
+  const grossTotal = cents(allocations.reduce((total, allocation) => total + allocation.amount, 0));
+  const payoutTotal = cents(allocations.reduce((total, allocation) => total + cents(allocation.amount * split / 100), 0));
   const { data: sessionData } = await supabase.auth.getSession();
-  const withdrawalResult = await supabase.from("account_group_withdrawals").insert({ user_id: sessionData.session.user.id, group_id: groupId, withdrawn_at: isoFromLocalDateTime(withdrawnAt), gross_amount_per_account_usd: cents(gross), payout_amount_per_account_usd: net, gross_total_usd: cents(gross * accounts.length), payout_total_usd: cents(net * accounts.length), profit_split_percent: split, account_count: accounts.length, include_in_total_earned: includeInEarned, note }).select().single();
+  if (!sessionData.session) return alert("Please sign in before recording a withdrawal.");
+  const withdrawalResult = await supabase.from("account_group_withdrawals").insert({ user_id: sessionData.session.user.id, group_id: groupId, withdrawn_at: isoFromLocalDateTime(withdrawnAt), gross_amount_per_account_usd: cents(grossTotal / allocations.length), payout_amount_per_account_usd: cents(payoutTotal / allocations.length), gross_total_usd: grossTotal, payout_total_usd: payoutTotal, profit_split_percent: split, account_count: allocations.length, include_in_total_earned: includeInEarned, note }).select().single();
   if (withdrawalResult.error) return alert(`The withdrawal could not be recorded: ${withdrawalResult.error.message}`);
-  const allocationResult = await supabase.from("account_group_withdrawal_allocations").insert(accounts.map((account) => ({ user_id: sessionData.session.user.id, withdrawal_id: withdrawalResult.data.id, account_id: account.id, gross_deduction_usd: cents(gross), payout_amount_usd: net })));
+  const allocationResult = await supabase.from("account_group_withdrawal_allocations").insert(allocations.map((allocation) => ({ user_id: sessionData.session.user.id, withdrawal_id: withdrawalResult.data.id, account_id: allocation.accountId, gross_deduction_usd: allocation.amount, payout_amount_usd: cents(allocation.amount * split / 100) })));
   if (allocationResult.error) {
     await supabase.from("account_group_withdrawals").delete().eq("id", withdrawalResult.data.id);
     return alert(`The withdrawal could not be allocated: ${allocationResult.error.message}`);
@@ -754,12 +844,14 @@ async function saveGroupWithdrawal(groupId, form) {
 
 function updateWithdrawalPreview(groupId) {
   const group = accountGroups.find((item) => item.id === groupId);
-  const accounts = accountGroupAccounts(groupId);
-  const gross = numberOrNull(document.querySelector(`[data-withdrawal-gross="${groupId}"]`)?.value);
-  const preview = document.querySelector(`[data-withdrawal-preview="${groupId}"]`);
-  if (!preview || !group || !gross || gross <= 0) return;
+  const form = document.querySelector(`[data-group-withdrawal-form="${groupId}"]`);
+  const allocations = form ? formAllocations(form, `[data-withdrawal-allocation="${groupId}"]`) : null;
+  const preview = form?.querySelector(`[data-withdrawal-preview="${groupId}"]`);
+  if (!preview || !group || !allocations?.length) return;
   const split = group.account_type === "Prop Firm" ? Number(group.profit_split_percent) : 100;
-  preview.textContent = `Deduct ${money(gross * accounts.length)} total · track ${money(cents(gross * split / 100) * accounts.length)} net at ${split}% payout.`;
+  const grossTotal = cents(allocations.reduce((total, allocation) => total + allocation.amount, 0));
+  const payoutTotal = cents(allocations.reduce((total, allocation) => total + cents(allocation.amount * split / 100), 0));
+  preview.textContent = `Deduct ${money(grossTotal)} across ${allocations.length} account${allocations.length === 1 ? "" : "s"} · track ${money(payoutTotal)} net at ${split}% payout.`;
 }
 
 function filteredTrades() {
@@ -1313,7 +1405,7 @@ function init() {
     const theoreticalForm = event.target.closest("[data-theoretical-trade-form]");
     if (theoreticalForm) { event.preventDefault(); saveTheoreticalTrade(theoreticalForm.dataset.theoreticalTradeForm, theoreticalForm); }
   });
-  document.addEventListener("input", (event) => { const input = event.target.closest("[data-withdrawal-gross]"); if (input) updateWithdrawalPreview(input.dataset.withdrawalGross); });
+  document.addEventListener("input", (event) => { const input = event.target.closest("[data-withdrawal-allocation]"); if (input) updateWithdrawalPreview(input.dataset.withdrawalAllocation); });
   document.addEventListener("change", (event) => {
     const move = event.target.closest("[data-account-move]");
     if (move) moveAccount(move.dataset.accountMove, move.value);

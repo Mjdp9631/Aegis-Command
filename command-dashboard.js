@@ -9,7 +9,7 @@ let dashboardData = null;
 let activeRange = "all";
 let activeChart = null;
 let activeChartMode = "pnl";
-let accountLedger = { groups: [], memberships: [], tradeLinks: [], withdrawals: [], allocations: [] };
+let accountLedger = { groups: [], memberships: [], tradeLinks: [], tradeAllocations: [], withdrawals: [], allocations: [] };
 
 function normalOutcome(value) {
   const item = String(value || "").trim().toLowerCase();
@@ -79,9 +79,15 @@ function valueSeries(trades, accounts) {
     let total = Number(account.starting_balance);
     const events = [];
     completed.filter((trade) => String(trade.account || "").trim() === account.account_name).forEach((trade) => events.push({ type: "journal", time: new Date(trade.traded_at || trade.created_at), trade }));
+    const allocatedLinkIds = new Set(accountLedger.tradeAllocations.map((allocation) => String(allocation.group_trade_link_id)));
     accountLedger.tradeLinks.forEach((link) => {
       const trade = completed.find((item) => item.id === link.trade_id);
-      if (trade && ledgerMembershipAt(account.id, trade.traded_at || trade.created_at)?.group_id === link.group_id) events.push({ type: "group-trade", time: new Date(trade.traded_at || trade.created_at), link });
+      if (trade && !allocatedLinkIds.has(String(link.id)) && ledgerMembershipAt(account.id, link.created_at || trade.traded_at || trade.created_at)?.group_id === link.group_id) events.push({ type: "group-trade", time: new Date(trade.traded_at || trade.created_at), link });
+    });
+    accountLedger.tradeAllocations.filter((allocation) => String(allocation.account_id) === String(account.id)).forEach((allocation) => {
+      const link = accountLedger.tradeLinks.find((item) => String(item.id) === String(allocation.group_trade_link_id));
+      const trade = link && completed.find((item) => String(item.id) === String(link.trade_id));
+      if (trade) events.push({ type: "group-trade-allocation", time: new Date(trade.traded_at || trade.created_at), allocation });
     });
     accountLedger.allocations.filter((allocation) => allocation.account_id === account.id).forEach((allocation) => {
       const withdrawal = accountLedger.withdrawals.find((item) => item.id === allocation.withdrawal_id);
@@ -91,6 +97,7 @@ function valueSeries(trades, accounts) {
       const prior = total;
       if (event.type === "journal") total *= 1 + (Number(event.trade.pnl_percent) || 0) / 100;
       if (event.type === "group-trade") total += Number(event.link.actual_pnl_usd) || 0;
+      if (event.type === "group-trade-allocation") total += Number(event.allocation.pnl_usd) || 0;
       if (event.type === "withdrawal") total -= Number(event.allocation.gross_deduction_usd) || 0;
       return { total, delta: total - prior, date: event.time };
     });
@@ -238,7 +245,7 @@ async function load() {
   try {
   const { data: session } = await supabase.auth.getSession();
   if (!session.session) return;
-  const [tradesResult, operationsResult, occurrenceResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, challengeResult, capabilityLogsResult, foundationResult, campaignResult, accountsResult, groupsResult, membershipsResult, tradeLinksResult, withdrawalsResult, allocationsResult] = await Promise.all([
+  const [tradesResult, operationsResult, occurrenceResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, challengeResult, capabilityLogsResult, foundationResult, campaignResult, accountsResult, groupsResult, membershipsResult, tradeLinksResult, tradeAllocationsResult, withdrawalsResult, allocationsResult] = await Promise.all([
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }),
     supabase.from("operations").select("id, title, scheduled_date, operation_date, completed_on, completed, schedule_mode"),
     supabase.from("operation_occurrences").select("id, operation_id, occurrence_date, completed_on, completed"),
@@ -255,11 +262,12 @@ async function load() {
     supabase.from("account_groups").select("*").order("created_at", { ascending: true }),
     supabase.from("account_group_memberships").select("*").order("joined_at", { ascending: true }),
     supabase.from("account_group_trade_links").select("*").order("created_at", { ascending: true }),
+    supabase.from("account_group_trade_allocations").select("*").order("created_at", { ascending: true }),
     supabase.from("account_group_withdrawals").select("*").order("withdrawn_at", { ascending: false }),
     supabase.from("account_group_withdrawal_allocations").select("*").order("created_at", { ascending: true })
   ]);
   dashboardData = { trades: tradesResult.data || [], operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], capabilityLogs: capabilityLogsResult.data || [], financialFoundation: foundationResult.data || null, mastery: masteryResult.data || [], xpCampaign: campaignResult.data || null, accounts: accountsResult.data || [] };
-  accountLedger = { groups: groupsResult.data || [], memberships: membershipsResult.data || [], tradeLinks: tradeLinksResult.data || [], withdrawals: withdrawalsResult.data || [], allocations: allocationsResult.data || [] };
+  accountLedger = { groups: groupsResult.data || [], memberships: membershipsResult.data || [], tradeLinks: tradeLinksResult.data || [], tradeAllocations: tradeAllocationsResult.data || [], withdrawals: withdrawalsResult.data || [], allocations: allocationsResult.data || [] };
   render();
   } finally {
     dashboardLoadInFlight = false;
