@@ -442,7 +442,9 @@ function renderGroupedAccountBalances() {
     const members = accountGroupAccounts(group.id);
     const total = members.reduce((sum, account) => sum + calculatedBalance(account), 0);
     const withdrawals = groupWithdrawalLedger(group);
-    const links = groupTradeLinks.filter((link) => link.group_id === group.id);
+    const links = groupTradeLinks
+      .filter((link) => link.group_id === group.id)
+      .sort((a, b) => tradeTime(loadedTrades.find((trade) => trade.id === b.trade_id) || {}) - tradeTime(loadedTrades.find((trade) => trade.id === a.trade_id) || {}));
     const split = group.account_type === "Prop Firm" ? Number(group.profit_split_percent) : 100;
     const tradeOptions = closedTradesAvailableForGroup(group.id).map((trade) => `<option value="${trade.id}">#${String(tradeNumberFor(trade.id)).padStart(3, "0")} · ${escapeHtml(trade.pair)} · ${escapeHtml(resolvedOutcome(trade))}</option>`).join("");
     const ledger = withdrawals.length ? withdrawals.map((withdrawal) => `<div class="withdrawal-ledger-row"><div><strong>${new Date(withdrawal.withdrawn_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</strong><small>${withdrawal.account_count} account${withdrawal.account_count === 1 ? "" : "s"} · ${Number(withdrawal.profit_split_percent).toFixed(2).replace(/\.00$/, "")}% payout${withdrawal.note ? ` · ${escapeHtml(withdrawal.note)}` : ""}</small></div><span><b>-${money(withdrawal.gross_total_usd)}</b><em>tracked ${money(withdrawal.payout_total_usd)}</em></span></div>`).join("") : '<p class="ledger-empty">No withdrawals recorded for this group.</p>';
