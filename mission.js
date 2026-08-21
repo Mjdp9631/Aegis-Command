@@ -205,9 +205,17 @@ function sortMissions(items) {
 }
 
 function commandMissionCard(mission, operations = []) {
-  const linked = [...new Map(operations.filter((operation) => (operation.mission_link_mode !== "family" && String(operation.mission_id || "") === String(mission.id))
-    || (Array.isArray(operation.linked_mission_ids) && operation.linked_mission_ids.some((id) => String(id) === String(mission.id))));
-  ).map((operation) => [operationFamilyKey(operation), operation])).values()];
+  const linked = [...new Map(
+    operations
+      .filter((operation) => {
+        const legacyLinked = operation.mission_link_mode !== "family"
+          && String(operation.mission_id || "") === String(mission.id);
+        const familyLinked = Array.isArray(operation.linked_mission_ids)
+          && operation.linked_mission_ids.some((id) => String(id) === String(mission.id));
+        return legacyLinked || familyLinked;
+      })
+      .map((operation) => [operationFamilyKey(operation), operation]),
+  ).values()];
   const completedOperations = linked.filter((operation) => Boolean(operation.completed)).length;
   const measured = isMeasured(mission);
   const progressValue = mission.progress;
