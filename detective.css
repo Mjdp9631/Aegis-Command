@@ -35,3 +35,4 @@
 .account-group-total,.account-group-status-details,.group-admin-actions{position:relative;z-index:1;flex:0 0 auto}
 .group-admin-actions{align-self:center;margin-left:auto}
 .account-group-account-form{grid-template-columns:1.2fr .8fr .8fr .9fr .9fr auto auto}
+.group-account-row b.result-positive{color:#72d9a7}.group-account-row b.result-negative{color:#ff9b9b}
