@@ -1337,16 +1337,33 @@ document.addEventListener("click", (event) => {
   if (typeof window.AEGIS_SCHEDULE_MISSION === "function") window.AEGIS_SCHEDULE_MISSION(button.dataset.scheduleMission);
 });
 
-// Bind the secure Recovery form before optional render/dialog work. A failure
-// in an unrelated mission editor must never turn Save into a silent close.
-bindRecoveryLogger();
-// Paint the mission ledger before optional dialog wiring. A missing optional
-// control must never leave Active / Completed invisible.
-renderMissions(); renderCommandMissions(); renderRecovery(); renderRecoveryMissions();
-bindMissionViewTabsFallback();
-bindDialogs();
-missionDetails = buildMissionDetails();
-hydrateMissionLedgerFromSharedState();
+// The creation dialog is an essential control, not optional page rendering.
+// Wire it first so an error in a dashboard card, recovery widget, or shared
+// mission feed can never leave the visible fallback button stuck loading.
+try {
+  bindDialogs();
+  window.AEGIS_MISSION_CONTROLLER_READY = true;
+  window.dispatchEvent(new CustomEvent("aegis:mission-controller-ready"));
+} catch (error) {
+  console.error("Mission controls could not initialize", error);
+  const saveButton = $("#mission-dialog #save-mission");
+  if (saveButton) {
+    saveButton.disabled = false;
+    saveButton.textContent = "Mission controls failed to load — refresh";
+    saveButton.addEventListener("click", () => window.location.reload());
+  }
+}
+
+// Everything below is supplementary UI. Keep each section isolated so one
+// unavailable panel cannot prevent the mission dialog above from working.
+try { bindRecoveryLogger(); } catch (error) { console.error("Recovery controls could not initialize", error); }
+try { renderMissions(); } catch (error) { console.error("Mission ledger could not render", error); }
+try { renderCommandMissions(); } catch (error) { console.error("Command mission view could not render", error); }
+try { renderRecovery(); } catch (error) { console.error("Recovery view could not render", error); }
+try { renderRecoveryMissions(); } catch (error) { console.error("Recovery mission view could not render", error); }
+try { bindMissionViewTabsFallback(); } catch (error) { console.error("Mission view tabs could not initialize", error); }
+try { missionDetails = buildMissionDetails(); } catch (error) { console.error("Mission details could not initialize", error); }
+try { hydrateMissionLedgerFromSharedState(); } catch (error) { console.error("Shared mission state could not hydrate", error); }
 
 if (cloudReady) {
   client = createClient(config.supabaseUrl, config.supabaseAnonKey);
