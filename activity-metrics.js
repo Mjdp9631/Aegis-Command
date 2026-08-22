@@ -30,7 +30,9 @@ export const MIND_AWARDS = {
 
 export const BODY_AWARDS = {
   Health: 15,
-  Gym: 25,
+  // Training is frequent, ongoing evidence. Keep every session meaningful
+  // without allowing a normal weekly split to outpace the other character axes.
+  Gym: 8,
   Mobility: 18,
   Performance: 30,
   Sports: 30,

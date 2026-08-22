@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=capability-benchmarks-v1";
+import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=body-xp-calibration-v1";
 
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;

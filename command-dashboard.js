@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=project-xp-rebalance-v5";
+import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=body-xp-calibration-v1";
 import { effectiveOperations } from "./operation-state.js?v=shared-operation-state-v2";
 
 const config = window.AEGIS_CONFIG || {};
