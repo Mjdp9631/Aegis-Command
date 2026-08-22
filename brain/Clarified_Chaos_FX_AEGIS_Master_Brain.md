@@ -13,6 +13,33 @@ archive: The Archive
 
 This is the canonical knowledge file for the Clarified Chaos FX hub. It places the executable AEGIS strategy first, followed by course architecture, risk, psychology, examples, journaling, research, and change control.
 
+## Phase 0 Execution Playbook - Active Rules
+
+These are the active, user-defined Phase 0 execution rules. For a Phase 0 review, they take priority over any more general or conflicting course language below. They define whether a setup is eligible for review; they do not authorize a live trade.
+
+### Condition and model selection
+
+- **Ranging:** only assess a reversal at an established range extreme. The intended target is the middle of that range.
+- **Trending:** only assess continuation after a pullback of more than 50% of the prior extension.
+- **Trending range:** assess either defined reversal or defined continuation; do not blend them into an undefined third model.
+
+### Required confirmation and target logic
+
+- Every eligible model needs a **Type 3 lower-timeframe shift**. No Type 3 shift means no trade.
+- **Trending-range reversal:** price must extend above the previous high in a bullish case, or below the previous low in a bearish case. After the Type 3 shift, the target is 50% of the extension that moved beyond that previous structure.
+- **Trending-range continuation:** price must be in the 50%-75% pullback zone of the prior extension before the Type 3 shift is assessed.
+- **Ranging reversal:** target the midpoint of the established range, only when that target leaves reasonable reward relative to risk.
+- **Trending continuation:** require reasonable room to the next opposing structure after confirmation.
+
+### Hard no-trade gates
+
+- The condition or offered model is unclear.
+- Price is too extended or trending too hard to provide a pullback entry.
+- There is no Type 3 lower-timeframe shift.
+- There is not enough room for a reasonable reward-to-risk target.
+
+When a screenshot cannot prove a required location, pullback depth, shift, or room to target, label the evidence insufficient rather than assuming the rule passed.
+
 ## Evidence States
 
 - **CONFIRMED:** Explicitly taught, repeatedly demonstrated, or user-approved.

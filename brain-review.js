@@ -12,6 +12,8 @@ let chainTerminal = "";
 let briefingSlide = 0;
 let lastDeletedReview = null;
 let deleteUndoTimer = null;
+let phaseZeroAnswers = [];
+let phaseZeroTerminal = "";
 const EVIDENCE_BUCKET = "trade-review-evidence";
 
 const esc = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[character]));
@@ -40,6 +42,78 @@ function renderChain() {
   }
   const step = CHAIN[chainStep];
   root.innerHTML = `${history}<article class="brain-chain-question"><p class="eyebrow">${esc(step.title)}</p><h4>${esc(step.question)}</h4><div class="brain-chain-options">${step.choices.map((choice, index) => `<button type="button" data-chain-choice="${index}">${esc(choice.label)}</button>`).join("")}</div><div class="brain-chain-actions"><button type="button" class="brain-chain-source" data-brain-jump="${step.source}">Open the source rule</button>${back}</div></article>`;
+}
+
+function phaseZeroState() {
+  return Object.fromEntries(phaseZeroAnswers.map((answer) => [answer.id, answer.value]));
+}
+
+function phaseZeroStep() {
+  const state = phaseZeroState();
+  const yesNo = (id, title, question, pass, fail) => ({ id, title, question, choices: [{ label: pass, value: true }, { label: fail, value: false, stop: `No trade. ${fail}.` }] });
+  if (!state.condition) return {
+    id: "condition", title: "01 — Condition", question: "What market condition is active?",
+    choices: [
+      { label: "Ranging", value: "ranging" },
+      { label: "Trending range", value: "trending-range" },
+      { label: "Trending", value: "trending" },
+      { label: "Unclear", value: "unclear", stop: "No trade. Condition is not clear enough to define a model." },
+    ]
+  };
+  if (state.condition === "ranging") {
+    if (state.rangeEdge === undefined) return yesNo("rangeEdge", "02 — Range location", "Is price at an edge of the established range?", "Yes — range extreme", "No — middle of range");
+    if (state.rangeShift === undefined) return yesNo("rangeShift", "03 — Confirmation", "Did the edge produce a Type 3 lower-timeframe shift?", "Yes — Type 3 shift confirmed", "No Type 3 shift");
+    if (state.rangeRoom === undefined) return yesNo("rangeRoom", "04 — Target and room", "Is there enough room to target the middle of the range with reasonable R:R?", "Yes — midpoint target is viable", "No reasonable room to midpoint");
+  }
+  if (state.condition === "trending") {
+    if (state.trendPullback === undefined) return yesNo("trendPullback", "02 — Pullback depth", "Is this a continuation after a pullback deeper than 50% of the prior extension?", "Yes — 50%+ pullback", "No — too extended / shallow");
+    if (state.trendShift === undefined) return yesNo("trendShift", "03 — Confirmation", "Did a Type 3 lower-timeframe shift confirm continuation?", "Yes — Type 3 shift confirmed", "No Type 3 shift");
+    if (state.trendRoom === undefined) return yesNo("trendRoom", "04 — Target and room", "Is there enough room for a reasonable R:R target before opposing structure?", "Yes — room is available", "No reasonable R:R room");
+  }
+  if (state.condition === "trending-range") {
+    if (!state.model) return {
+      id: "model", title: "02 — Model", question: "Which setup is price offering inside the trending range?",
+      choices: [
+        { label: "Reversal at a range extreme", value: "reversal" },
+        { label: "Continuation in the pullback zone", value: "continuation" },
+        { label: "Neither model is present", value: "none", stop: "No trade. The trending range is not offering one of the two defined models." },
+      ]
+    };
+    if (state.model === "reversal") {
+      if (state.reversalExtension === undefined) return yesNo("reversalExtension", "03 — Reversal location", "Did price extend above the previous high (bullish) or below the previous low (bearish)?", "Yes — prior structure was exceeded", "No meaningful extension beyond prior structure");
+      if (state.reversalShift === undefined) return yesNo("reversalShift", "04 — Reversal confirmation", "Did a Type 3 lower-timeframe shift confirm the reversal?", "Yes — Type 3 shift confirmed", "No Type 3 shift");
+      if (state.reversalRoom === undefined) return yesNo("reversalRoom", "05 — Target and room", "Can the target sit at 50% of the extension that exceeded prior structure with reasonable R:R?", "Yes — extension 50% target is viable", "No reasonable room to the 50% target");
+    }
+    if (state.model === "continuation") {
+      if (state.continuationZone === undefined) return yesNo("continuationZone", "03 — Continuation location", "Is price between the 50% and 75% pullback of the prior extension?", "Yes — 50–75% pullback zone", "No — outside the defined pullback zone");
+      if (state.continuationShift === undefined) return yesNo("continuationShift", "04 — Continuation confirmation", "Did a Type 3 lower-timeframe shift confirm continuation?", "Yes — Type 3 shift confirmed", "No Type 3 shift");
+      if (state.continuationRoom === undefined) return yesNo("continuationRoom", "05 — Target and room", "Is there enough room for a reasonable R:R target before opposing structure?", "Yes — room is available", "No reasonable R:R room");
+    }
+  }
+  return null;
+}
+
+function renderPhaseZeroChecklist() {
+  const root = $("#phase-zero-checklist");
+  if (!root) return;
+  const history = phaseZeroAnswers.map((answer) => `<div class="brain-chain-answer"><span>${esc(answer.title)}</span><strong>${esc(answer.label)}</strong></div>`).join("");
+  const back = phaseZeroAnswers.length ? '<button type="button" class="brain-chain-back" data-phase0-back>Back one step</button>' : "";
+  const step = phaseZeroStep();
+  if (phaseZeroTerminal) {
+    root.innerHTML = `${history}<article class="brain-chain-result stop"><p class="eyebrow">PHASE 0 RESULT</p><h4>${esc(phaseZeroTerminal)}</h4><p>Do not force an entry. Wait for the defined condition, Type 3 shift, and viable target to align.</p>${back}</article>`;
+    return;
+  }
+  if (!step) {
+    root.innerHTML = `${history}<article class="brain-chain-result pass"><p class="eyebrow">PHASE 0 RESULT</p><h4>Defined model is eligible for execution review.</h4><p>Target is condition-derived. Re-check risk and position size before exposure; this checklist never authorizes a trade by itself.</p>${back}</article>`;
+    return;
+  }
+  root.innerHTML = `${history}<article class="brain-chain-question"><p class="eyebrow">${esc(step.title)}</p><h4>${esc(step.question)}</h4><div class="brain-chain-options">${step.choices.map((choice, index) => `<button type="button" data-phase0-choice="${index}">${esc(choice.label)}</button>`).join("")}</div><div class="brain-chain-actions">${back}</div></article>`;
+}
+
+function renderPhaseZeroPlaybook() {
+  const root = $("#phase-zero-playbook");
+  if (!root) return;
+  root.innerHTML = `<div class="phase-zero-playbook-head"><div><p class="eyebrow amber">PHASE 0 / TRADING EXECUTION PLAYBOOK</p><h3>Condition decides the model.</h3><p>Read-only canonical rules. The checklist below applies the same rules without improvisation.</p></div><button class="primary compact" type="button" data-phase0-start>Run pre-trade checklist</button></div><div class="phase-zero-models"><article><span>01 / RANGING</span><h4>Reversal at the edge</h4><p>Wait for price at a range extreme and a Type 3 lower-timeframe shift. Target the middle of the range.</p><small>Invalid if price is in the middle, there is no shift, or the midpoint does not offer reasonable R:R.</small></article><article><span>02 / TRENDING</span><h4>Continuation after a real pullback</h4><p>Use continuation only after a pullback deeper than 50% of the prior extension and a Type 3 lower-timeframe shift.</p><small>Invalid if price is too trendy with no pullback, no shift appears, or opposing structure leaves insufficient R:R.</small></article><article><span>03 / TRENDING RANGE</span><h4>Two allowed models</h4><p><b>Reversal:</b> extension beyond prior high/low, then Type 3 shift; target 50% of that extension. <b>Continuation:</b> Type 3 shift in the 50–75% pullback of the prior extension.</p><small>Use only the offered model. No extension, no shift, or no room means no trade.</small></article></div><div class="phase-zero-invalidations"><b>Hard no-trade gates</b><span>Too trendy with no pullback</span><span>No Type 3 shift</span><span>No reasonable R:R to the defined target</span></div>`;
 }
 
 function renderReview(review, entry = null) {
@@ -340,13 +414,19 @@ function renderBriefing() {
 }
 function upgradeBrainDom() {
   const oldGrid = $(".brain-flow-grid");
-  if (oldGrid && !$("#brain-chain")) oldGrid.outerHTML = '<div id="brain-chain" class="brain-chain"></div>';
+  if (oldGrid && !$("#phase-zero-checklist")) oldGrid.outerHTML = '<div id="phase-zero-checklist" class="brain-chain"></div>';
   const chainHead = $(".brain-flow .panel-head");
-  if (chainHead && !$("#brain-chain-reset")) chainHead.insertAdjacentHTML("beforeend", '<button id="brain-chain-reset" class="text-link" type="button">Restart chain</button>');
+  if (chainHead) {
+    chainHead.querySelector(".eyebrow").textContent = "PHASE 0 PRE-TRADE CHECKLIST";
+    chainHead.querySelector("h3").textContent = "Prove the offered model.";
+    if (!$("#phase-zero-reset")) chainHead.insertAdjacentHTML("beforeend", '<button id="phase-zero-reset" class="text-link" type="button">Restart checklist</button>');
+  }
   const source = $("#brain-library-content");
   if (source) {
     $(".brain-summary")?.remove();
-    source.insertAdjacentHTML("beforebegin", '<section class="brain-summary" id="brain-briefing"></section>');
+    if (!$("#phase-zero-playbook")) source.insertAdjacentHTML("beforebegin", '<section class="brain-summary phase-zero-playbook" id="phase-zero-playbook"></section>');
+    source.closest(".brain-library")?.querySelector(".eyebrow").textContent = "SUPPORTING COURSE REFERENCE";
+    source.closest(".brain-library")?.querySelector("h3").textContent = "Supplemental source notes";
   }
   const legacyGallery = $("#brain-visual-library");
   if (legacyGallery) legacyGallery.remove();
@@ -366,8 +446,20 @@ function init() {
   $("#brain-review-form")?.addEventListener("submit", runReview);
   $("#brain-review-trade")?.addEventListener("change", syncTheoreticalReason);
   $("#brain-review-followed")?.addEventListener("change", syncViolationReason);
-  $("#brain-chain-reset")?.addEventListener("click", () => { chainStep = 0; chainAnswers = []; chainTerminal = ""; renderChain(); });
+  $("#phase-zero-reset")?.addEventListener("click", () => { phaseZeroAnswers = []; phaseZeroTerminal = ""; renderPhaseZeroChecklist(); });
   document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-phase0-start]")) { $("#phase-zero-checklist")?.scrollIntoView({ behavior:"smooth", block:"center" }); return; }
+    const phaseZeroChoice = event.target.closest("[data-phase0-choice]");
+    if (phaseZeroChoice) {
+      const step = phaseZeroStep();
+      const choice = step?.choices[Number(phaseZeroChoice.dataset.phase0Choice)];
+      if (!choice) return;
+      phaseZeroAnswers.push({ id: step.id, title: step.title, label: choice.label, value: choice.value });
+      if (choice.stop) phaseZeroTerminal = choice.stop;
+      renderPhaseZeroChecklist();
+      return;
+    }
+    if (event.target.closest("[data-phase0-back]")) { phaseZeroAnswers.pop(); phaseZeroTerminal = ""; renderPhaseZeroChecklist(); return; }
     const jump = event.target.closest("[data-brain-jump]"); if (jump) openSource(jump.dataset.brainJump);
     const choice = event.target.closest("[data-chain-choice]"); if (choice) { const selected = CHAIN[chainStep].choices[Number(choice.dataset.chainChoice)]; chainAnswers.push(selected.label); if (selected.stop) { chainTerminal = selected.stop; chainStep = CHAIN.length; renderChain(); return; } chainStep += 1; renderChain(); }
     if (event.target.closest("[data-chain-back]")) { chainAnswers.pop(); chainStep = Math.max(0, chainAnswers.length); chainTerminal = ""; renderChain(); }
@@ -382,6 +474,6 @@ function init() {
     if (event.target.closest("#brain-image-dialog .dialog-close")) $("#brain-image-dialog").close();
     if (event.target.closest("#brain-evidence-dialog .dialog-close")) $("#brain-evidence-dialog").close();
   });
-  ensureImageDialog(); syncViolationReason(); renderChain(); renderBriefing(); loadCourseLibrary(); loadReviewerData(); supabase?.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(loadReviewerData, 50); });
+  ensureImageDialog(); syncViolationReason(); renderPhaseZeroPlaybook(); renderPhaseZeroChecklist(); loadCourseLibrary(); loadReviewerData(); supabase?.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(loadReviewerData, 50); });
 }
 init();
