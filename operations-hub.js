@@ -45,6 +45,22 @@ const shiftDayKey = (key, amount) => {
   date.setUTCDate(date.getUTCDate() + amount);
   return dayKey(date);
 };
+// Forex is closed after Friday 5 PM Eastern until Sunday 5 PM Eastern. The
+// standing pre-market path is therefore a Sunday-through-Thursday operation.
+const isPreMarketAnalysisDay = (key) => {
+  const date = dateForKey(key);
+  const weekday = date?.getUTCDay();
+  return weekday === 0 || (weekday >= 1 && weekday <= 4);
+};
+const isPreMarketAnalysisOperation = (operation) => Boolean(operation?.is_daily)
+  && String(operation?.title || "").trim().toLowerCase() === "pre-market analysis";
+const hideClosedMarketPreMarket = (records = [], activeDay = operatingDayKey()) => records.filter((operation) => {
+  if (!isPreMarketAnalysisOperation(operation)) return true;
+  const scheduledDay = dateOnly(operation.scheduled_date || operation.operation_date);
+  // Keep completed history intact; remove only an active/future generated row
+  // that falls inside the Friday/Saturday market closure.
+  return !scheduledDay || scheduledDay < activeDay || isPreMarketAnalysisDay(scheduledDay);
+});
 let bedtimeRecords = new Map();
 function rememberCachedBedtime(day, value) {
   if (!day || !value || Number.isNaN(Date.parse(value))) return;
@@ -303,11 +319,12 @@ function scheduleLabel(operation, fromKey = todayKey()) {
   return `${date}${time}`;
 }
 
-// Pre-market preparation is a standing daily path.  It is deliberately
+// Pre-market preparation is a standing market-day path. It is deliberately
 // materialized as a dated daily row (rather than a single recurring row), so
 // one day's completion can never hide the next day's analysis.
 const preMarketOperationForToday = () => {
   const operationDay = operatingDayKey();
+  if (!isPreMarketAnalysisDay(operationDay)) return null;
   return {
     title: "Pre-market analysis",
     category: "Trading",
@@ -324,26 +341,26 @@ const preMarketOperationForToday = () => {
 };
 function ensureCachedPreMarketPath(records = []) {
   const activeDay = operatingDayKey();
-  const exists = records.some((operation) => String(operation?.title || "").trim().toLowerCase() === "pre-market analysis"
+  const retained = hideClosedMarketPreMarket(records, activeDay);
+  if (!isPreMarketAnalysisDay(activeDay)) return retained;
+  const exists = retained.some((operation) => String(operation?.title || "").trim().toLowerCase() === "pre-market analysis"
     && (dateOnly(operation.operation_date) === activeDay || dateOnly(operation.scheduled_date) === activeDay));
-  if (exists) return records;
+  if (exists) return retained;
   const planned = preMarketOperationForToday();
-  return appendOperationsWithoutTouchingExisting(records, [{ ...planned, id: `local-${activeDay}-pre-market-analysis` }]);
+  return planned ? appendOperationsWithoutTouchingExisting(retained, [{ ...planned, id: `local-${activeDay}-pre-market-analysis` }]) : retained;
 }
 
 const starterOperations = () => {
-  return [
-    ["Pre-market analysis", "Trading"],
+  const daily = [
     ["Review charts and document one lesson", "Trading"],
     ["Conquer the morning", "Self Mastery"],
     ["Read one chapter", "Self Mastery"],
     ["Journal", "Self Mastery"],
     ["Today's focus", "Self Mastery"],
     ["Complete evening debrief", "Self Mastery"],
-  ].map(([title, category]) => title === "Pre-market analysis"
-    ? preMarketOperationForToday()
-    : ({ title, category, completed: false, scheduled_date: operatingDayKey(), scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, schedule_mode: "one_time", status: "Queued" }))
-    .concat(gymOperationForToday());
+  ].map(([title, category]) => ({ title, category, completed: false, scheduled_date: operatingDayKey(), scheduled_time: null, operation_date: operatingDayKey(), is_daily: true, schedule_mode: "one_time", status: "Queued" }));
+  const preMarket = preMarketOperationForToday();
+  return (preMarket ? [preMarket] : []).concat(daily, gymOperationForToday());
 };
 
 const GYM_WEEKLY_SPLITS = ["Legs", "Push", "Pull", "Lower Body", "Upper Body"];
@@ -2401,6 +2418,7 @@ async function ensureTodayOperations(records = []) {
   // operatingDayKey() keeps this on the prior day before 5 AM. Repairing that
   // day is safe; the next day's pillars still cannot appear until rollover.
   const activeDay = operatingDayKey();
+  records = hideClosedMarketPreMarket(records, activeDay);
   const daily = [
     ["Review charts and document one lesson", "Trading", "Review one relevant chart or completed trade, capture one process lesson, and file it in Detective or Self Mastery."],
     ["Conquer the morning", "Self Mastery", "Begin the day with one deliberate first action, protect the first block from avoidable distraction, and execute the morning standard before reactive work."],

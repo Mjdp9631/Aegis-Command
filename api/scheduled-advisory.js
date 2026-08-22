@@ -55,6 +55,17 @@ function shiftDay(date, amount) {
   return value.toISOString().slice(0, 10);
 }
 
+// Forex closes Friday at 5 PM Eastern and reopens Sunday at 5 PM Eastern.
+// The generated pre-market path therefore runs Sunday through Thursday only.
+function isPreMarketAnalysisDay(date) {
+  const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return weekday === 0 || (weekday >= 1 && weekday <= 4);
+}
+
+function isDailyPreMarket(operation) {
+  return Boolean(operation?.is_daily) && String(operation?.title || "").trim().toLowerCase() === "pre-market analysis";
+}
+
 async function adminUser(serviceKey) {
   const response = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?page=1&per_page=100`, { headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` } });
   if (!response.ok) throw new Error("Could not resolve the AEGIS director account.");
@@ -367,14 +378,16 @@ function gymSeedFor(date, records = []) {
 }
 
 function dailySeedFor(date, records = []) {
-  return [
-    { title: "Pre-market analysis", category: "Trading", brief: "Mark the higher-timeframe condition, key liquidity/reaction levels, and the valid setup before active price reaches the area.", metric_key: null, scheduled_time: "18:00" },
+  const seeds = [
     { title: "Review charts and document one lesson", category: "Trading", brief: "Review one relevant chart or completed trade, capture one process lesson, and file it in Detective or Self Mastery.", metric_key: null },
     { title: "Conquer the morning", category: "Self Mastery", brief: "Begin the day with one deliberate first action, protect the first block from avoidable distraction, and execute the morning standard before reactive work.", metric_key: null },
     { title: "Read one chapter", category: "Self Mastery", brief: "Read one chapter from your current book without notifications, then capture one useful idea, quote, or action in Self Mastery.", metric_key: "chapters_read" },
     { title: "Journal", category: "Self Mastery", brief: "Write the facts, name what is within your control, and record one lesson or next right action.", metric_key: "mastery.entry" },
     gymSeedFor(date, records),
   ];
+  return isPreMarketAnalysisDay(date)
+    ? [{ title: "Pre-market analysis", category: "Trading", brief: "Mark the higher-timeframe condition, key liquidity/reaction levels, and the valid setup before active price reaches the area.", metric_key: null, scheduled_time: "18:00" }, ...seeds]
+    : seeds;
 }
 
 async function reconcileDailyGymSlot(serviceKey, userId, date, records) {
@@ -469,6 +482,7 @@ async function rolloverOperations(serviceKey, userId, date) {
   const customDaily = records
     .filter((operation) => Boolean(operation.is_daily) && scheduleMode(operation) === "one_time")
     .filter((operation) => dateOnly(operation.operation_date) && dateOnly(operation.operation_date) < date)
+    .filter((operation) => !isDailyPreMarket(operation) || isPreMarketAnalysisDay(date))
     // Canonical daily paths are already handled by dailySeeds. Cloning a
     // prior dated copy here can differ only by time or a legacy metric, which
     // created a second Pre-market analysis row.
