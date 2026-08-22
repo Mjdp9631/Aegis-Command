@@ -1357,7 +1357,11 @@ function mergeSavedStatus(remote = []) {
     return true;
   };
   const known = new Set(merged.map(identity));
-  cached.filter((candidate) => currentOrUpcoming(candidate)).forEach((candidate) => {
+  // Durable database rows are authoritative. Appending an unknown cached row
+  // here resurrected operations after a project step (or any operation) was
+  // deleted successfully. Only local, not-yet-persisted safety rows may fill
+  // a gap while the initial cloud hydration is still in flight.
+  cached.filter((candidate) => String(candidate?.id || "").startsWith("local-") && currentOrUpcoming(candidate)).forEach((candidate) => {
     const key = identity(candidate);
     if (!known.has(key)) {
       merged.push(candidate);
