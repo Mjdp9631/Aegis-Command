@@ -197,7 +197,11 @@ function paired(advice) { return `<p><b>JARVIS</b>${escape(advice.jarvis)}</p><p
 function renderEvening(evening) {
   const target = $("#adviser-panel .evening-columns");
   if (!target || !evening) return;
-  const markup = `<article><span>KEY TAKEAWAYS</span>${paired(evening.key_takeaways)}</article><article><span>WHAT WORKED</span>${paired(evening.what_worked)}</article><article><span>WHAT TO IMPROVE</span>${paired(evening.what_to_improve)}</article><article><span>TOMORROW'S FOCUS</span>${paired(evening.tomorrow_focus)}</article>`;
+  const focus = evening.tomorrow_focus || {};
+  const potentialOperation = focus.operation_id && focus.operation_title
+    ? `<small class="tomorrow-focus-operation">POTENTIAL OPERATION · ${escape(focus.operation_title)}</small>`
+    : '<small class="tomorrow-focus-operation">NO EXISTING OPERATION SELECTED</small>';
+  const markup = `<article><span>KEY TAKEAWAYS</span>${paired(evening.key_takeaways)}</article><article><span>WHAT WORKED</span>${paired(evening.what_worked)}</article><article><span>WHAT TO IMPROVE</span>${paired(evening.what_to_improve)}</article><article><span>TOMORROW'S FOCUS</span>${potentialOperation}${paired(focus)}</article>`;
   if (target.innerHTML !== markup) target.innerHTML = markup;
 }
 
@@ -434,65 +438,49 @@ function focusCategory(title, brief) {
   return "Self Mastery";
 }
 
-async function queueTomorrowFocus(advisory, operatingDate, userId) {
+async function resolveTomorrowFocusOperation(advisory, operatingDate, userId) {
   const focus = advisory?.evening?.tomorrow_focus;
   if (!supabase || !focus || !userId) return null;
-  const title = String(focus.operation_title || "Today's focus").trim().replace(/\s+/g, " ").slice(0, 100);
-  const brief = `JARVIS REFERENCE: ${String(focus.jarvis || "").trim()}\n\nALFRED REFERENCE: ${String(focus.alfred || "").trim()}`.trim();
-  if (!brief || !title) return null;
+  const suggestedTitle = String(focus.operation_title || "").trim().replace(/\s+/g, " ").slice(0, 100);
+  if (!suggestedTitle) return null;
   const nextDate = nextOperatingDay(operatingDate);
   const { data: existing, error: existingError } = await supabase.from("operations")
     .select("id,title,brief,status,scheduled_date,operation_date,completed")
     .eq("user_id", userId)
     .limit(300);
-  if (existingError) { console.warn("Could not check tomorrow's focus operation", existingError.message); return null; }
+  if (existingError) { console.warn("Could not resolve tomorrow's focus operation", existingError.message); return null; }
   const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const stopWords = new Set(["a", "an", "and", "apply", "complete", "day", "do", "focus", "for", "get", "in", "next", "one", "the", "this", "tomorrow", "to", "with"]);
+  const stopWords = new Set(["a", "an", "and", "apply", "complete", "day", "do", "focus", "for", "get", "in", "next", "one", "the", "this", "tomorrow", "to", "with", "advance"]);
   const canonicalToken = (token) => {
     const aliases = { analysis: "review", analyze: "review", analytical: "review", book: "read", chapter: "read", chapters: "read", gym: "workout", training: "workout", trade: "trade", trades: "trade", trading: "trade", journaled: "journal", journaling: "journal", rehab: "recovery", rehabilitation: "recovery", publishing: "content", publish: "content" };
     const mapped = aliases[token] || token;
     return mapped.length > 4 && mapped.endsWith("s") ? mapped.slice(0, -1) : mapped;
   };
   const meaningfulTokens = (value) => new Set(normalize(value).split(" ").map(canonicalToken).filter((token) => token && !stopWords.has(token)));
-  const focusTokens = meaningfulTokens(title);
-  const strongTokens = new Set(["recovery", "workout", "read", "journal", "trade", "chart", "market", "risk", "setup", "content", "sleep", "morning", "debrief"]);
-  const similarFocus = (candidateTitle) => {
-    const candidateTokens = meaningfulTokens(candidateTitle);
-    if (!focusTokens.size || !candidateTokens.size) return false;
-    const shared = [...focusTokens].filter((token) => candidateTokens.has(token));
-    if (!shared.length) return false;
-    if (shared.length >= 2) return true;
-    const smallerSize = Math.min(focusTokens.size, candidateTokens.size);
-    return smallerSize === 1 && strongTokens.has(shared[0]);
-  };
-  const duplicate = (existing || []).some((row) => {
+  const focusTokens = meaningfulTokens(suggestedTitle);
+  const candidates = (existing || []).filter((row) => {
     const status = String(row.status || "").toLowerCase();
-    if (Boolean(row.completed) || ["complete", "completed", "done"].includes(status)) return false;
+    const isAdvisoryShadow = /^jarvis reference:/i.test(String(row.brief || "")) && /alfred reference:/i.test(String(row.brief || ""));
+    if (Boolean(row.completed) || ["complete", "completed", "done"].includes(status) || isAdvisoryShadow) return false;
+    if (/(?:today|tomorrow)'?s focus|complete evening debrief/i.test(String(row.title || ""))) return false;
     const isNextDay = dateOnly(row.scheduled_date) === nextDate || dateOnly(row.operation_date) === nextDate;
     const isUnscheduledQueue = !row.scheduled_date && ["", "queued", "scheduled", "ongoing"].includes(status);
-    return (isNextDay || isUnscheduledQueue) && similarFocus(row.title);
+    return isNextDay || isUnscheduledQueue;
   });
-  if (duplicate) return null;
-  const { data, error } = await supabase.from("operations").insert({
-    user_id: userId,
-    title,
-    category: focusCategory(title, brief),
-    brief,
-    status: "Queued",
-    completed: false,
-    scheduled_date: nextDate,
-    operation_date: nextDate,
-    scheduled_time: null,
-    scheduled_end_date: null,
-    schedule_mode: "one_time",
-    is_daily: false,
-    mission_id: null,
-    allow_unlinked: false,
-    metric_key: null,
-  }).select().single();
-  if (error) { console.warn("Could not queue tomorrow's focus operation", error.message); return null; }
-  window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "ai-tomorrow-focus", operation: data } }));
-  return data;
+  const selected = candidates.map((row) => {
+    const candidateTokens = meaningfulTokens(`${row.title} ${row.brief || ""}`);
+    const shared = [...focusTokens].filter((token) => candidateTokens.has(token)).length;
+    const exact = normalize(row.title) === normalize(suggestedTitle) ? 100 : 0;
+    const scheduled = dateOnly(row.scheduled_date) === nextDate || dateOnly(row.operation_date) === nextDate ? 1 : 0;
+    return { row, score: exact + shared * 10 + scheduled };
+  }).filter((item) => item.score > 0).sort((left, right) => right.score - left.score)[0]?.row || null;
+  if (!selected) {
+    delete focus.operation_id;
+    return null;
+  }
+  focus.operation_id = selected.id;
+  focus.operation_title = selected.title;
+  return selected;
 }
 
 function ensureScanOverlay() {
@@ -554,10 +542,10 @@ async function run(mode = "scan") {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "The advisory engine is unavailable.");
     latestAdvisory = payload.advisory;
+    if (bedtime) await resolveTomorrowFocusOperation(latestAdvisory, operatingDate, session.user.id);
     paintLatestAdvisory();
     const savedSuggestions = await retireUnsupportedSuggestions(await persist(latestAdvisory, bedtime ? "bedtime" : (mode === "morning" || mode === "signal" || mode === "evening" ? mode : "scan"), { readOnly: bedtime, operatingDate, bedtimeAt }));
     if (bedtime) {
-      await queueTomorrowFocus(latestAdvisory, operatingDate, session.user.id);
       rememberBedtime(operatingDate, bedtimeAt, session.user.id);
       await loadSuggestions();
       return;
