@@ -401,8 +401,12 @@ function gymPlanForDay(operationDay = operatingDayKey(), records = operations) {
   const recentSlots = history.slice(-GYM_MAX_CONSECUTIVE_TRAINING_DAYS);
   const trainingStreak = recentSlots.length === GYM_MAX_CONSECUTIVE_TRAINING_DAYS && recentSlots.every(isGymTrainingSlot);
   const mustTrainToFinishWeek = daysRemaining <= workoutsRemaining;
+  // A recovery day can move around the week, but it cannot displace the last
+  // uncompleted split. Without this guard, a three-day streak on Saturday can
+  // make Upper Body wait until Sunday even when Friday was Lower Body.
+  const canInsertAutomaticRest = workoutsRemaining > 1;
   const shouldRest = trainingDays >= GYM_WEEKLY_SPLITS.length
-    || (!mustTrainToFinishWeek && restDays < GYM_REST_DAYS_PER_WEEK && trainingStreak);
+    || (!mustTrainToFinishWeek && canInsertAutomaticRest && restDays < GYM_REST_DAYS_PER_WEEK && trainingStreak);
   return shouldRest ? "Rest" : (GYM_WEEKLY_SPLITS[trainingDays] || "Rest");
 }
 const gymOperationForDay = (operationDay = operatingDayKey(), records = operations) => {
