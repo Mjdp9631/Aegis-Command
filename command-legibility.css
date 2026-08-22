@@ -307,3 +307,12 @@
   #adviser-panel .evening-columns p { font-size: 13px; }
   #command > .command-stage > .content-grid .panel-head h3 { font-size: 20px; }
 }
+/* One scrollbar language for every AEGIS surface: logs, ledgers, tables,
+   dialogs, editors, calendars, and any later scrollable panel. */
+:root{--aegis-scroll-track:rgba(4,13,24,.84);--aegis-scroll-thumb-top:rgba(112,196,255,.9);--aegis-scroll-thumb-bottom:rgba(213,158,74,.82);--aegis-scroll-edge:rgba(161,213,252,.2)}
+html,body,*{scrollbar-width:thin!important;scrollbar-color:var(--aegis-scroll-thumb-top) var(--aegis-scroll-track)!important}
+html::-webkit-scrollbar,body::-webkit-scrollbar,*::-webkit-scrollbar{width:8px!important;height:8px!important}
+html::-webkit-scrollbar-track,body::-webkit-scrollbar-track,*::-webkit-scrollbar-track{background:var(--aegis-scroll-track)!important;border:1px solid var(--aegis-scroll-edge)!important;border-radius:99px!important}
+html::-webkit-scrollbar-thumb,body::-webkit-scrollbar-thumb,*::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--aegis-scroll-thumb-top),var(--aegis-scroll-thumb-bottom))!important;border:2px solid var(--aegis-scroll-track)!important;border-radius:99px!important;box-shadow:0 0 10px rgba(103,191,255,.18)!important}
+html::-webkit-scrollbar-thumb:hover,body::-webkit-scrollbar-thumb:hover,*::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,#dff3ff,#f2c878)!important;box-shadow:0 0 13px rgba(103,191,255,.4)!important}
+html::-webkit-scrollbar-corner,body::-webkit-scrollbar-corner,*::-webkit-scrollbar-corner{background:var(--aegis-scroll-track)!important}
