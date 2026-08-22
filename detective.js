@@ -376,6 +376,119 @@ function renderBalanceSummary() {
   summary.querySelector("[data-account-funded-profit]").textContent = money(fundedProfit);
 }
 
+let accountCalendarMonth = null;
+let accountCalendarScope = localStorage.getItem("aegis.account-calendar-scope") || "all";
+
+function accountCalendarDateKey(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" })
+    .formatToParts(date).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function accountDollarLabel(value) {
+  const amount = cents(value);
+  return `${amount > 0 ? "+" : amount < 0 ? "-" : ""}${money(Math.abs(amount))}`;
+}
+
+function accountCalendarEvents() {
+  const linkedTradeIds = new Set(groupTradeLinks.map((link) => String(link.trade_id)));
+  const withdrawalsById = new Map(groupWithdrawals.map((withdrawal) => [String(withdrawal.id), withdrawal]));
+  const events = [];
+
+  accountBalances.forEach((account) => {
+    const entries = [
+      ...accountDeposits.filter((deposit) => String(deposit.account_id) === String(account.id)).map((deposit) => ({ type: "deposit", at: deposit.deposited_at || deposit.created_at, amount: Number(deposit.amount_usd || 0) })),
+      ...withdrawalAllocations.filter((allocation) => String(allocation.account_id) === String(account.id)).map((allocation) => {
+        const withdrawal = withdrawalsById.get(String(allocation.withdrawal_id));
+        return { type: "withdrawal", at: withdrawal?.withdrawn_at || allocation.created_at, amount: Number(allocation.gross_deduction_usd || 0), groupId: withdrawal?.group_id || null };
+      }),
+      ...groupTradeAllocations.filter((allocation) => String(allocation.account_id) === String(account.id)).map((allocation) => {
+        const link = groupTradeLinks.find((item) => String(item.id) === String(allocation.group_trade_link_id));
+        const trade = loadedTrades.find((item) => String(item.id) === String(link?.trade_id));
+        return { type: "pnl", at: trade?.traded_at || trade?.created_at || link?.created_at, amount: Number(allocation.pnl_usd || 0), groupId: link?.group_id || null };
+      }),
+      ...accountTestTrades.filter((trade) => String(trade.account_id) === String(account.id)).map((trade) => ({ type: "pnl", at: trade.traded_at || trade.created_at, amount: Number(trade.pnl_usd || 0), groupId: groupForAccountAt(account.id, trade.traded_at || trade.created_at)?.id || null })),
+      ...accountTrades(account.account_name).filter((trade) => !linkedTradeIds.has(String(trade.id))).map((trade) => ({ type: "percent", at: trade.traded_at || trade.created_at, percent: Number(trade.pnl_percent || 0), groupId: groupForAccountAt(account.id, trade.traded_at || trade.created_at)?.id || null })),
+    ].filter((entry) => entry.at && !Number.isNaN(new Date(entry.at).getTime()))
+      .sort((left, right) => new Date(left.at) - new Date(right.at));
+
+    let balance = Number(account.starting_balance || 0);
+    entries.forEach((entry) => {
+      if (entry.type === "deposit") {
+        balance += entry.amount;
+        return;
+      }
+      if (entry.type === "withdrawal") {
+        balance -= entry.amount;
+        events.push({ type: "withdrawal", accountId: account.id, groupId: entry.groupId, at: entry.at, amount: entry.amount });
+        return;
+      }
+      const amount = entry.type === "percent" ? cents(balance * entry.percent / 100) : cents(entry.amount);
+      balance += amount;
+      events.push({ type: "pnl", accountId: account.id, groupId: entry.groupId, at: entry.at, amount });
+    });
+  });
+  return events;
+}
+
+function accountCalendarInScope(event) {
+  if (accountCalendarScope === "all") return true;
+  const [kind, id] = accountCalendarScope.split(":");
+  return kind === "account" ? String(event.accountId) === id : kind === "group" && String(event.groupId) === id;
+}
+
+function renderAccountCalendar() {
+  const root = $("#account-calendar");
+  if (!root) return;
+  if (!accountCalendarMonth) {
+    const today = new Date();
+    accountCalendarMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1, 12));
+  }
+  const scopeOptions = [
+    '<option value="all">All accounts</option>',
+    ...accountGroups.map((group) => `<option value="group:${group.id}">Group · ${escapeHtml(group.name)}</option>`),
+    ...accountBalances.map((account) => `<option value="account:${account.id}">Account · ${escapeHtml(account.account_name)}</option>`),
+  ].join("");
+  if (!accountCalendarScope || !scopeOptions.includes(`value="${accountCalendarScope}"`)) accountCalendarScope = "all";
+  const year = accountCalendarMonth.getUTCFullYear();
+  const month = accountCalendarMonth.getUTCMonth();
+  const firstDay = new Date(Date.UTC(year, month, 1, 12));
+  const monthEnd = new Date(Date.UTC(year, month + 1, 0, 12));
+  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const grouped = new Map();
+  accountCalendarEvents().filter(accountCalendarInScope).forEach((event) => {
+    const key = accountCalendarDateKey(event.at);
+    if (!key.startsWith(monthKey)) return;
+    const day = grouped.get(key) || { pnl: 0, withdrawals: 0, count: 0 };
+    if (event.type === "withdrawal") day.withdrawals += event.amount;
+    else { day.pnl += event.amount; day.count += 1; }
+    grouped.set(key, day);
+  });
+  const daysInGrid = Math.ceil((firstDay.getUTCDay() + monthEnd.getUTCDate()) / 7) * 7;
+  const calendarDays = Array.from({ length: daysInGrid }, (_, index) => {
+    const day = index - firstDay.getUTCDay() + 1;
+    if (day < 1 || day > monthEnd.getUTCDate()) return '<div class="account-calendar-day empty" aria-hidden="true"></div>';
+    const data = grouped.get(`${monthKey}-${String(day).padStart(2, "0")}`);
+    const tone = data?.pnl > 0 ? "positive" : data?.pnl < 0 ? "negative" : data?.count ? "flat" : "";
+    return `<article class="account-calendar-day ${tone}"><span>${day}</span>${data?.count ? `<strong>${accountDollarLabel(data.pnl)}</strong><small>${data.count} PnL event${data.count === 1 ? "" : "s"}</small>` : ""}${data?.withdrawals ? `<em>Withdrawal ${money(data.withdrawals)}</em>` : ""}</article>`;
+  }).join("");
+  const weekCount = daysInGrid / 7;
+  const weekTotals = Array.from({ length: weekCount }, (_, week) => {
+    const totals = Array.from({ length: 7 }, (_, offset) => {
+      const day = week * 7 + offset - firstDay.getUTCDay() + 1;
+      return day < 1 || day > monthEnd.getUTCDate() ? null : grouped.get(`${monthKey}-${String(day).padStart(2, "0")}`) || null;
+    }).filter(Boolean).reduce((total, day) => ({ pnl: total.pnl + day.pnl, withdrawals: total.withdrawals + day.withdrawals, count: total.count + day.count }), { pnl: 0, withdrawals: 0, count: 0 });
+    const tone = totals.pnl > 0 ? "positive" : totals.pnl < 0 ? "negative" : "";
+    return `<article class="account-week-total ${tone}"><span>WEEK TOTAL</span><strong>${accountDollarLabel(totals.pnl)}</strong><small>${totals.count} PnL event${totals.count === 1 ? "" : "s"}</small>${totals.withdrawals ? `<em>Withdrawal ${money(totals.withdrawals)}</em>` : ""}</article>`;
+  }).join("");
+  const monthTotals = [...grouped.values()].reduce((total, day) => ({ pnl: total.pnl + day.pnl, withdrawals: total.withdrawals + day.withdrawals, count: total.count + day.count }), { pnl: 0, withdrawals: 0, count: 0 });
+  const monthName = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(firstDay);
+  root.innerHTML = `<div class="account-calendar-head"><div><p class="eyebrow amber">ACCOUNT CASH CALENDAR</p><h3>${monthName}</h3></div><div class="account-calendar-controls"><select data-account-calendar-scope aria-label="Account calendar scope">${scopeOptions}</select><button type="button" data-account-calendar="previous" aria-label="Previous month">‹</button><button type="button" data-account-calendar="current">This month</button><button type="button" data-account-calendar="next" aria-label="Next month">›</button></div></div><div class="account-calendar-stats"><b class="${monthTotals.pnl > 0 ? "result-positive" : monthTotals.pnl < 0 ? "result-negative" : ""}">${accountDollarLabel(monthTotals.pnl)} realized PnL</b><span>${monthTotals.count} PnL event${monthTotals.count === 1 ? "" : "s"}</span>${monthTotals.withdrawals ? `<em>${money(monthTotals.withdrawals)} withdrawn</em>` : ""}<small>Withdrawals are cash flow, not trading PnL.</small></div><div class="account-calendar-body"><div class="account-calendar-main"><div class="account-calendar-weekdays"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div><div class="account-calendar-grid">${calendarDays}</div></div><aside class="account-week-totals" style="--account-week-count:${weekCount}"><span class="account-week-total-head">WEEKLY</span>${weekTotals}</aside></div>`;
+  root.querySelector("[data-account-calendar-scope]").value = accountCalendarScope;
+}
+
 function renderTheoreticalTradeControls() {
   const list = $("#account-balance-list");
   if (!list) return;
@@ -505,6 +618,7 @@ function renderGroupedAccountBalances() {
   renderAccountAdminControls();
   renderEarnedSummary();
   renderBalanceSummary();
+  renderAccountCalendar();
   renderTheoreticalTradeControls();
   setTimeout(decorateGroupAllocationForms, 0);
   setTimeout(decorateGroupTradeAllocations, 0);
@@ -1474,6 +1588,13 @@ function init() {
   });
   document.addEventListener("input", (event) => { const input = event.target.closest("[data-withdrawal-allocation]"); if (input) updateWithdrawalPreview(input.dataset.withdrawalAllocation); });
   document.addEventListener("change", (event) => {
+    const accountCalendarScopeControl = event.target.closest("[data-account-calendar-scope]");
+    if (accountCalendarScopeControl) {
+      accountCalendarScope = accountCalendarScopeControl.value;
+      localStorage.setItem("aegis.account-calendar-scope", accountCalendarScope);
+      renderAccountCalendar();
+      return;
+    }
     const move = event.target.closest("[data-account-move]");
     if (move) moveAccount(move.dataset.accountMove, move.value);
     const status = event.target.closest("[data-group-status]");
@@ -1481,6 +1602,16 @@ function init() {
   });
   setDetectiveTab(activeDetectiveTab);
   document.addEventListener("click", (event) => {
+    const accountCalendarControl = event.target.closest("[data-account-calendar]");
+    if (accountCalendarControl) {
+      const action = accountCalendarControl.dataset.accountCalendar;
+      const current = accountCalendarMonth || new Date();
+      if (action === "previous") accountCalendarMonth = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 1, 1, 12));
+      if (action === "next") accountCalendarMonth = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 1, 12));
+      if (action === "current") { const now = new Date(); accountCalendarMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 12)); }
+      renderAccountCalendar();
+      return;
+    }
     const calendarControl = event.target.closest("[data-journal-calendar]");
     if (calendarControl) {
       const action = calendarControl.dataset.journalCalendar;
