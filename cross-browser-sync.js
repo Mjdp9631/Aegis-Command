@@ -13,6 +13,8 @@ const tableEvents = {
   health_food_logs: "mastery",
   deep_work_logs: "mastery",
   business_projects: "enterprise",
+  business_capital_entries: "enterprise",
+  business_assets: "enterprise",
   content_items: "enterprise",
   account_balances: "accounts",
   account_groups: "accounts",
