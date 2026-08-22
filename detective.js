@@ -1145,7 +1145,12 @@ function buildFilters() {
   const filterBar = document.createElement("section");
   filterBar.className = "detective-filter-bar";
   filterBar.innerHTML = `<div class="filter-heading"><p class="eyebrow blue-text">02 — FILTER INTELLIGENCE</p><small id="filter-result-count">All trades</small></div><div class="filter-controls"><label>Pair <select data-filter="pair"><option value="">All pairs</option>${selectOptions("#detective-pair")}</select></label><label>Setup <select data-filter="setup"><option value="">All setups</option>${selectOptions("#detective-setup")}</select></label><label>CB Hour <select data-filter="cb_hour"><option value="">All CB hours</option>${selectOptions("#detective-cb-hour")}</select></label><label>Session time <select data-filter="session_time"><option value="">All sessions</option>${selectOptions("#detective-session-time")}</select></label><label>Type <select data-filter="trade_type"><option value="">All types</option>${selectOptions("#detective-type")}</select></label><label>Market condition <select data-filter="market_condition"><option value="">All conditions</option>${selectOptions("#detective-market-condition")}</select></label><label>Position <select data-filter="position"><option value="">Long + Short</option>${selectOptions("#detective-position")}</select></label><button type="button" class="clear-filters">Clear filters</button></div>`;
-  $(".trade-panel").insertBefore(filterBar, $(".trade-panel .table-wrap"));
+  const journalWindow = $(".trade-panel .journal-trade-window");
+  const tradeTable = $(".trade-panel .table-wrap");
+  // The table now lives inside its own scroll surface. Keep filters in that
+  // surface, but insert them relative to their actual parent so startup does
+  // not abort before the stored journal can load.
+  journalWindow?.insertBefore(filterBar, tradeTable);
   const theoreticalToggle = document.createElement("label");
   theoreticalToggle.className = "theoretical-analysis-toggle";
   theoreticalToggle.innerHTML = '<input type="checkbox" id="filter-include-theoretical" /> Include theoretical trades <small>Detective calculations only</small>';
