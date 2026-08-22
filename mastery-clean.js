@@ -1047,11 +1047,14 @@ async function saveSystem(event) {
 
 async function load() {
   if (db) {
-    const [entryResult, missionResult, workResult, challengeResult, sessionResult, setResult, weightResult, foodResult] = await Promise.all([
+    const loadSnapshot = () => Promise.all([
       db.from("mastery_entries").select("*").order("created_at", { ascending: false }), db.from("missions").select("*"), db.from("deep_work_logs").select("*").order("created_at", { ascending: false }).limit(30), db.from("mastery_challenges").select("*").order("created_at", { ascending: false }).limit(30),
       db.from("training_sessions").select("*").order("logged_on", { ascending: false }).limit(1000), db.from("training_sets").select("*").order("logged_on", { ascending: false }).limit(1000),
       db.from("health_weight_logs").select("*").order("logged_on", { ascending: false }).limit(60), db.from("health_food_logs").select("*").order("logged_on", { ascending: false }).limit(240)
     ]);
+    const [entryResult, missionResult, workResult, challengeResult, sessionResult, setResult, weightResult, foodResult] = window.AEGIS_DATA_GUARD
+      ? await window.AEGIS_DATA_GUARD.run("mastery:main-snapshot", loadSnapshot)
+      : await loadSnapshot();
     entries = entryResult.data || []; deepWork = workResult.data || []; challenges = challengeResult.data || [];
     trainingSessions = sessionResult.data || []; trainingSets = setResult.data || []; weightLogs = weightResult.data || []; foodLogs = foodResult.data || [];
     await loadCapabilities();

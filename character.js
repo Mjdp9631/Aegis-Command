@@ -785,7 +785,7 @@ async function load() {
   try {
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [operationsResult, occurrenceResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, campaignResult, reviewResult, challengeResult, capabilityLogsResult, capabilityBenchmarkRewardsResult, financialFoundationResult] = await Promise.all([
+  const loadSnapshot = () => Promise.all([
     supabase.from("operations").select("id, title, scheduled_date, operation_date, completed_on, completed, status, schedule_mode, scheduled_time, mission_id"),
     supabase.from("operation_occurrences").select("id, operation_id, occurrence_date, completed_on, completed, status, scheduled_time"),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }),
@@ -801,6 +801,9 @@ async function load() {
     supabase.from("capability_benchmark_completion_ledger").select("*, capability_benchmarks(level, xp_reward, capability_skills(skill_type, title))").order("created_at", { ascending: false }),
     supabase.from("financial_foundations").select("*").maybeSingle()
   ]);
+  const [operationsResult, occurrenceResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, campaignResult, reviewResult, challengeResult, capabilityLogsResult, capabilityBenchmarkRewardsResult, financialFoundationResult] = window.AEGIS_DATA_GUARD
+    ? await window.AEGIS_DATA_GUARD.run("character:snapshot", loadSnapshot)
+    : await loadSnapshot();
   xpCampaign = campaignResult.data || null;
   directorReviews = reviewResult.data || [];
   xpCampaignError = campaignResult.error ? "XP campaign setup is awaiting its one-time database migration." : null;

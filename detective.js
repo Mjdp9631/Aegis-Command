@@ -1246,7 +1246,10 @@ async function loadTrades() {
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user?.id;
   if (!userId) return;
-  const { data, error } = await supabase.from("trade_debriefs").select("*").eq("user_id", userId).order("traded_at", { ascending: false });
+  const loadSnapshot = () => supabase.from("trade_debriefs").select("*").eq("user_id", userId).order("traded_at", { ascending: false });
+  const { data, error } = window.AEGIS_DATA_GUARD
+    ? await window.AEGIS_DATA_GUARD.run("detective:trades", loadSnapshot)
+    : await loadSnapshot();
   if (error) {
     console.error(error);
     return;

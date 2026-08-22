@@ -245,7 +245,7 @@ async function load() {
   try {
   const { data: session } = await supabase.auth.getSession();
   if (!session.session) return;
-  const [tradesResult, operationsResult, occurrenceResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, challengeResult, capabilityLogsResult, foundationResult, campaignResult, accountsResult, groupsResult, membershipsResult, tradeLinksResult, tradeAllocationsResult, withdrawalsResult, allocationsResult] = await Promise.all([
+  const loadSnapshot = () => Promise.all([
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }),
     supabase.from("operations").select("id, title, scheduled_date, operation_date, completed_on, completed, schedule_mode"),
     supabase.from("operation_occurrences").select("id, operation_id, occurrence_date, completed_on, completed"),
@@ -266,6 +266,9 @@ async function load() {
     supabase.from("account_group_withdrawals").select("*").order("withdrawn_at", { ascending: false }),
     supabase.from("account_group_withdrawal_allocations").select("*").order("created_at", { ascending: true })
   ]);
+  const [tradesResult, operationsResult, occurrenceResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, challengeResult, capabilityLogsResult, foundationResult, campaignResult, accountsResult, groupsResult, membershipsResult, tradeLinksResult, tradeAllocationsResult, withdrawalsResult, allocationsResult] = window.AEGIS_DATA_GUARD
+    ? await window.AEGIS_DATA_GUARD.run("dashboard:snapshot", loadSnapshot)
+    : await loadSnapshot();
   dashboardData = { trades: tradesResult.data || [], operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], capabilityLogs: capabilityLogsResult.data || [], financialFoundation: foundationResult.data || null, mastery: masteryResult.data || [], xpCampaign: campaignResult.data || null, accounts: accountsResult.data || [] };
   accountLedger = { groups: groupsResult.data || [], memberships: membershipsResult.data || [], tradeLinks: tradeLinksResult.data || [], tradeAllocations: tradeAllocationsResult.data || [], withdrawals: withdrawalsResult.data || [], allocations: allocationsResult.data || [] };
   render();

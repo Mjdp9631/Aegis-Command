@@ -316,13 +316,16 @@ async function load() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [missionsResult, operationsResult, occurrenceResult, familyLinksResult, legacyLinksResult] = await Promise.all([
+  const loadSnapshot = () => Promise.all([
     supabase.from("missions").select("*").order("created_at", { ascending: false }),
     supabase.from("operations").select("id, mission_id, title, category, schedule_mode, scheduled_date, operation_date, scheduled_time, completed_on, status, completed, operation_family_key, allow_unlinked"),
     supabase.from("operation_occurrences").select("*"),
     supabase.from("operation_family_mission_links").select("operation_family_key, mission_id"),
     supabase.from("operation_mission_links").select("operation_id, mission_id")
   ]);
+  const [missionsResult, operationsResult, occurrenceResult, familyLinksResult, legacyLinksResult] = window.AEGIS_DATA_GUARD
+    ? await window.AEGIS_DATA_GUARD.run("command-center:missions", loadSnapshot)
+    : await loadSnapshot();
   if (!missionsResult.error) {
     const familyLinksAvailable = !familyLinksResult.error;
     const legacyLinksAvailable = !familyLinksAvailable && !legacyLinksResult.error;

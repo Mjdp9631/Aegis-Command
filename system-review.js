@@ -189,7 +189,7 @@ async function load() {
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user?.id;
     if (!userId) return;
-  const [operationsResult, occurrencesResult, missionsResult, tradesResult, masteryResult, trainingResult, projectsResult, recoveryResult] = await Promise.all([
+  const loadSnapshot = () => Promise.all([
     supabase.from("operations").select("*").eq("user_id", userId),
     supabase.from("operation_occurrences").select("*").eq("user_id", userId),
     supabase.from("missions").select("*").eq("user_id", userId),
@@ -199,6 +199,9 @@ async function load() {
     supabase.from("business_projects").select("*").eq("user_id", userId),
     supabase.from("recovery_logs").select("*").eq("user_id", userId)
   ]);
+  const [operationsResult, occurrencesResult, missionsResult, tradesResult, masteryResult, trainingResult, projectsResult, recoveryResult] = window.AEGIS_DATA_GUARD
+    ? await window.AEGIS_DATA_GUARD.run("system-review:snapshot", loadSnapshot)
+    : await loadSnapshot();
   const data = { operations: operationsResult.data || [], occurrences: occurrencesResult.data || [], missions: missionsResult.data || [], trades: tradesResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], projects: projectsResult.data || [], recoveryLogs: recoveryResult.data || [] };
   render({ data, issues: qualityReport(data) });
   } finally {

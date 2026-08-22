@@ -76,7 +76,7 @@ async function load() {
   try {
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [missionsResult, tradesResult, projectsResult, contentResult, recoveryResult, operationsResult, occurrenceResult, masteryResult, trainingResult] = await Promise.all([
+  const loadSnapshot = () => Promise.all([
     supabase.from("missions").select("*"),
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }),
     supabase.from("business_projects").select("*"),
@@ -87,6 +87,9 @@ async function load() {
     supabase.from("mastery_entries").select("*"),
     supabase.from("training_sessions").select("id")
   ]);
+  const [missionsResult, tradesResult, projectsResult, contentResult, recoveryResult, operationsResult, occurrenceResult, masteryResult, trainingResult] = window.AEGIS_DATA_GUARD
+    ? await window.AEGIS_DATA_GUARD.run("summary:snapshot", loadSnapshot)
+    : await loadSnapshot();
   const todayOperations = operationsForDay(operationsResult.data || [], occurrenceResult.data || [], operatingDayKey());
   render({ missions: missionsResult.data || [], trades: tradesResult.data || [], projects: projectsResult.data || [], content: contentResult.data || [], recoveryLogs: recoveryResult.data || [], operations: todayOperations, masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [] });
   } finally {

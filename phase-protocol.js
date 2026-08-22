@@ -85,6 +85,7 @@ const phases = [
 let currentPhase = 0;
 let existingMissionTitles = new Set();
 let phaseSyncChannel = null;
+let phaseLoadInFlight = null;
 
 function currentLevels() {
   try { return JSON.parse(localStorage.getItem("aegis-character-levels") || "{}"); }
@@ -165,16 +166,31 @@ async function persistPhase(nextPhase) {
 }
 
 async function load() {
+  if (phaseLoadInFlight) return phaseLoadInFlight;
+  phaseLoadInFlight = (async () => {
   currentPhase = Number(localStorage.getItem("aegis-active-phase") || 0);
   let userId = null;
   if (db) {
     const { data: sessionData } = await db.auth.getSession();
     userId = sessionData.session?.user?.id;
     if (userId) {
-      const { data, error } = await db.from("phase_protocols").select("active_phase").eq("user_id", userId).maybeSingle();
+      const loadSnapshot = async () => {
+        const [phaseResult, missionsResult] = await Promise.all([
+          db.from("phase_protocols").select("active_phase").eq("user_id", userId).maybeSingle(),
+          db.from("missions").select("title").eq("user_id", userId),
+        ]);
+        return { phaseResult, missionsResult };
+      };
+      const { phaseResult, missionsResult } = window.AEGIS_DATA_GUARD
+        ? await window.AEGIS_DATA_GUARD.run("phase-protocol:snapshot", loadSnapshot)
+        : await loadSnapshot();
+      const { data, error } = phaseResult;
       if (!error && data) currentPhase = Number(data.active_phase) || 0;
-      if (!error && !data) await db.from("phase_protocols").insert({ user_id: userId, active_phase: 0 });
-      const { data: missions } = await db.from("missions").select("title").eq("user_id", userId);
+      if (!error && !data) {
+        await db.from("phase_protocols").insert({ user_id: userId, active_phase: 0 });
+        window.AEGIS_DATA_GUARD?.invalidate("phase-protocol:snapshot");
+      }
+      const missions = missionsResult.data;
       existingMissionTitles = new Set((missions || []).map((mission) => String(mission.title || "").trim().toLowerCase()));
     }
   }
@@ -184,6 +200,12 @@ async function load() {
     phaseSyncChannel = db.channel(`aegis-phase-sync-${userId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "phase_protocols", filter: `user_id=eq.${userId}` }, () => { void load(); })
       .subscribe();
+  }
+  })();
+  try {
+    return await phaseLoadInFlight;
+  } finally {
+    phaseLoadInFlight = null;
   }
 }
 

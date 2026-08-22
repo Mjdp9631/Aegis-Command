@@ -967,10 +967,13 @@ async function refreshDurableOperationState() {
   }
   operationSyncInFlight = true;
   try {
-    const [operationResult, occurrenceResult] = await Promise.all([
+    const loadSnapshot = () => Promise.all([
       client.from("operations").select("*").eq("user_id", currentUser.id).order("scheduled_date", { ascending: true }).order("created_at", { ascending: true }),
       client.from("operation_occurrences").select("*").eq("user_id", currentUser.id),
     ]);
+    const [operationResult, occurrenceResult] = window.AEGIS_DATA_GUARD
+      ? await window.AEGIS_DATA_GUARD.run("operations:durable-snapshot", loadSnapshot)
+      : await loadSnapshot();
     if (operationResult.error) return;
     const remoteOperations = Array.isArray(operationResult.data) ? operationResult.data : null;
     const remoteOccurrences = occurrenceResult.error
