@@ -957,10 +957,19 @@ function renderJournalCalendar(trades) {
     const tone = data?.pnl > 0 ? "positive" : data?.pnl < 0 ? "negative" : data ? "flat" : "";
     return `<article class="journal-calendar-day ${tone}"><span>${day}</span>${data ? `<strong>${journalPnlLabel(data.pnl)}</strong><small>${data.count} trade${data.count === 1 ? "" : "s"}</small>` : ""}</article>`;
   }).join("");
+  const weekCount = daysInGrid / 7;
+  const weekTotals = Array.from({ length: weekCount }, (_, week) => {
+    const totals = Array.from({ length: 7 }, (_, offset) => {
+      const day = week * 7 + offset - firstDay.getUTCDay() + 1;
+      if (day < 1 || day > monthEnd.getUTCDate()) return null;
+      return grouped.get(`${monthKey}-${String(day).padStart(2, "0")}`) || null;
+    }).filter(Boolean).reduce((total, day) => ({ count: total.count + day.count, pnl: total.pnl + day.pnl }), { count: 0, pnl: 0 });
+    return `<article class="journal-week-total ${totals.pnl > 0 ? "positive" : totals.pnl < 0 ? "negative" : ""}"><span>WEEK TOTAL</span><strong>${journalPnlLabel(totals.pnl)}</strong><small>${totals.count} trade${totals.count === 1 ? "" : "s"}</small></article>`;
+  }).join("");
   const monthTrades = [...grouped.values()].reduce((total, day) => total + day.count, 0);
   const monthPnl = [...grouped.values()].reduce((total, day) => total + day.pnl, 0);
   const monthName = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(firstDay);
-  root.innerHTML = `<div class="journal-calendar-head"><div><p class="eyebrow blue-text">03 — JOURNAL CALENDAR</p><h3>${monthName}</h3></div><div class="journal-calendar-actions"><button type="button" data-journal-calendar="previous" aria-label="Previous month">‹</button><button type="button" data-journal-calendar="current">This month</button><button type="button" data-journal-calendar="next" aria-label="Next month">›</button></div></div><div class="journal-calendar-stats"><span>${monthTrades} trade${monthTrades === 1 ? "" : "s"}</span><b class="${monthPnl > 0 ? "result-positive" : monthPnl < 0 ? "result-negative" : ""}">${journalPnlLabel(monthPnl)} logged PnL</b><small>Reflects current journal filters</small></div><div class="journal-calendar-weekdays"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div><div class="journal-calendar-grid">${calendarDays}</div>`;
+  root.innerHTML = `<div class="journal-calendar-head"><div><p class="eyebrow blue-text">03 — JOURNAL CALENDAR</p><h3>${monthName}</h3></div><div class="journal-calendar-actions"><button type="button" data-journal-calendar="previous" aria-label="Previous month">‹</button><button type="button" data-journal-calendar="current">This month</button><button type="button" data-journal-calendar="next" aria-label="Next month">›</button></div></div><div class="journal-calendar-stats"><span>${monthTrades} trade${monthTrades === 1 ? "" : "s"}</span><b class="${monthPnl > 0 ? "result-positive" : monthPnl < 0 ? "result-negative" : ""}">${journalPnlLabel(monthPnl)} logged PnL</b><small>Reflects current journal filters</small></div><div class="journal-calendar-body"><div class="journal-calendar-main"><div class="journal-calendar-weekdays"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div><div class="journal-calendar-grid">${calendarDays}</div></div><aside class="journal-week-totals" style="--journal-week-count:${weekCount}"><span class="journal-week-total-head">WEEKLY</span>${weekTotals}</aside></div>`;
 }
 
 function clearTradeHoverFocus() {
