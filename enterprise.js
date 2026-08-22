@@ -300,6 +300,9 @@ async function saveProjectSteps(project, desiredTitles) {
     .filter((step) => String(step.project_id) === String(project.id))
     .sort((left, right) => Number(left.position || 0) - Number(right.position || 0));
   if (!desiredTitles.length) throw new Error("Add at least one ordered project step.");
+  if (new Set(desiredTitles.map((title) => title.toLowerCase())).size !== desiredTitles.length) {
+    throw new Error("Each project step needs a unique title so its linked operation can be kept in sync.");
+  }
 
   const changedCompleted = existing.some((step, index) => step.status === "Complete" && index < desiredTitles.length && step.title !== desiredTitles[index]);
   const removedCompleted = existing.slice(desiredTitles.length).some((step) => step.status === "Complete");
@@ -307,8 +310,36 @@ async function saveProjectSteps(project, desiredTitles) {
     throw new Error("Completed project steps are kept as history. Leave them unchanged; you can still edit, add, or remove pending steps.");
   }
 
-  const retained = existing.slice(0, desiredTitles.length);
-  const removed = existing.slice(desiredTitles.length);
+  // Match unchanged step titles first, regardless of position. This makes a
+  // middle-step removal delete that step's operation instead of renaming it
+  // into the following step and deleting an unrelated operation at the end.
+  const assignments = new Array(desiredTitles.length).fill(null);
+  const unmatched = new Set(existing);
+  existing.forEach((step, index) => {
+    if (step.status === "Complete") {
+      assignments[index] = step;
+      unmatched.delete(step);
+    }
+  });
+  desiredTitles.forEach((title, index) => {
+    if (assignments[index]) return;
+    const exact = [...unmatched].find((step) => step.status !== "Complete" && step.title === title);
+    if (exact) {
+      assignments[index] = exact;
+      unmatched.delete(exact);
+    }
+  });
+  const additions = [];
+  desiredTitles.forEach((title, index) => {
+    if (assignments[index]) return;
+    const replacement = [...unmatched].find((step) => step.status !== "Complete" && Number(step.position || 0) === index + 1)
+      || [...unmatched].find((step) => step.status !== "Complete");
+    if (replacement) {
+      assignments[index] = replacement;
+      unmatched.delete(replacement);
+    } else additions.push({ title, position: index + 1 });
+  });
+  const removed = [...unmatched];
   const removedOperationIds = removed.map((step) => step.operation_id).filter(Boolean);
   if (removedOperationIds.length) {
     const { error } = await supabase.from("operations").delete().in("id", removedOperationIds);
@@ -319,7 +350,8 @@ async function saveProjectSteps(project, desiredTitles) {
     if (error) throw error;
   }
 
-  for (const [index, step] of retained.entries()) {
+  for (const [index, step] of assignments.entries()) {
+    if (!step) continue;
     const title = desiredTitles[index];
     const changed = step.title !== title || Number(step.position) !== index + 1;
     if (!changed) continue;
@@ -334,17 +366,17 @@ async function saveProjectSteps(project, desiredTitles) {
     }
   }
 
-  const additions = desiredTitles.slice(existing.length);
   if (additions.length) {
-    const { error } = await supabase.from("business_project_steps").insert(additions.map((title, index) => ({
+    const { error } = await supabase.from("business_project_steps").insert(additions.map(({ title, position }) => ({
       project_id: project.id,
       title,
-      position: existing.length + index + 1,
+      position,
     })));
     if (error) throw error;
   }
   await syncProjectMissionTarget(project, desiredTitles.length);
   await advanceProjectFromSteps(project.id);
+  window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "enterprise-project-step-edit" } }));
 }
 
 function syncProjectReward() {
