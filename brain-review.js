@@ -48,9 +48,29 @@ function phaseZeroState() {
   return Object.fromEntries(phaseZeroAnswers.map((answer) => [answer.id, answer.value]));
 }
 
+function phaseZeroYesNo(id, title, question, pass, fail) {
+  return { id, title, question, choices: [{ label: pass, value: true }, { label: fail, value: false, stop: `No trade. ${fail}.` }] };
+}
+
+function typeThreeStep(prefix, title, context) {
+  const state = phaseZeroState();
+  const directionId = `${prefix}Direction`;
+  const takeId = `${prefix}TakeExtreme`;
+  const breakId = `${prefix}BreakOpposing`;
+  const pullbackId = `${prefix}Pullback50`;
+  if (!state[directionId]) return {
+    id: directionId, title, question: `What is the expected direction for this ${context}?`,
+    choices: [{ label: "Bullish", value: "bullish" }, { label: "Bearish", value: "bearish" }]
+  };
+  const bullish = state[directionId] === "bullish";
+  if (state[takeId] === undefined) return phaseZeroYesNo(takeId, `${title} - first break`, `Did price first take the prior ${bullish ? "high" : "low"}?`, `Yes - prior ${bullish ? "high" : "low"} taken`, `No prior ${bullish ? "high" : "low"} take`);
+  if (state[breakId] === undefined) return phaseZeroYesNo(breakId, `${title} - opposing break`, `Did it immediately break the previous ${bullish ? "low" : "high"}?`, `Yes - previous ${bullish ? "low" : "high"} broken`, `No immediate break of the previous ${bullish ? "low" : "high"}`);
+  if (state[pullbackId] === undefined) return phaseZeroYesNo(pullbackId, `${title} - 50% pullback`, "Did price pull back to 50% of that structure-breaking impulse?", "Yes - 50% pullback reached", "No 50% pullback");
+  return null;
+}
+
 function phaseZeroStep() {
   const state = phaseZeroState();
-  const yesNo = (id, title, question, pass, fail) => ({ id, title, question, choices: [{ label: pass, value: true }, { label: fail, value: false, stop: `No trade. ${fail}.` }] });
   if (!state.condition) return {
     id: "condition", title: "01 — Condition", question: "What market condition is active?",
     choices: [
@@ -61,14 +81,14 @@ function phaseZeroStep() {
     ]
   };
   if (state.condition === "ranging") {
-    if (state.rangeEdge === undefined) return yesNo("rangeEdge", "02 — Range location", "Is price at an edge of the established range?", "Yes — range extreme", "No — middle of range");
-    if (state.rangeShift === undefined) return yesNo("rangeShift", "03 — Confirmation", "Did the edge produce a Type 3 lower-timeframe shift?", "Yes — Type 3 shift confirmed", "No Type 3 shift");
-    if (state.rangeRoom === undefined) return yesNo("rangeRoom", "04 — Target and room", "Is there enough room to target the middle of the range with reasonable R:R?", "Yes — midpoint target is viable", "No reasonable room to midpoint");
+    if (state.rangeEdge === undefined) return phaseZeroYesNo("rangeEdge", "02 — Range location", "Is price at an edge of the established range?", "Yes — range extreme", "No — middle of range");
+    const typeThree = typeThreeStep("range", "03 — Type 3 confirmation", "range reversal"); if (typeThree) return typeThree;
+    if (state.rangeRoom === undefined) return phaseZeroYesNo("rangeRoom", "04 — Target and room", "Is there enough room to target the middle of the range with reasonable R:R?", "Yes — midpoint target is viable", "No reasonable room to midpoint");
   }
   if (state.condition === "trending") {
-    if (state.trendPullback === undefined) return yesNo("trendPullback", "02 — Pullback depth", "Is this a continuation after a pullback deeper than 50% of the prior extension?", "Yes — 50%+ pullback", "No — too extended / shallow");
-    if (state.trendShift === undefined) return yesNo("trendShift", "03 — Confirmation", "Did a Type 3 lower-timeframe shift confirm continuation?", "Yes — Type 3 shift confirmed", "No Type 3 shift");
-    if (state.trendRoom === undefined) return yesNo("trendRoom", "04 — Target and room", "Is there enough room for a reasonable R:R target before opposing structure?", "Yes — room is available", "No reasonable R:R room");
+    if (state.trendPullback === undefined) return phaseZeroYesNo("trendPullback", "02 — Pullback depth", "Is this a continuation after a pullback deeper than 50% of the prior extension?", "Yes — 50%+ pullback", "No — too extended / shallow");
+    const typeThree = typeThreeStep("trend", "03 — Type 3 confirmation", "trend continuation"); if (typeThree) return typeThree;
+    if (state.trendRoom === undefined) return phaseZeroYesNo("trendRoom", "04 — Target and room", "Is there enough room for a reasonable R:R target before opposing structure?", "Yes — room is available", "No reasonable R:R room");
   }
   if (state.condition === "trending-range") {
     if (!state.model) return {
@@ -80,14 +100,14 @@ function phaseZeroStep() {
       ]
     };
     if (state.model === "reversal") {
-      if (state.reversalExtension === undefined) return yesNo("reversalExtension", "03 — Reversal location", "Did price extend above the previous high (bullish) or below the previous low (bearish)?", "Yes — prior structure was exceeded", "No meaningful extension beyond prior structure");
-      if (state.reversalShift === undefined) return yesNo("reversalShift", "04 — Reversal confirmation", "Did a Type 3 lower-timeframe shift confirm the reversal?", "Yes — Type 3 shift confirmed", "No Type 3 shift");
-      if (state.reversalRoom === undefined) return yesNo("reversalRoom", "05 — Target and room", "Can the target sit at 50% of the extension that exceeded prior structure with reasonable R:R?", "Yes — extension 50% target is viable", "No reasonable room to the 50% target");
+      if (state.reversalExtension === undefined) return phaseZeroYesNo("reversalExtension", "03 — Reversal location", "Did price extend above the previous high (bullish) or below the previous low (bearish)?", "Yes — prior structure was exceeded", "No meaningful extension beyond prior structure");
+      const typeThree = typeThreeStep("reversal", "04 — Type 3 confirmation", "trending-range reversal"); if (typeThree) return typeThree;
+      if (state.reversalRoom === undefined) return phaseZeroYesNo("reversalRoom", "05 — Target and room", "Can the target sit at 50% of the extension that exceeded prior structure with reasonable R:R?", "Yes — extension 50% target is viable", "No reasonable room to the 50% target");
     }
     if (state.model === "continuation") {
-      if (state.continuationZone === undefined) return yesNo("continuationZone", "03 — Continuation location", "Is price between the 50% and 75% pullback of the prior extension?", "Yes — 50–75% pullback zone", "No — outside the defined pullback zone");
-      if (state.continuationShift === undefined) return yesNo("continuationShift", "04 — Continuation confirmation", "Did a Type 3 lower-timeframe shift confirm continuation?", "Yes — Type 3 shift confirmed", "No Type 3 shift");
-      if (state.continuationRoom === undefined) return yesNo("continuationRoom", "05 — Target and room", "Is there enough room for a reasonable R:R target before opposing structure?", "Yes — room is available", "No reasonable R:R room");
+      if (state.continuationZone === undefined) return phaseZeroYesNo("continuationZone", "03 — Continuation location", "Is price between the 50% and 75% pullback of the prior extension?", "Yes — 50–75% pullback zone", "No — outside the defined pullback zone");
+      const typeThree = typeThreeStep("continuation", "04 — Type 3 confirmation", "trending-range continuation"); if (typeThree) return typeThree;
+      if (state.continuationRoom === undefined) return phaseZeroYesNo("continuationRoom", "05 — Target and room", "Is there enough room for a reasonable R:R target before opposing structure?", "Yes — room is available", "No reasonable R:R room");
     }
   }
   return null;
@@ -114,6 +134,7 @@ function renderPhaseZeroPlaybook() {
   const root = $("#phase-zero-playbook");
   if (!root) return;
   root.innerHTML = `<div class="phase-zero-playbook-head"><div><p class="eyebrow amber">PHASE 0 / TRADING EXECUTION PLAYBOOK</p><h3>Condition decides the model.</h3><p>Read-only canonical rules. The checklist below applies the same rules without improvisation.</p></div><button class="primary compact" type="button" data-phase0-start>Run pre-trade checklist</button></div><div class="phase-zero-models"><article><span>01 / RANGING</span><h4>Reversal at the edge</h4><p>Wait for price at a range extreme and a Type 3 lower-timeframe shift. Target the middle of the range.</p><small>Invalid if price is in the middle, there is no shift, or the midpoint does not offer reasonable R:R.</small></article><article><span>02 / TRENDING</span><h4>Continuation after a real pullback</h4><p>Use continuation only after a pullback deeper than 50% of the prior extension and a Type 3 lower-timeframe shift.</p><small>Invalid if price is too trendy with no pullback, no shift appears, or opposing structure leaves insufficient R:R.</small></article><article><span>03 / TRENDING RANGE</span><h4>Two allowed models</h4><p><b>Reversal:</b> extension beyond prior high/low, then Type 3 shift; target 50% of that extension. <b>Continuation:</b> Type 3 shift in the 50–75% pullback of the prior extension.</p><small>Use only the offered model. No extension, no shift, or no room means no trade.</small></article></div><div class="phase-zero-invalidations"><b>Hard no-trade gates</b><span>Too trendy with no pullback</span><span>No Type 3 shift</span><span>No reasonable R:R to the defined target</span></div>`;
+  root.querySelector(".phase-zero-playbook-head")?.insertAdjacentHTML("afterend", '<div class="phase-zero-type-three"><b>Type 3 - required sequence</b><span><strong>Bullish:</strong> take a prior high, immediately break the previous low, then pull back to 50% of that impulse.</span><span><strong>Bearish:</strong> take a prior low, immediately break the previous high, then pull back to 50% of that impulse.</span></div>');
 }
 
 function renderReview(review, entry = null) {

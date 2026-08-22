@@ -25,7 +25,7 @@ These are the active, user-defined Phase 0 execution rules. For a Phase 0 review
 
 ### Required confirmation and target logic
 
-- Every eligible model needs a **Type 3 lower-timeframe shift**. No Type 3 shift means no trade.
+- Every eligible model needs a **Type 3 lower-timeframe shift**. No Type 3 shift means no trade. A bullish Type 3 first breaks a prior high, immediately breaks the previous low, then pulls back to 50% of that structure-breaking impulse. A bearish Type 3 is the inverse: first break a prior low, immediately break the previous high, then pull back to 50% of that impulse.
 - **Trending-range reversal:** price must extend above the previous high in a bullish case, or below the previous low in a bearish case. After the Type 3 shift, the target is 50% of the extension that moved beyond that previous structure.
 - **Trending-range continuation:** price must be in the 50%-75% pullback zone of the prior extension before the Type 3 shift is assessed.
 - **Ranging reversal:** target the midpoint of the established range, only when that target leaves reasonable reward relative to risk.
@@ -144,7 +144,7 @@ Operational meaning:
 - **Level/AOI:** Optional refinement; not the foundation.
 - **20m OE:** Roughly twenty minutes of meaningful counter-direction overextension.
 - **HVCS into HI/LO:** High-participation candle sequence into meaningful high/low structure.
-- **T3:** Course shift label; taxonomy remains deferred.
+- **T3:** Phase 0 lower-timeframe sequence: take the prior high/low, immediately break the opposing prior swing, then pull back to 50% of the structure-breaking impulse.
 - **22–52:** Later-hour CBR window shown in Example 3; timing-protocol refinement remains provisional until approved.
 
 ## 1.4 Direction and Condition
@@ -307,11 +307,16 @@ Initial shift
 
 T2 refines entry but does not automatically define the stop. Invalidation may remain beyond the larger swept or reaction extreme.
 
-## 1.11 T3 — Deferred
+## 1.11 T3 — Phase 0 Definition
 
-T3 appears as an explicit checklist label and is demonstrated through taking one side of local structure and then decisively removing the opposing swing, commonly followed by a 50% entry.
+T3 is a directional lower-timeframe market-structure shift. It is not a generic break of structure.
 
-Do not equate T3 with T2. The full Type 1/2/3 taxonomy remains deferred.
+- **Bullish T3:** price takes a prior high, then immediately breaks the previous low, then pulls back to 50% of that structure-breaking impulse.
+- **Bearish T3:** price takes a prior low, then immediately breaks the previous high, then pulls back to 50% of that structure-breaking impulse.
+
+The required order is take extreme, immediately break the opposing swing, then pull back to the 50% level. A missing step, reversed order, or structure that cannot be identified in the evidence is not a confirmed T3.
+
+Do not equate T3 with T2. T2 remains a nested second-shift refinement; T3 is the Phase 0 confirmation sequence above.
 
 ## 1.12 Entry Variants
 
@@ -1046,7 +1051,7 @@ Key lessons:
 - Candle behavior gains importance on smaller entry models
 - Good condition-change loss differs from premature-entry loss
 - Two attempts require risk governance
-- T3 remains deferred
+- T3 must follow the defined Phase 0 sequence
 - 22–52 timing refinement remains pending
 - Replay speed can reduce data quality
 
@@ -1161,7 +1166,7 @@ P-001 Behavioral Definition; P-002 Emotion Is Not Failure; P-003 Process Overrid
 - **Entry-50:** Midpoint of structure-breaking impulse.
 - **Target-50:** Midpoint used as expected destination.
 - **T2:** Confirmed nested second shift after initial shift and pullback.
-- **T3:** Deferred course shift taxonomy.
+- **T3:** Phase 0 confirmation sequence: take a prior high/low, immediately break the opposing prior swing, then pull back to 50% of the structure-breaking impulse.
 - **Progression Level:** Nearest high/low expected to break after entry.
 - **MFE:** Maximum Favorable Excursion.
 - **MAE:** Maximum Adverse Excursion.
@@ -1178,7 +1183,6 @@ P-001 Behavioral Definition; P-002 Emotion Is Not Failure; P-003 Process Overrid
 - Idea-level scale-in risk
 - Two-attempt risk
 - Mechanical early-exit threshold
-- T3 taxonomy
 - IFS definition
 - Type 1/2/3 relationship
 - Formal condition-to-target matrix
@@ -1304,7 +1308,7 @@ Initial consolidated master file containing:
 - Executable AEGIS strategy
 - CBR checklist and decision engine
 - Confirmed T2
-- Deferred T3
+- Defined Phase 0 T3 sequence
 - Risk governance
 - Psychology system
 - Journal schema
