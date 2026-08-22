@@ -538,8 +538,44 @@ async function deleteMasteryEntry(id) {
   window.dispatchEvent(new Event("aegis:mastery-changed"));
 }
 
+function normalizedExerciseName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+function knownExerciseNames() {
+  const names = new Map();
+  [...trainingSets].sort((left, right) => new Date(right.logged_on || right.created_at || 0) - new Date(left.logged_on || left.created_at || 0)).forEach((set) => {
+    const name = String(set.exercise_name || "").trim().replace(/\s+/g, " ");
+    const key = normalizedExerciseName(name);
+    if (key && !names.has(key)) names.set(key, name);
+  });
+  return names;
+}
+
+function gymExerciseDatalist() {
+  return `<datalist id="gym-exercise-history">${[...knownExerciseNames().values()].map((name) => `<option value="${escapeHtml(name)}" label="Previously logged"></option>`).join("")}</datalist>`;
+}
+
+function syncExerciseName(row) {
+  const input = row?.querySelector('[name="exercise_name"]');
+  const status = row?.querySelector("[data-exercise-name-status]");
+  if (!input || !status) return;
+  const name = String(input.value || "").trim().replace(/\s+/g, " ");
+  const existing = knownExerciseNames().get(normalizedExerciseName(name));
+  status.classList.remove("existing", "new");
+  if (!name) { status.textContent = "Select a prior exercise or enter a new one."; return; }
+  if (existing) {
+    input.value = existing;
+    status.textContent = "Existing exercise — uses its saved progress baseline.";
+    status.classList.add("existing");
+    return;
+  }
+  status.textContent = "New exercise — saving this name creates a new baseline.";
+  status.classList.add("new");
+}
+
 function gymSetRow() {
-  return `<div class="exercise-row" data-set-number="1"><label class="set-number-label">Set <b data-set-number-label>1</b></label><label>Exercise<input name="exercise_name" required placeholder="e.g. DB bench press" /></label><label>Resistance<select name="resistance_type" data-resistance-type><option value="Weights">Weights</option><option value="Bands">Bands</option><option value="Bodyweight">Bodyweight</option></select></label><label data-weight-field>Weight (lb)<input name="weight_lbs" type="number" min="0" step="0.5" required /></label><label data-band-field hidden>Band resistance<select name="band_resistance" disabled><option value="">Select band</option><option>Light</option><option>Medium</option><option>Heavy</option><option>Extra heavy</option><option>Other</option></select></label><label>Reps<input name="reps" type="number" min="1" required /></label><button class="ghost compact" type="button" data-add-set>+ Set</button><button class="ghost compact" type="button" data-remove-exercise>Remove</button></div>`;
+  return `<div class="exercise-row" data-set-number="1"><label class="set-number-label">Set <b data-set-number-label>1</b></label><label>Exercise<input name="exercise_name" list="gym-exercise-history" autocomplete="off" required placeholder="Select a prior exercise or add one" /><small class="exercise-name-status" data-exercise-name-status>Select a prior exercise or enter a new one.</small></label><label>Resistance<select name="resistance_type" data-resistance-type><option value="Weights">Weights</option><option value="Bands">Bands</option><option value="Bodyweight">Bodyweight</option></select></label><label data-weight-field>Weight (lb)<input name="weight_lbs" type="number" min="0" step="0.5" required /></label><label data-band-field hidden>Band resistance<select name="band_resistance" disabled><option value="">Select band</option><option>Light</option><option>Medium</option><option>Heavy</option><option>Extra heavy</option><option>Other</option></select></label><label>Reps<input name="reps" type="number" min="1" required /></label><button class="ghost compact" type="button" data-add-set>+ Set</button><button class="ghost compact" type="button" data-remove-exercise>Remove</button></div>`;
 }
 
 function syncResistanceFields(row) {
@@ -599,7 +635,16 @@ function openFitnessDialog(type, existing = null, editKind = "") {
   dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
   const logDate = existing ? sessionLoggedDay(existing) : easternDateKey();
   dialog.querySelector("form")?.insertAdjacentHTML("afterbegin", `<label>Log date<input name="logged_on" type="date" value="${escapeHtml(logDate)}" required /></label>`);
-  dialog.querySelector("[data-add-exercise]")?.addEventListener("click", () => dialog.querySelector(".exercise-list").insertAdjacentHTML("beforeend", gymSetRow()));
+  if (type === "Gym") {
+    dialog.querySelector("form")?.insertAdjacentHTML("afterbegin", gymExerciseDatalist());
+    const copy = dialog.querySelector(".schedule-copy");
+    if (copy) copy.textContent = "Choose a previously logged exercise whenever it matches. AEGIS compares that exact name over time for load, reps, and total volume.";
+  }
+  dialog.querySelector("[data-add-exercise]")?.addEventListener("click", () => {
+    const list = dialog.querySelector(".exercise-list");
+    list.insertAdjacentHTML("beforeend", gymSetRow());
+    syncExerciseName(list.lastElementChild);
+  });
   dialog.querySelector("[data-add-food]")?.addEventListener("click", () => dialog.querySelector(".food-list").insertAdjacentHTML("beforeend", foodRow()));
   dialog.onclick = async event => {
      const removeExercise = event.target.closest("[data-remove-exercise]");
@@ -637,6 +682,7 @@ function openFitnessDialog(type, existing = null, editKind = "") {
        clone.querySelector("[data-set-number-label]").textContent = nextNumber;
        source.after(clone);
        syncResistanceFields(clone);
+       syncExerciseName(clone);
      }
    };
   dialog.querySelector(".food-list")?.addEventListener("input", event => {
@@ -647,7 +693,11 @@ function openFitnessDialog(type, existing = null, editKind = "") {
     const status = row.querySelector("[data-estimate-status]");
     if (status) status.textContent = "Food or quantity changed. Estimate again before saving.";
   });
-  dialog.querySelector(".exercise-list")?.addEventListener("change", event => { if (event.target.matches("[data-resistance-type]")) syncResistanceFields(event.target.closest(".exercise-row")); });
+  dialog.querySelector(".exercise-list")?.addEventListener("change", event => {
+    if (event.target.matches("[data-resistance-type]")) syncResistanceFields(event.target.closest(".exercise-row"));
+    if (event.target.matches('[name="exercise_name"]')) syncExerciseName(event.target.closest(".exercise-row"));
+  });
+  dialog.querySelector(".exercise-list")?.addEventListener("input", event => { if (event.target.matches('[name="exercise_name"]')) syncExerciseName(event.target.closest(".exercise-row")); });
   const form = dialog.querySelector("form");
   form.dataset.editId = existing?.id || "";
   form.dataset.editKind = editKind;
@@ -674,6 +724,7 @@ function openFitnessDialog(type, existing = null, editKind = "") {
         row.querySelector('[name="band_resistance"]').value = set.band_resistance || "";
         row.querySelector('[name="reps"]').value = set.reps ?? "";
         syncResistanceFields(row);
+        syncExerciseName(row);
       });
     } else if (editKind === "weight") {
       form.querySelectorAll(".health-weight-grid label").forEach(label => { label.hidden = !label.querySelector(`[name="${String(existing.measured_at || "AM").toLowerCase()}_weight"]`); });
@@ -983,7 +1034,7 @@ async function load() {
   if (db) {
     const [entryResult, missionResult, workResult, challengeResult, sessionResult, setResult, weightResult, foodResult] = await Promise.all([
       db.from("mastery_entries").select("*").order("created_at", { ascending: false }), db.from("missions").select("*"), db.from("deep_work_logs").select("*").order("created_at", { ascending: false }).limit(30), db.from("mastery_challenges").select("*").order("created_at", { ascending: false }).limit(30),
-      db.from("training_sessions").select("*").order("logged_on", { ascending: false }).limit(40), db.from("training_sets").select("*").order("logged_on", { ascending: false }).limit(240),
+      db.from("training_sessions").select("*").order("logged_on", { ascending: false }).limit(40), db.from("training_sets").select("*").order("logged_on", { ascending: false }).limit(1000),
       db.from("health_weight_logs").select("*").order("logged_on", { ascending: false }).limit(60), db.from("health_food_logs").select("*").order("logged_on", { ascending: false }).limit(240)
     ]);
     entries = entryResult.data || []; deepWork = workResult.data || []; challenges = challengeResult.data || [];

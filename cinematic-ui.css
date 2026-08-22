@@ -1476,6 +1476,9 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
 .fitness-form .exercise-row input,
 .fitness-form .exercise-row select,
 .fitness-form .nutrition-row input { min-width: 0; padding: 9px; }
+.fitness-form .exercise-name-status { display: block; min-height: 12px; margin-top: 4px; color: rgba(181, 207, 232, .72); font: 700 8px/1.35 "Space Mono", ui-monospace, monospace; letter-spacing: 0; text-transform: none; }
+.fitness-form .exercise-name-status.existing { color: #72d9a7; }
+.fitness-form .exercise-name-status.new { color: #efb54f; }
 .fitness-form .set-number-label { color: #efb54f; text-align: center; }
 .fitness-form .set-number-label b { display: block; margin-top: 8px; font: 700 13px/1 "Space Mono", ui-monospace, monospace; }
 .fitness-form .form-subhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
