@@ -911,6 +911,58 @@ function renderMetrics(trades) {
 
 let tradeHoverTimer = null;
 let focusedTradeRow = null;
+let journalCalendarMonth = null;
+
+const journalDateKey = (trade) => {
+  const date = new Date(trade?.traded_at || trade?.created_at || "");
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" })
+    .formatToParts(date).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+const journalPnlLabel = (value) => {
+  const pnl = Number(value || 0);
+  const precision = Math.abs(pnl) >= 10 ? 1 : 2;
+  return `${pnl > 0 ? "+" : ""}${pnl.toFixed(precision).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "")}%`;
+};
+
+function renderJournalCalendar(trades) {
+  const root = $("#journal-calendar");
+  if (!root) return;
+  if (!journalCalendarMonth) {
+    const today = new Date();
+    journalCalendarMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1, 12));
+  }
+  const year = journalCalendarMonth.getUTCFullYear();
+  const month = journalCalendarMonth.getUTCMonth();
+  const firstDay = new Date(Date.UTC(year, month, 1, 12));
+  const monthEnd = new Date(Date.UTC(year, month + 1, 0, 12));
+  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const grouped = new Map();
+  (trades || []).forEach((trade) => {
+    const key = journalDateKey(trade);
+    if (!key.startsWith(monthKey)) return;
+    const day = grouped.get(key) || { count: 0, pnl: 0 };
+    day.count += 1;
+    day.pnl += Number(trade.pnl_percent || 0);
+    grouped.set(key, day);
+  });
+  const daysInGrid = Math.ceil((firstDay.getUTCDay() + monthEnd.getUTCDate()) / 7) * 7;
+  const calendarDays = Array.from({ length: daysInGrid }, (_, index) => {
+    const day = index - firstDay.getUTCDay() + 1;
+    if (day < 1 || day > monthEnd.getUTCDate()) return '<div class="journal-calendar-day empty" aria-hidden="true"></div>';
+    const key = `${monthKey}-${String(day).padStart(2, "0")}`;
+    const data = grouped.get(key);
+    const tone = data?.pnl > 0 ? "positive" : data?.pnl < 0 ? "negative" : data ? "flat" : "";
+    return `<article class="journal-calendar-day ${tone}"><span>${day}</span>${data ? `<strong>${journalPnlLabel(data.pnl)}</strong><small>${data.count} trade${data.count === 1 ? "" : "s"}</small>` : ""}</article>`;
+  }).join("");
+  const monthTrades = [...grouped.values()].reduce((total, day) => total + day.count, 0);
+  const monthPnl = [...grouped.values()].reduce((total, day) => total + day.pnl, 0);
+  const monthName = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(firstDay);
+  root.innerHTML = `<div class="journal-calendar-head"><div><p class="eyebrow blue-text">03 — JOURNAL CALENDAR</p><h3>${monthName}</h3></div><div class="journal-calendar-actions"><button type="button" data-journal-calendar="previous" aria-label="Previous month">‹</button><button type="button" data-journal-calendar="current">This month</button><button type="button" data-journal-calendar="next" aria-label="Next month">›</button></div></div><div class="journal-calendar-stats"><span>${monthTrades} trade${monthTrades === 1 ? "" : "s"}</span><b class="${monthPnl > 0 ? "result-positive" : monthPnl < 0 ? "result-negative" : ""}">${journalPnlLabel(monthPnl)} logged PnL</b><small>Reflects current journal filters</small></div><div class="journal-calendar-weekdays"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div><div class="journal-calendar-grid">${calendarDays}</div>`;
+}
+
 function clearTradeHoverFocus() {
   if (tradeHoverTimer) clearTimeout(tradeHoverTimer);
   tradeHoverTimer = null;
@@ -1010,6 +1062,7 @@ function wireTradeRowClick() {
 function renderTrades(trades) {
   clearTradeHoverFocus();
   const table = $("#trade-log");
+  renderJournalCalendar(trades);
   if (!trades.length) {
     table.innerHTML = '<tr class="empty-row"><td colspan="19">No trade debriefs yet. Preserve data; log the next execution.</td></tr>';
     return;
@@ -1414,6 +1467,16 @@ function init() {
   });
   setDetectiveTab(activeDetectiveTab);
   document.addEventListener("click", (event) => {
+    const calendarControl = event.target.closest("[data-journal-calendar]");
+    if (calendarControl) {
+      const action = calendarControl.dataset.journalCalendar;
+      const current = journalCalendarMonth || new Date();
+      if (action === "previous") journalCalendarMonth = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 1, 1, 12));
+      if (action === "next") journalCalendarMonth = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 1, 12));
+      if (action === "current") { const now = new Date(); journalCalendarMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 12)); }
+      renderJournalCalendar(filteredTrades());
+      return;
+    }
     if (event.target.closest('[data-action="add-trade-v2"]')) {
       if (!supabase) {
         alert("Cloud connection is not configured yet.");

@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Rajdhani:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="auth-gate.css" />
-    <link rel="stylesheet" href="detective.css?v=account-exact-allocations-v1" />
+    <link rel="stylesheet" href="detective.css?v=journal-calendar-v1" />
     <link rel="stylesheet" href="brain-review.css?v=phase-zero-playbook-v2" />
     <link rel="stylesheet" href="detective-visibility.css?v=tab-visibility-v1" />
     <link rel="stylesheet" href="trade-review-input.css?correction-feedback-v1" />
@@ -132,7 +132,7 @@
           <div class="detective-tabs" role="tablist" aria-label="Detective sections"><button class="detective-tab active" type="button" data-detective-tab="journal">Trade Journal</button><button class="detective-tab" type="button" data-detective-tab="accounts">Accounts</button><button class="detective-tab" type="button" data-detective-tab="brain">The Brain</button></div>
           <div id="detective-journal">
           <div class="metric-grid detective-metrics"><article class="metric"><p>WIN RATE</p><strong id="detective-win-rate">—</strong><small id="detective-win-rate-note">Log closed trades to calculate</small></article><article class="metric"><p>CURRENT STREAK</p><strong id="detective-current-streak">—</strong><small id="detective-current-streak-note">Awaiting decisive trades</small></article><article class="metric"><p>LONGEST STREAKS</p><strong class="detective-streak-pair"><span id="detective-longest-win">—</span><span class="streak-divider">/</span><span id="detective-longest-loss">—</span></strong><small>Win streak / loss streak</small></article><article class="metric"><p>AVERAGE R</p><strong id="detective-average-r">—</strong><small>Outcome follows process</small></article><article class="metric"><p>AVERAGE MAE / MFE</p><strong id="detective-excursion">—</strong><small>30-minute adverse / favorable</small></article><article class="metric"><p>PLAN VIOLATIONS</p><strong id="detective-violations">0</strong><small>Keep this at zero</small></article></div>
-          <section class="panel trade-panel"><div class="panel-head"><div><p class="eyebrow">01 — TRADE LOG</p><h3>Mission Debriefs</h3></div><button class="primary compact" data-action="add-trade-v2">+ Log trade</button></div><div class="table-wrap"><table><thead><tr><th>TIME</th><th>PAIR</th><th>TYPE</th><th>SETUP</th><th>MARKET CONDITION</th><th>CB HOUR</th><th>MAE</th><th>MFE</th><th>R</th><th>PNL</th><th>WIN / B/E / LOSS</th><th>POSITION</th><th>ACCOUNT</th><th>DAY</th><th>MONTH</th><th>SESSION TIME</th><th>ENTRY TF</th><th>WICK</th></tr></thead><tbody id="trade-log"><tr class="empty-row"><td colspan="18">No trade debriefs yet. Preserve data; log the next execution.</td></tr></tbody></table></div></section>
+          <section class="panel trade-panel"><div class="panel-head"><div><p class="eyebrow">01 — TRADE LOG</p><h3>Mission Debriefs</h3></div><button class="primary compact" data-action="add-trade-v2">+ Log trade</button></div><div class="journal-trade-window"><div class="table-wrap"><table><thead><tr><th>TIME</th><th>PAIR</th><th>TYPE</th><th>SETUP</th><th>MARKET CONDITION</th><th>CB HOUR</th><th>MAE</th><th>MFE</th><th>R</th><th>PNL</th><th>WIN / B/E / LOSS</th><th>POSITION</th><th>ACCOUNT</th><th>DAY</th><th>MONTH</th><th>SESSION TIME</th><th>ENTRY TF</th><th>WICK</th></tr></thead><tbody id="trade-log"><tr class="empty-row"><td colspan="18">No trade debriefs yet. Preserve data; log the next execution.</td></tr></tbody></table></div><section class="journal-calendar" id="journal-calendar" aria-live="polite"></section></div></section>
           </div>
           <section class="panel detective-accounts" id="detective-accounts" hidden>
             <div class="panel-head"><div><p class="eyebrow blue-text">02 — ACCOUNT INTELLIGENCE</p><h3>Account Balances</h3></div></div>
@@ -418,7 +418,7 @@
     <script type="module" src="recovery-logger.js?v=standalone-v1"></script>
     <script type="module" src="mission.js?v=mission-ledger-view-v1"></script>
     <script type="module" src="phase-protocol.js?v=phase-protocol-v7"></script>
-    <script type="module" src="detective.js?v=account-exact-allocations-v1"></script>
+    <script type="module" src="detective.js?v=journal-calendar-v1"></script>
     <script type="module" src="brain-review.js?v=phase-zero-playbook-v2"></script>
     <script type="module" src="advisor.js?v=curated-advisory-v1"></script>
     <script type="module" src="notion-importer.js"></script>
