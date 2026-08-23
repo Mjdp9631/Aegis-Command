@@ -1083,7 +1083,7 @@ function renderMetrics(trades) {
   const profitFactorElement = $("#detective-profit-factor");
   profitFactorElement.textContent = profitFactor == null ? "—" : profitFactor === Infinity ? "∞" : profitFactor.toFixed(2);
   setTone(profitFactorElement, profitFactor > 1 ? "streak-win" : profitFactor != null && profitFactor < 1 ? "streak-loss" : null);
-  $("#detective-profit-factor-note").textContent = profitFactor == null ? "Log positive and negative P&L to calculate" : grossLoss === 0 ? "No closed losses recorded" : `Gross +${displayNumber(grossProfit, "%")} / −${displayNumber(grossLoss, "%")}`;
+  $("#detective-profit-factor-note").textContent = profitFactor == null ? "Log positive and negative P&L to calculate" : grossLoss === 0 ? "No closed losses recorded" : `Gross profit +${displayNumber(grossProfit, "%")} ÷ gross loss ${displayNumber(grossLoss, "%")}`;
   const averageWinLossElement = $("#detective-average-win-loss");
   averageWinLossElement.textContent = averageWin == null && averageLoss == null ? "—" : `${averageWin == null ? "—" : `+${displayNumber(averageWin, "%")}`} / ${averageLoss == null ? "—" : `−${displayNumber(averageLoss, "%")}`}`;
   $("#detective-average-win-loss-note").textContent = "Positive / negative closed-trade P&L";
@@ -1114,8 +1114,17 @@ function renderMetrics(trades) {
   const mfeMagnitude = Math.abs(Number(averageMfe) || 0);
   const excursionTotal = Math.max(1, maeMagnitude + mfeMagnitude);
   setVisual("detective-excursion-visual", { "--mae": `${(maeMagnitude / excursionTotal) * 100}%`, "--mfe": `${(mfeMagnitude / excursionTotal) * 100}%` }, [["is-empty", averageMae == null && averageMfe == null]]);
-  const factorPosition = profitFactor == null ? 0 : profitFactor === Infinity ? 100 : Math.max(0, Math.min(100, (profitFactor / 3) * 100));
-  setVisual("detective-profit-factor-visual", { "--factor-position": `${factorPosition}%` }, [["is-empty", profitFactor == null], ["is-profitable", profitFactor > 1], ["is-losing", profitFactor != null && profitFactor < 1]]);
+  const grossTotal = Math.max(.01, grossProfit + grossLoss);
+  const profitFactorVisual = visual("detective-profit-factor-visual");
+  if (profitFactorVisual && profitFactorVisual.dataset.breakdownVisual !== "true") {
+    profitFactorVisual.innerHTML = "<i>PROFIT</i><b>LOSS</b>";
+    profitFactorVisual.setAttribute("aria-label", "Gross profit versus gross loss");
+    profitFactorVisual.dataset.breakdownVisual = "true";
+  }
+  setVisual("detective-profit-factor-visual", {
+    "--gross-profit": `${(grossProfit / grossTotal) * 100}%`,
+    "--gross-loss": `${(grossLoss / grossTotal) * 100}%`,
+  }, [["is-empty", profitFactor == null], ["is-profitable", profitFactor > 1], ["is-losing", profitFactor != null && profitFactor < 1]]);
   const averageOutcomeTotal = Math.max(.01, (averageWin || 0) + (averageLoss || 0));
   setVisual("detective-average-outcome-visual", { "--average-win": `${((averageWin || 0) / averageOutcomeTotal) * 100}%`, "--average-loss": `${((averageLoss || 0) / averageOutcomeTotal) * 100}%` }, [["is-empty", averageWin == null && averageLoss == null]]);
   const pnlSeries = [0];
