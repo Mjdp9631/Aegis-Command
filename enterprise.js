@@ -510,6 +510,80 @@ function openAssetDialog(asset = null) {
   $("#asset-dialog").showModal();
 }
 
+function setLedgerSaveState(form, saving, label) {
+  const submit = form?.querySelector("button[type=submit]");
+  if (!submit) return;
+  if (saving) {
+    submit.dataset.defaultLabel = submit.textContent;
+    submit.disabled = true;
+    submit.textContent = label;
+  } else {
+    submit.disabled = false;
+    submit.textContent = submit.dataset.defaultLabel || submit.textContent;
+    delete submit.dataset.defaultLabel;
+  }
+}
+
+async function saveCapitalMovement(event) {
+  event.preventDefault();
+  const form = event.target;
+  if (form.dataset.saving === "true") return;
+  try {
+    form.dataset.saving = "true";
+    setLedgerSaveState(form, true, "Saving movement…");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData.session?.user?.id;
+    if (!userId) throw new Error("Sign in before recording capital.");
+    const amount = Number($("#capital-amount").value);
+    const title = $("#capital-title").value.trim();
+    if (!Number.isFinite(amount) || amount <= 0 || !title) throw new Error("Add a purpose and an amount greater than zero.");
+    const payload = { entry_date: $("#capital-date").value || easternDateKey(), entry_type: $("#capital-type").value, title, amount_usd: amount, account_id: $("#capital-account").value || null, notes: $("#capital-notes").value.trim() || null };
+    const editId = form.dataset.editId;
+    const { error } = editId
+      ? await supabase.from("business_capital_entries").update(payload).eq("id", editId).eq("user_id", userId)
+      : await supabase.from("business_capital_entries").insert({ user_id: userId, ...payload });
+    if (error) throw error;
+    $("#capital-dialog").close();
+    await load();
+    window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "business-capital" } }));
+  } catch (error) {
+    alert(`Capital movement could not be saved: ${error.message || error}`);
+  } finally {
+    form.dataset.saving = "false";
+    setLedgerSaveState(form, false);
+  }
+}
+
+async function saveAsset(event) {
+  event.preventDefault();
+  const form = event.target;
+  if (form.dataset.saving === "true") return;
+  try {
+    form.dataset.saving = "true";
+    setLedgerSaveState(form, true, "Saving asset…");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData.session?.user?.id;
+    if (!userId) throw new Error("Sign in before registering an asset.");
+    const title = $("#asset-title").value.trim();
+    if (!title) throw new Error("Add an asset name.");
+    const numberOrNull = (selector) => { const value = $(selector).value; return value === "" ? null : Number(value); };
+    const payload = { acquired_on: $("#asset-date").value || easternDateKey(), asset_type: $("#asset-type").value, title, symbol: $("#asset-symbol").value.trim().toUpperCase() || null, quantity: numberOrNull("#asset-quantity"), cost_basis_usd: numberOrNull("#asset-cost"), current_value_usd: numberOrNull("#asset-value"), notes: $("#asset-notes").value.trim() || null };
+    const editId = form.dataset.editId;
+    const { error } = editId
+      ? await supabase.from("business_assets").update(payload).eq("id", editId).eq("user_id", userId)
+      : await supabase.from("business_assets").insert({ user_id: userId, ...payload });
+    if (error) throw error;
+    $("#asset-dialog").close();
+    await load();
+    window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "business-asset" } }));
+  } catch (error) {
+    alert(`Asset could not be saved: ${error.message || error}`);
+  } finally {
+    form.dataset.saving = "false";
+    setLedgerSaveState(form, false);
+  }
+}
+
 function buildDialogs() {
   const dialogs = document.createElement("div");
   dialogs.innerHTML = `<dialog id="project-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">NEW SPECIAL PROJECT</p><h2>Finish a useful milestone.</h2><input id="project-edit-id" type="hidden" /><input id="project-parent-id" type="hidden" /><p class="enterprise-parent-context" id="project-parent-context" aria-live="polite"></p><label>Log date <input id="project-logged-on" type="date" required /></label><label>Project <input id="project-title" required placeholder="e.g. Aegis Command v2" /></label><div class="two-col"><label>Type <select id="project-type"><option>Real-world project</option><option>Aegis system</option><option>CCFX system</option><option>Business asset</option><option>Learning build</option></select></label><label>Mode <select id="project-mode"><option value="Milestone">Finite milestone</option><option value="Ongoing system">Ongoing system</option></select></label></div><div class="two-col"><label>Weight <select id="project-effort-band"><option value="Minor">Minor — 2–8 hr / 10 XP</option><option value="Standard" selected>Standard — 8–24 hr / 25 XP</option><option value="Major">Major — 24–80 hr / 50 XP</option><option value="Flagship">Flagship — 80+ hr / 100 XP</option></select></label><label>Estimated effort (hours) <input id="project-estimated-hours" type="number" min="1" max="10000" placeholder="e.g. 120" /></label></div><p class="enterprise-xp-note" id="project-xp-reward"></p><label>Priority <select id="project-priority"><option>Do now</option><option selected>Schedule</option><option>Delegate</option><option>Eliminate</option></select></label><label>Definition of done <textarea id="project-outcome" required placeholder="What must exist, work, or be delivered for this milestone to be complete?"></textarea></label><label>Project steps — one per line <textarea id="project-steps" required placeholder="Deploy the first usable version&#10;Verify login and saved data&#10;Run a production walkthrough"></textarea></label><p class="body-copy">Only the next incomplete step enters Operations. Project progress is completed steps ÷ total steps, and the project closes automatically when every step is complete.</p><label>Due date <input id="project-due" type="date" /></label><button class="primary" id="project-submit" value="default">Open project and first operation</button></form></dialog><dialog id="content-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">NEW CONTENT ITEM</p><h2>Ship a useful signal.</h2><label>Log date <input id="content-logged-on" type="date" required /></label><label>Working title <input id="content-title" required placeholder="e.g. The risk rule that protects a funded account" /></label><div class="two-col"><label>Platform <select id="content-platform"><option>YouTube</option><option>Instagram</option><option>X</option><option>Newsletter</option></select></label><label>Status <select id="content-status"><option>Idea</option><option>Drafting</option><option>Ready</option><option>Published</option></select></label></div><button class="primary" value="default">Add to pipeline</button></form></dialog><dialog id="finance-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">FINANCIAL FOUNDATION</p><h2>Protect the mission.</h2><label>Log date <input id="finance-logged-on" type="date" required /></label><div class="two-col"><label>Monthly income <input id="finance-income" type="number" min="0" step="0.01" /></label><label>Monthly expenses <input id="finance-expenses" type="number" min="0" step="0.01" /></label><label>Liquid reserves <input id="finance-reserves" type="number" min="0" step="0.01" /></label><label>Emergency fund target <input id="finance-emergency" type="number" min="0" step="0.01" /></label><label>Debt balance <input id="finance-debt" type="number" min="0" step="0.01" /></label><label>Business revenue / month <input id="finance-revenue" type="number" min="0" step="0.01" /></label></div><label>Notes <textarea id="finance-notes" placeholder="Rules, obligations, or the next financial priority."></textarea></label><button class="primary" value="default">Save foundation</button></form></dialog>`;
@@ -659,44 +733,16 @@ function buildDialogs() {
     await load();
     window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "financial-foundation" } }));
   });
-  $("#capital-dialog form")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData.session?.user?.id;
-    if (!userId) return alert("Sign in before recording capital.");
-    const amount = Number($("#capital-amount").value);
-    const title = $("#capital-title").value.trim();
-    if (!Number.isFinite(amount) || amount <= 0 || !title) return alert("Add a purpose and an amount greater than zero.");
-    const payload = { entry_date: $("#capital-date").value || easternDateKey(), entry_type: $("#capital-type").value, title, amount_usd: amount, account_id: $("#capital-account").value || null, notes: $("#capital-notes").value.trim() || null };
-    const editId = form.dataset.editId;
-    const { error } = editId
-      ? await supabase.from("business_capital_entries").update(payload).eq("id", editId).eq("user_id", userId)
-      : await supabase.from("business_capital_entries").insert({ user_id: userId, ...payload });
-    if (error) return alert(`Capital movement could not be saved: ${error.message}`);
-    $("#capital-dialog").close();
-    await load();
-    window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "business-capital" } }));
-  });
-  $("#asset-dialog form")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData.session?.user?.id;
-    if (!userId) return alert("Sign in before registering an asset.");
-    const title = $("#asset-title").value.trim();
-    if (!title) return alert("Add an asset name.");
-    const numberOrNull = (selector) => { const value = $(selector).value; return value === "" ? null : Number(value); };
-    const payload = { acquired_on: $("#asset-date").value || easternDateKey(), asset_type: $("#asset-type").value, title, symbol: $("#asset-symbol").value.trim().toUpperCase() || null, quantity: numberOrNull("#asset-quantity"), cost_basis_usd: numberOrNull("#asset-cost"), current_value_usd: numberOrNull("#asset-value"), notes: $("#asset-notes").value.trim() || null };
-    const editId = form.dataset.editId;
-    const { error } = editId
-      ? await supabase.from("business_assets").update(payload).eq("id", editId).eq("user_id", userId)
-      : await supabase.from("business_assets").insert({ user_id: userId, ...payload });
-    if (error) return alert(`Asset could not be saved: ${error.message}`);
-    $("#asset-dialog").close();
-    await load();
-    window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "business-asset" } }));
-  });
+  const capitalForm = $("#capital-dialog form");
+  if (capitalForm) {
+    capitalForm.dataset.saveBound = "true";
+    capitalForm.addEventListener("submit", saveCapitalMovement);
+  }
+  const assetForm = $("#asset-dialog form");
+  if (assetForm) {
+    assetForm.dataset.saveBound = "true";
+    assetForm.addEventListener("submit", saveAsset);
+  }
   document.querySelectorAll("#project-dialog .dialog-close,#content-dialog .dialog-close,#finance-dialog .dialog-close,#capital-dialog .dialog-close,#asset-dialog .dialog-close").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
 }
 
@@ -711,6 +757,12 @@ if (supabase) {
     console.error("Enterprise HQ controls could not initialize", error);
   }
   void load().catch((error) => console.error("Enterprise HQ data load failed", error));
+  // If optional dialog setup is interrupted, delegated handlers still keep the
+  // two financial ledgers usable instead of leaving a visible Save button inert.
+  document.addEventListener("submit", (event) => {
+    if (event.target.matches("#capital-dialog form") && event.target.dataset.saveBound !== "true") void saveCapitalMovement(event);
+    if (event.target.matches("#asset-dialog form") && event.target.dataset.saveBound !== "true") void saveAsset(event);
+  });
   document.addEventListener("click", (event) => {
     const tab = event.target.closest("[data-enterprise-tab]")?.dataset.enterpriseTab;
     if (tab) {
