@@ -700,10 +700,17 @@ function buildDialogs() {
   document.querySelectorAll("#project-dialog .dialog-close,#content-dialog .dialog-close,#finance-dialog .dialog-close,#capital-dialog .dialog-close,#asset-dialog .dialog-close").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
 }
 
+// Render the real HQ shell before any optional dialog setup or network call.
+// A failed secondary setup must never leave the legacy placeholder onscreen.
+render();
+
 if (supabase) {
-  buildDialogs();
-  render();
-  load();
+  try {
+    buildDialogs();
+  } catch (error) {
+    console.error("Enterprise HQ controls could not initialize", error);
+  }
+  void load().catch((error) => console.error("Enterprise HQ data load failed", error));
   document.addEventListener("click", (event) => {
     const tab = event.target.closest("[data-enterprise-tab]")?.dataset.enterpriseTab;
     if (tab) {
