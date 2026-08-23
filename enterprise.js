@@ -7,7 +7,14 @@ const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => 
 const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 const PROJECT_XP = Object.freeze({ Minor: 10, Standard: 25, Major: 50, Flagship: 100 });
 let projects = [], projectSteps = [], content = [], financialFoundation = null, capitalEntries = [], businessAssets = [], accountBalances = [];
-let activeEnterpriseTab = "projects";
+const ENTERPRISE_TAB_STORAGE_KEY = "aegis-enterprise-active-tab";
+const enterpriseTabFromStorage = (() => {
+  try {
+    const saved = localStorage.getItem(ENTERPRISE_TAB_STORAGE_KEY);
+    return ["projects", "capital", "assets"].includes(saved) ? saved : "projects";
+  } catch { return "projects"; }
+})();
+let activeEnterpriseTab = enterpriseTabFromStorage;
 let projectOperationRepairInFlight = false;
 
 const isLegacyAegisTitle = (title) => ["created aegis", "create aegis"].includes(String(title || "").trim().toLowerCase());
@@ -767,6 +774,7 @@ if (supabase) {
     const tab = event.target.closest("[data-enterprise-tab]")?.dataset.enterpriseTab;
     if (tab) {
       activeEnterpriseTab = tab;
+      try { localStorage.setItem(ENTERPRISE_TAB_STORAGE_KEY, tab); } catch { /* Tab selection remains usable without storage. */ }
       render();
       return;
     }
