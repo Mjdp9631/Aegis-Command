@@ -53,10 +53,22 @@ const projectMeta = (project) => {
   return `${project?.effort_band || "Standard"} · ${hours ? `${hours}+ hr` : "effort not estimated"} · ${projectReward(project)} XP on completion`;
 };
 
-const money = (value) => `$${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (value, digits = 2) => `$${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+const CRYPTO_ASSETS = Object.freeze({
+  XRP: { name: "XRP", coinId: "ripple" },
+  BTC: { name: "Bitcoin", coinId: "bitcoin" },
+  CSPR: { name: "Casper", coinId: "casper-network" },
+});
 const capitalChange = (entry) => ["Expense", "Capital withdrawal"].includes(String(entry.entry_type || "")) ? -Number(entry.amount_usd || 0) : Number(entry.amount_usd || 0);
 const capitalTotal = () => capitalEntries.reduce((total, entry) => total + capitalChange(entry), 0);
 const accountName = (accountId) => accountBalances.find((account) => String(account.id) === String(accountId))?.account_name || "Unlinked account";
+const cryptoSymbol = (assetOrSymbol) => String(typeof assetOrSymbol === "object" ? assetOrSymbol?.symbol : assetOrSymbol || "").trim().toUpperCase();
+const cryptoQuote = (assetOrSymbol) => Number(window.AEGIS_CRYPTO_QUOTES?.[cryptoSymbol(assetOrSymbol)]?.usd || 0);
+const assetCurrentValue = (asset) => {
+  const quote = String(asset?.asset_type || "") === "Crypto" ? cryptoQuote(asset) : 0;
+  const quantity = Number(asset?.quantity);
+  return quote > 0 && Number.isFinite(quantity) ? quote * quantity : Number(asset?.current_value_usd || 0);
+};
 
 function enterpriseTabs() {
   return `<div class="enterprise-tabs" role="tablist" aria-label="Enterprise HQ areas">${[["projects", "Projects"], ["capital", "Capital"], ["assets", "Assets"]].map(([id, label]) => `<button type="button" class="enterprise-tab ${activeEnterpriseTab === id ? "active" : ""}" role="tab" aria-selected="${activeEnterpriseTab === id}" data-enterprise-tab="${id}">${label}</button>`).join("")}</div>`;
@@ -75,10 +87,14 @@ function capitalPanel() {
 }
 
 function assetsPanel() {
-  const manualValue = businessAssets.reduce((sum, asset) => sum + Number(asset.current_value_usd || 0), 0);
-  const assets = businessAssets.length ? businessAssets.map((asset) => `<article class="enterprise-ledger-row"><div><strong>${escape(asset.title)}${asset.symbol ? ` (${escape(asset.symbol)})` : ""}</strong><small>${escape(asset.asset_type)} · acquired ${escape(asset.acquired_on || "")}</small>${asset.quantity != null ? `<small>QUANTITY: ${escape(asset.quantity)}</small>` : ""}${asset.notes ? `<small>${escape(asset.notes)}</small>` : ""}</div><div class="enterprise-ledger-actions"><b>${money(asset.current_value_usd)}</b><button class="enterprise-edit" type="button" data-asset-edit="${escape(asset.id)}">Edit</button><button class="enterprise-remove" type="button" data-asset-remove="${escape(asset.id)}">Remove</button></div></article>`).join("") : '<p class="enterprise-empty">No owned assets registered yet. Crypto, equity, cash holdings, and business assets all belong here.</p>';
+  const trackedValue = businessAssets.reduce((sum, asset) => sum + assetCurrentValue(asset), 0);
+  const assets = businessAssets.length ? businessAssets.map((asset) => {
+    const quote = String(asset.asset_type || "") === "Crypto" ? cryptoQuote(asset) : 0;
+    const liveNote = quote > 0 && Number.isFinite(Number(asset.quantity)) ? `<small>LIVE: ${money(quote, 6)} × ${escape(asset.quantity)}</small>` : "";
+    return `<article class="enterprise-ledger-row"><div><strong>${escape(asset.title)}${asset.symbol ? ` (${escape(asset.symbol)})` : ""}</strong><small>${escape(asset.asset_type)} · acquired ${escape(asset.acquired_on || "")}</small>${asset.quantity != null ? `<small>QUANTITY: ${escape(asset.quantity)}</small>` : ""}${liveNote}${asset.notes ? `<small>${escape(asset.notes)}</small>` : ""}</div><div class="enterprise-ledger-actions"><b>${money(assetCurrentValue(asset))}</b><button class="enterprise-edit" type="button" data-asset-edit="${escape(asset.id)}">Edit</button><button class="enterprise-remove" type="button" data-asset-remove="${escape(asset.id)}">Remove</button></div></article>`;
+  }).join("") : '<p class="enterprise-empty">No owned assets registered yet. Crypto, equity, and durable business assets all belong here.</p>';
   const contentAssets = content.length ? content.map((item) => `<article class="enterprise-ledger-row enterprise-content-asset"><div><strong>${escape(item.title)}</strong><small>${escape(item.platform)} · ${escape(item.status)}</small></div><span class="enterprise-status ${String(item.status || "").toLowerCase()}">${escape(item.status)}</span></article>`).join("") : '<p class="enterprise-empty">No content assets captured yet.</p>';
-  return `<div class="enterprise-tab-panel"><div class="enterprise-tab-heading"><div><p class="eyebrow amber">OWNED ASSETS</p><h3>Build and protect what you own.</h3><p class="body-copy">Track investable holdings and durable business assets separately from deployable Capital.</p></div><button class="primary compact" type="button" data-enterprise-action="asset">+ Add asset</button></div><div class="enterprise-capital-metrics"><article><small>TRACKED ASSET VALUE</small><strong>${money(manualValue)}</strong><span>Manual valuation, updated by you</span></article><article><small>REGISTERED ASSETS</small><strong>${businessAssets.length}</strong><span>Crypto, equity, cash, and business assets</span></article><article><small>CONTENT ASSETS</small><strong>${content.length}</strong><span>Existing content pipeline records</span></article></div><section class="panel enterprise-ledger"><div class="panel-head"><div><p class="eyebrow">ASSET REGISTER</p><h3>Things the enterprise owns.</h3></div><span class="status-pill muted">${businessAssets.length} TRACKED</span></div>${assets}</section><section class="panel enterprise-ledger enterprise-content-ledger"><div class="panel-head"><div><p class="eyebrow">CONTENT ASSETS</p><h3>Published signal and works in progress.</h3></div><button class="ghost compact" type="button" data-enterprise-action="content">+ New content</button></div>${contentAssets}</section></div>`;
+  return `<div class="enterprise-tab-panel"><div class="enterprise-tab-heading"><div><p class="eyebrow amber">OWNED ASSETS</p><h3>Build and protect what you own.</h3><p class="body-copy">Track investable holdings and durable business assets separately from deployable Capital.</p></div><button class="primary compact" type="button" data-enterprise-action="asset">+ Add asset</button></div><div class="enterprise-capital-metrics"><article><small>TRACKED ASSET VALUE</small><strong>${money(trackedValue)}</strong><span>Live crypto quote × recorded quantity</span></article><article><small>REGISTERED ASSETS</small><strong>${businessAssets.length}</strong><span>Crypto, equity, and business assets</span></article><article><small>CONTENT ASSETS</small><strong>${content.length}</strong><span>Existing content pipeline records</span></article></div><section class="panel enterprise-ledger"><div class="panel-head"><div><p class="eyebrow">ASSET REGISTER</p><h3>Things the enterprise owns.</h3></div><span class="status-pill muted">${businessAssets.length} TRACKED</span></div>${assets}</section><section class="panel enterprise-ledger enterprise-content-ledger"><div class="panel-head"><div><p class="eyebrow">CONTENT ASSETS</p><h3>Published signal and works in progress.</h3></div><button class="ghost compact" type="button" data-enterprise-action="content">+ New content</button></div>${contentAssets}</section></div>`;
 }
 
 function projectCard(project, releases = [], nested = false) {
@@ -514,7 +530,27 @@ function openAssetDialog(asset = null) {
   $("#asset-dialog .eyebrow").textContent = asset ? "EDIT OWNED ASSET" : "OWNED ASSET";
   $("#asset-dialog h2").textContent = asset ? "Correct the asset record." : "Register what you own.";
   $("#asset-dialog button[type=submit]").textContent = asset ? "Save asset" : "Add asset";
+  syncAssetQuote();
   $("#asset-dialog").showModal();
+}
+
+function syncAssetQuote() {
+  const type = $("#asset-type")?.value;
+  const symbol = cryptoSymbol($("#asset-symbol")?.value);
+  const quantityInput = $("#asset-quantity");
+  const quantity = Number(quantityInput?.value);
+  const value = $("#asset-value");
+  const note = $("#asset-quote-note");
+  if (!value) return;
+  const crypto = type === "Crypto" ? CRYPTO_ASSETS[symbol] : null;
+  const quote = crypto ? cryptoQuote(symbol) : 0;
+  const title = $("#asset-title");
+  if (crypto && title && !title.value.trim()) title.value = crypto.name;
+  if (quote > 0 && quantityInput?.value !== "" && Number.isFinite(quantity) && quantity >= 0) value.value = (quote * quantity).toFixed(2);
+  value.readOnly = Boolean(crypto && quote > 0);
+  if (note) note.textContent = crypto
+    ? quote > 0 ? `${crypto.name} live quote: ${money(quote, 6)}. Current value updates from quantity.` : `${crypto.name} quote is reconnecting; you can enter a manual value until it returns.`
+    : "For XRP, BTC, or CSPR, quantity is valued from the Command Center quote.";
 }
 
 function setLedgerSaveState(form, saving, label) {
@@ -571,6 +607,7 @@ async function saveAsset(event) {
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user?.id;
     if (!userId) throw new Error("Sign in before registering an asset.");
+    syncAssetQuote();
     const title = $("#asset-title").value.trim();
     if (!title) throw new Error("Add an asset name.");
     const numberOrNull = (selector) => { const value = $(selector).value; return value === "" ? null : Number(value); };
@@ -602,6 +639,17 @@ function buildDialogs() {
   // only holds the stable personal safeguards, not assumed monthly income.
   ["finance-income", "finance-expenses", "finance-reserves", "finance-revenue"].forEach((id) => $(`#${id}`)?.closest("label")?.remove());
   Array.from($("#asset-type")?.options || []).find((option) => option.value === "Cash")?.remove();
+  const cryptoOptions = document.createElement("datalist");
+  cryptoOptions.id = "enterprise-crypto-symbols";
+  cryptoOptions.innerHTML = Object.entries(CRYPTO_ASSETS).map(([symbol, asset]) => `<option value="${symbol}">${asset.name}</option>`).join("");
+  document.body.append(cryptoOptions);
+  $("#asset-symbol")?.setAttribute("list", cryptoOptions.id);
+  const quoteNote = document.createElement("small");
+  quoteNote.id = "asset-quote-note";
+  quoteNote.className = "enterprise-quote-note";
+  $("#asset-value")?.closest("label")?.insertAdjacentElement("afterend", quoteNote);
+  ["#asset-type", "#asset-symbol", "#asset-quantity"].forEach((selector) => $(selector)?.addEventListener("input", syncAssetQuote));
+  $("#asset-type")?.addEventListener("change", syncAssetQuote);
   $("#finance-dialog .eyebrow").textContent = "FINANCIAL BASELINE";
   $("#finance-dialog h2").textContent = "Protect the reserve.";
   $("#finance-dialog button[type=submit]").textContent = "Save baseline";
@@ -771,6 +819,12 @@ if (supabase) {
     if (event.target.matches("#asset-dialog form") && event.target.dataset.saveBound !== "true") void saveAsset(event);
   });
   document.addEventListener("click", (event) => {
+    const close = event.target.closest("#capital-dialog .dialog-close, #asset-dialog .dialog-close");
+    if (close) {
+      event.preventDefault();
+      close.closest("dialog")?.close();
+      return;
+    }
     const tab = event.target.closest("[data-enterprise-tab]")?.dataset.enterpriseTab;
     if (tab) {
       activeEnterpriseTab = tab;
@@ -841,6 +895,11 @@ if (supabase) {
   });
   supabase.auth.onAuthStateChange((event) => { if (event !== "INITIAL_SESSION") setTimeout(load, 50); });
 }
+
+window.addEventListener("aegis:market-quotes", () => {
+  syncAssetQuote();
+  if (activeEnterpriseTab === "assets") render();
+});
 
 window.addEventListener("aegis:data-changed", (event) => {
   if (["remote-enterprise"].includes(event.detail?.source)) setTimeout(load, 120);
