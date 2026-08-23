@@ -62,14 +62,14 @@ function capitalPanel() {
   const ledger = capitalEntries.length ? capitalEntries.map((entry) => {
     const change = capitalChange(entry);
     const account = entry.account_id ? `<small>LINKED ACCOUNT: ${escape(accountName(entry.account_id))}</small>` : "";
-    return `<article class="enterprise-ledger-row"><div><strong>${escape(entry.title)}</strong><small>${escape(entry.entry_type)} · ${escape(entry.entry_date || "")}</small>${account}${entry.notes ? `<small>${escape(entry.notes)}</small>` : ""}</div><div class="enterprise-ledger-actions"><b class="${change < 0 ? "negative" : "positive"}">${change < 0 ? "−" : "+"}${money(Math.abs(change))}</b><button class="enterprise-remove" type="button" data-capital-remove="${escape(entry.id)}">Remove</button></div></article>`;
+    return `<article class="enterprise-ledger-row"><div><strong>${escape(entry.title)}</strong><small>${escape(entry.entry_type)} · ${escape(entry.entry_date || "")}</small>${account}${entry.notes ? `<small>${escape(entry.notes)}</small>` : ""}</div><div class="enterprise-ledger-actions"><b class="${change < 0 ? "negative" : "positive"}">${change < 0 ? "−" : "+"}${money(Math.abs(change))}</b><button class="enterprise-edit" type="button" data-capital-edit="${escape(entry.id)}">Edit</button><button class="enterprise-remove" type="button" data-capital-remove="${escape(entry.id)}">Remove</button></div></article>`;
   }).join("") : '<p class="enterprise-empty">No capital movements recorded. Add the first prop-firm challenge fee or account earning.</p>';
   return `<div class="enterprise-tab-panel"><div class="enterprise-tab-heading"><div><p class="eyebrow amber">CAPITAL LEDGER</p><h3>What the enterprise can deploy.</h3><p class="body-copy">Account earnings add capital. Challenge fees and every other expense reduce it.</p></div><button class="primary compact" type="button" data-enterprise-action="capital">+ Record movement</button></div><div class="enterprise-capital-metrics"><article><small>NET CAPITAL</small><strong class="${total < 0 ? "negative" : ""}">${money(total)}</strong><span>Recorded inflows − outflows</span></article><article><small>ACCOUNT EARNINGS</small><strong>${money(earned)}</strong><span>Explicitly allocated from accounts</span></article><article><small>BUSINESS EXPENSES</small><strong class="negative">${money(spent)}</strong><span>Challenge fees and operating costs</span></article></div><section class="panel enterprise-ledger"><div class="panel-head"><div><p class="eyebrow">MOVEMENT HISTORY</p><h3>Capital in motion.</h3></div><span class="status-pill muted">${capitalEntries.length} ENTRIES</span></div>${ledger}</section></div>`;
 }
 
 function assetsPanel() {
   const manualValue = businessAssets.reduce((sum, asset) => sum + Number(asset.current_value_usd || 0), 0);
-  const assets = businessAssets.length ? businessAssets.map((asset) => `<article class="enterprise-ledger-row"><div><strong>${escape(asset.title)}${asset.symbol ? ` (${escape(asset.symbol)})` : ""}</strong><small>${escape(asset.asset_type)} · acquired ${escape(asset.acquired_on || "")}</small>${asset.quantity != null ? `<small>QUANTITY: ${escape(asset.quantity)}</small>` : ""}${asset.notes ? `<small>${escape(asset.notes)}</small>` : ""}</div><div class="enterprise-ledger-actions"><b>${money(asset.current_value_usd)}</b><button class="enterprise-remove" type="button" data-asset-remove="${escape(asset.id)}">Remove</button></div></article>`).join("") : '<p class="enterprise-empty">No owned assets registered yet. Crypto, equity, cash holdings, and business assets all belong here.</p>';
+  const assets = businessAssets.length ? businessAssets.map((asset) => `<article class="enterprise-ledger-row"><div><strong>${escape(asset.title)}${asset.symbol ? ` (${escape(asset.symbol)})` : ""}</strong><small>${escape(asset.asset_type)} · acquired ${escape(asset.acquired_on || "")}</small>${asset.quantity != null ? `<small>QUANTITY: ${escape(asset.quantity)}</small>` : ""}${asset.notes ? `<small>${escape(asset.notes)}</small>` : ""}</div><div class="enterprise-ledger-actions"><b>${money(asset.current_value_usd)}</b><button class="enterprise-edit" type="button" data-asset-edit="${escape(asset.id)}">Edit</button><button class="enterprise-remove" type="button" data-asset-remove="${escape(asset.id)}">Remove</button></div></article>`).join("") : '<p class="enterprise-empty">No owned assets registered yet. Crypto, equity, cash holdings, and business assets all belong here.</p>';
   const contentAssets = content.length ? content.map((item) => `<article class="enterprise-ledger-row enterprise-content-asset"><div><strong>${escape(item.title)}</strong><small>${escape(item.platform)} · ${escape(item.status)}</small></div><span class="enterprise-status ${String(item.status || "").toLowerCase()}">${escape(item.status)}</span></article>`).join("") : '<p class="enterprise-empty">No content assets captured yet.</p>';
   return `<div class="enterprise-tab-panel"><div class="enterprise-tab-heading"><div><p class="eyebrow amber">OWNED ASSETS</p><h3>Build and protect what you own.</h3><p class="body-copy">Track investable holdings and durable business assets separately from deployable Capital.</p></div><button class="primary compact" type="button" data-enterprise-action="asset">+ Add asset</button></div><div class="enterprise-capital-metrics"><article><small>TRACKED ASSET VALUE</small><strong>${money(manualValue)}</strong><span>Manual valuation, updated by you</span></article><article><small>REGISTERED ASSETS</small><strong>${businessAssets.length}</strong><span>Crypto, equity, cash, and business assets</span></article><article><small>CONTENT ASSETS</small><strong>${content.length}</strong><span>Existing content pipeline records</span></article></div><section class="panel enterprise-ledger"><div class="panel-head"><div><p class="eyebrow">ASSET REGISTER</p><h3>Things the enterprise owns.</h3></div><span class="status-pill muted">${businessAssets.length} TRACKED</span></div>${assets}</section><section class="panel enterprise-ledger enterprise-content-ledger"><div class="panel-head"><div><p class="eyebrow">CONTENT ASSETS</p><h3>Published signal and works in progress.</h3></div><button class="ghost compact" type="button" data-enterprise-action="content">+ New content</button></div>${contentAssets}</section></div>`;
 }
@@ -472,6 +472,45 @@ function openProjectEditor(project) {
   $("#project-dialog").showModal();
 }
 
+function openCapitalDialog(entry = null) {
+  const form = $("#capital-dialog form");
+  form.reset();
+  form.dataset.editId = entry?.id || "";
+  $("#capital-date").value = entry?.entry_date || easternDateKey();
+  $("#capital-account").innerHTML = `<option value="">No linked account</option>${accountBalances.map((account) => `<option value="${escape(account.id)}">${escape(account.account_name)} · ${escape(account.account_type || "Account")}</option>`).join("")}`;
+  if (entry) {
+    $("#capital-type").value = entry.entry_type || "Expense";
+    $("#capital-amount").value = entry.amount_usd ?? "";
+    $("#capital-title").value = entry.title || "";
+    $("#capital-account").value = entry.account_id || "";
+    $("#capital-notes").value = entry.notes || "";
+  }
+  $("#capital-dialog .eyebrow").textContent = entry ? "EDIT CAPITAL MOVEMENT" : "CAPITAL MOVEMENT";
+  $("#capital-dialog h2").textContent = entry ? "Correct the money flow." : "Record the money flow.";
+  $("#capital-dialog button[type=submit]").textContent = entry ? "Save movement" : "Record movement";
+  $("#capital-dialog").showModal();
+}
+
+function openAssetDialog(asset = null) {
+  const form = $("#asset-dialog form");
+  form.reset();
+  form.dataset.editId = asset?.id || "";
+  $("#asset-date").value = asset?.acquired_on || easternDateKey();
+  if (asset) {
+    $("#asset-type").value = asset.asset_type || "Other";
+    $("#asset-symbol").value = asset.symbol || "";
+    $("#asset-title").value = asset.title || "";
+    $("#asset-quantity").value = asset.quantity ?? "";
+    $("#asset-cost").value = asset.cost_basis_usd ?? "";
+    $("#asset-value").value = asset.current_value_usd ?? "";
+    $("#asset-notes").value = asset.notes || "";
+  }
+  $("#asset-dialog .eyebrow").textContent = asset ? "EDIT OWNED ASSET" : "OWNED ASSET";
+  $("#asset-dialog h2").textContent = asset ? "Correct the asset record." : "Register what you own.";
+  $("#asset-dialog button[type=submit]").textContent = asset ? "Save asset" : "Add asset";
+  $("#asset-dialog").showModal();
+}
+
 function buildDialogs() {
   const dialogs = document.createElement("div");
   dialogs.innerHTML = `<dialog id="project-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">NEW SPECIAL PROJECT</p><h2>Finish a useful milestone.</h2><input id="project-edit-id" type="hidden" /><input id="project-parent-id" type="hidden" /><p class="enterprise-parent-context" id="project-parent-context" aria-live="polite"></p><label>Log date <input id="project-logged-on" type="date" required /></label><label>Project <input id="project-title" required placeholder="e.g. Aegis Command v2" /></label><div class="two-col"><label>Type <select id="project-type"><option>Real-world project</option><option>Aegis system</option><option>CCFX system</option><option>Business asset</option><option>Learning build</option></select></label><label>Mode <select id="project-mode"><option value="Milestone">Finite milestone</option><option value="Ongoing system">Ongoing system</option></select></label></div><div class="two-col"><label>Weight <select id="project-effort-band"><option value="Minor">Minor — 2–8 hr / 10 XP</option><option value="Standard" selected>Standard — 8–24 hr / 25 XP</option><option value="Major">Major — 24–80 hr / 50 XP</option><option value="Flagship">Flagship — 80+ hr / 100 XP</option></select></label><label>Estimated effort (hours) <input id="project-estimated-hours" type="number" min="1" max="10000" placeholder="e.g. 120" /></label></div><p class="enterprise-xp-note" id="project-xp-reward"></p><label>Priority <select id="project-priority"><option>Do now</option><option selected>Schedule</option><option>Delegate</option><option>Eliminate</option></select></label><label>Definition of done <textarea id="project-outcome" required placeholder="What must exist, work, or be delivered for this milestone to be complete?"></textarea></label><label>Project steps — one per line <textarea id="project-steps" required placeholder="Deploy the first usable version&#10;Verify login and saved data&#10;Run a production walkthrough"></textarea></label><p class="body-copy">Only the next incomplete step enters Operations. Project progress is completed steps ÷ total steps, and the project closes automatically when every step is complete.</p><label>Due date <input id="project-due" type="date" /></label><button class="primary" id="project-submit" value="default">Open project and first operation</button></form></dialog><dialog id="content-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">NEW CONTENT ITEM</p><h2>Ship a useful signal.</h2><label>Log date <input id="content-logged-on" type="date" required /></label><label>Working title <input id="content-title" required placeholder="e.g. The risk rule that protects a funded account" /></label><div class="two-col"><label>Platform <select id="content-platform"><option>YouTube</option><option>Instagram</option><option>X</option><option>Newsletter</option></select></label><label>Status <select id="content-status"><option>Idea</option><option>Drafting</option><option>Ready</option><option>Published</option></select></label></div><button class="primary" value="default">Add to pipeline</button></form></dialog><dialog id="finance-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">FINANCIAL FOUNDATION</p><h2>Protect the mission.</h2><label>Log date <input id="finance-logged-on" type="date" required /></label><div class="two-col"><label>Monthly income <input id="finance-income" type="number" min="0" step="0.01" /></label><label>Monthly expenses <input id="finance-expenses" type="number" min="0" step="0.01" /></label><label>Liquid reserves <input id="finance-reserves" type="number" min="0" step="0.01" /></label><label>Emergency fund target <input id="finance-emergency" type="number" min="0" step="0.01" /></label><label>Debt balance <input id="finance-debt" type="number" min="0" step="0.01" /></label><label>Business revenue / month <input id="finance-revenue" type="number" min="0" step="0.01" /></label></div><label>Notes <textarea id="finance-notes" placeholder="Rules, obligations, or the next financial priority."></textarea></label><button class="primary" value="default">Save foundation</button></form></dialog>`;
@@ -614,13 +653,18 @@ function buildDialogs() {
   });
   $("#capital-dialog form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const form = event.currentTarget;
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user?.id;
     if (!userId) return alert("Sign in before recording capital.");
     const amount = Number($("#capital-amount").value);
     const title = $("#capital-title").value.trim();
     if (!Number.isFinite(amount) || amount <= 0 || !title) return alert("Add a purpose and an amount greater than zero.");
-    const { error } = await supabase.from("business_capital_entries").insert({ user_id: userId, entry_date: $("#capital-date").value || easternDateKey(), entry_type: $("#capital-type").value, title, amount_usd: amount, account_id: $("#capital-account").value || null, notes: $("#capital-notes").value.trim() || null });
+    const payload = { entry_date: $("#capital-date").value || easternDateKey(), entry_type: $("#capital-type").value, title, amount_usd: amount, account_id: $("#capital-account").value || null, notes: $("#capital-notes").value.trim() || null };
+    const editId = form.dataset.editId;
+    const { error } = editId
+      ? await supabase.from("business_capital_entries").update(payload).eq("id", editId).eq("user_id", userId)
+      : await supabase.from("business_capital_entries").insert({ user_id: userId, ...payload });
     if (error) return alert(`Capital movement could not be saved: ${error.message}`);
     $("#capital-dialog").close();
     await load();
@@ -628,13 +672,18 @@ function buildDialogs() {
   });
   $("#asset-dialog form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const form = event.currentTarget;
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user?.id;
     if (!userId) return alert("Sign in before registering an asset.");
     const title = $("#asset-title").value.trim();
     if (!title) return alert("Add an asset name.");
     const numberOrNull = (selector) => { const value = $(selector).value; return value === "" ? null : Number(value); };
-    const { error } = await supabase.from("business_assets").insert({ user_id: userId, acquired_on: $("#asset-date").value || easternDateKey(), asset_type: $("#asset-type").value, title, symbol: $("#asset-symbol").value.trim().toUpperCase() || null, quantity: numberOrNull("#asset-quantity"), cost_basis_usd: numberOrNull("#asset-cost"), current_value_usd: numberOrNull("#asset-value"), notes: $("#asset-notes").value.trim() || null });
+    const payload = { acquired_on: $("#asset-date").value || easternDateKey(), asset_type: $("#asset-type").value, title, symbol: $("#asset-symbol").value.trim().toUpperCase() || null, quantity: numberOrNull("#asset-quantity"), cost_basis_usd: numberOrNull("#asset-cost"), current_value_usd: numberOrNull("#asset-value"), notes: $("#asset-notes").value.trim() || null };
+    const editId = form.dataset.editId;
+    const { error } = editId
+      ? await supabase.from("business_assets").update(payload).eq("id", editId).eq("user_id", userId)
+      : await supabase.from("business_assets").insert({ user_id: userId, ...payload });
     if (error) return alert(`Asset could not be saved: ${error.message}`);
     $("#asset-dialog").close();
     await load();
@@ -654,6 +703,12 @@ if (supabase) {
       render();
       return;
     }
+    const capitalEditId = event.target.closest("[data-capital-edit]")?.dataset.capitalEdit;
+    if (capitalEditId) {
+      const entry = capitalEntries.find((item) => String(item.id) === String(capitalEditId));
+      if (entry) openCapitalDialog(entry);
+      return;
+    }
     const capitalRemoveId = event.target.closest("[data-capital-remove]")?.dataset.capitalRemove;
     if (capitalRemoveId) {
       const entry = capitalEntries.find((item) => String(item.id) === String(capitalRemoveId));
@@ -663,6 +718,12 @@ if (supabase) {
         await load();
         window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "business-capital-remove" } }));
       });
+      return;
+    }
+    const assetEditId = event.target.closest("[data-asset-edit]")?.dataset.assetEdit;
+    if (assetEditId) {
+      const asset = businessAssets.find((item) => String(item.id) === String(assetEditId));
+      if (asset) openAssetDialog(asset);
       return;
     }
     const assetRemoveId = event.target.closest("[data-asset-remove]")?.dataset.assetRemove;
@@ -690,17 +751,8 @@ if (supabase) {
     const action = event.target.closest("[data-enterprise-action]")?.dataset.enterpriseAction;
     if (!action) return;
     if (action === "project") return openProjectDialog();
-    if (action === "capital") {
-      $("#capital-dialog form").reset();
-      $("#capital-date").value = easternDateKey();
-      $("#capital-account").innerHTML = `<option value="">No linked account</option>${accountBalances.map((account) => `<option value="${escape(account.id)}">${escape(account.account_name)} · ${escape(account.account_type || "Account")}</option>`).join("")}`;
-      return $("#capital-dialog").showModal();
-    }
-    if (action === "asset") {
-      $("#asset-dialog form").reset();
-      $("#asset-date").value = easternDateKey();
-      return $("#asset-dialog").showModal();
-    }
+    if (action === "capital") return openCapitalDialog();
+    if (action === "asset") return openAssetDialog();
     if (action === "content") $("#content-logged-on").value = easternDateKey();
     if (action === "finance") {
       $("#finance-logged-on").value = financialFoundation?.logged_on || easternDateKey();
