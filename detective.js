@@ -999,7 +999,7 @@ function renderMetrics(trades) {
   const averageR = average(closedTrades.filter((trade) => trade.r_multiple != null).map((trade) => trade.r_multiple));
   const averageMae = average(closedTrades.filter((trade) => trade.mae_30m != null).map((trade) => trade.mae_30m));
   const averageMfe = average(closedTrades.filter((trade) => trade.mfe_30m != null).map((trade) => trade.mfe_30m));
-  const totalPnl = closedTrades.reduce((total, trade) => total + (Number(trade.pnl_percent) || 0), 0);
+  const violations = closedTrades.filter((trade) => Boolean(trade.plan_violation)).length;
   const winRate = decisiveTrades ? Math.round((wins / decisiveTrades) * 100) : null;
   const streaks = streakMetrics(closedTrades);
   const winRateElement = $("#detective-win-rate");
@@ -1020,7 +1020,35 @@ function renderMetrics(trades) {
   setTone(longestLossElement, "streak-loss");
   $("#detective-average-r").textContent = displayNumber(averageR, "R");
   $("#detective-excursion").textContent = averageMae == null && averageMfe == null ? "—" : `${displayNumber(averageMae)} / ${displayNumber(averageMfe)}`;
-  $("#detective-violations").textContent = displayNumber(totalPnl, "%");
+  $("#detective-violations").textContent = String(violations);
+
+  const visual = (id) => $(`#${id}`);
+  const setVisual = (id, variables = {}, classes = []) => {
+    const element = visual(id);
+    if (!element) return;
+    Object.entries(variables).forEach(([name, value]) => element.style.setProperty(name, value));
+    classes.forEach(([name, enabled]) => element.classList.toggle(name, Boolean(enabled)));
+  };
+  const be = Math.max(0, closedTrades.length - decisiveTrades);
+  const outcomeTotal = Math.max(1, wins + losses + be);
+  setVisual("detective-win-visual", {
+    "--wins": `${(wins / outcomeTotal) * 100}%`,
+    "--losses": `${(losses / outcomeTotal) * 100}%`,
+    "--breakeven": `${(be / outcomeTotal) * 100}%`,
+  });
+  const currentStreak = Math.min(10, streaks.currentLength || 0);
+  setVisual("detective-current-streak-visual", { "--streak": `${currentStreak * 10}%` }, [["is-loss", streaks.currentType === "Loss"], ["is-empty", !currentStreak]]);
+  setVisual("detective-longest-visual", {
+    "--long-win": `${Math.min(100, (streaks.longestWin || 0) * 10)}%`,
+    "--long-loss": `${Math.min(100, (streaks.longestLoss || 0) * 10)}%`,
+  });
+  const rPosition = averageR == null ? 0 : Math.max(0, Math.min(100, (averageR / 5) * 100));
+  setVisual("detective-average-r-visual", { "--r-position": `${rPosition}%` }, [["is-negative", Number(averageR) < 0], ["is-empty", averageR == null]]);
+  const maeMagnitude = Math.abs(Number(averageMae) || 0);
+  const mfeMagnitude = Math.abs(Number(averageMfe) || 0);
+  const excursionTotal = Math.max(1, maeMagnitude + mfeMagnitude);
+  setVisual("detective-excursion-visual", { "--mae": `${(maeMagnitude / excursionTotal) * 100}%`, "--mfe": `${(mfeMagnitude / excursionTotal) * 100}%` }, [["is-empty", averageMae == null && averageMfe == null]]);
+  setVisual("detective-violations-visual", { "--violations": `${Math.min(100, violations * 20)}%` }, [["is-clean", violations === 0]]);
 }
 
 let tradeHoverTimer = null;
