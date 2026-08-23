@@ -1050,6 +1050,13 @@ function renderMetrics(trades) {
   const averageMae = average(closedTrades.filter((trade) => trade.mae_30m != null).map((trade) => trade.mae_30m));
   const averageMfe = average(closedTrades.filter((trade) => trade.mfe_30m != null).map((trade) => trade.mfe_30m));
   const totalPnl = closedTrades.reduce((total, trade) => total + (Number(trade.pnl_percent) || 0), 0);
+  const positivePnl = closedTrades.map((trade) => Number(trade.pnl_percent)).filter((value) => Number.isFinite(value) && value > 0);
+  const negativePnl = closedTrades.map((trade) => Number(trade.pnl_percent)).filter((value) => Number.isFinite(value) && value < 0);
+  const grossProfit = positivePnl.reduce((total, value) => total + value, 0);
+  const grossLoss = Math.abs(negativePnl.reduce((total, value) => total + value, 0));
+  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : null;
+  const averageWin = average(positivePnl);
+  const averageLoss = average(negativePnl.map(Math.abs));
   const winRate = decisiveTrades ? Math.round((wins / decisiveTrades) * 100) : null;
   const streaks = streakMetrics(closedTrades);
   const winRateElement = $("#detective-win-rate");
@@ -1073,6 +1080,13 @@ function renderMetrics(trades) {
   const pnlElement = $("#detective-net-pnl");
   pnlElement.textContent = displayNumber(totalPnl, "%");
   setTone(pnlElement, totalPnl > 0 ? "streak-win" : totalPnl < 0 ? "streak-loss" : null);
+  const profitFactorElement = $("#detective-profit-factor");
+  profitFactorElement.textContent = profitFactor == null ? "—" : profitFactor === Infinity ? "∞" : profitFactor.toFixed(2);
+  setTone(profitFactorElement, profitFactor > 1 ? "streak-win" : profitFactor != null && profitFactor < 1 ? "streak-loss" : null);
+  $("#detective-profit-factor-note").textContent = profitFactor == null ? "Log positive and negative P&L to calculate" : grossLoss === 0 ? "No closed losses recorded" : `Gross +${displayNumber(grossProfit, "%")} / −${displayNumber(grossLoss, "%")}`;
+  const averageWinLossElement = $("#detective-average-win-loss");
+  averageWinLossElement.textContent = averageWin == null && averageLoss == null ? "—" : `${averageWin == null ? "—" : `+${displayNumber(averageWin, "%")}`} / ${averageLoss == null ? "—" : `−${displayNumber(averageLoss, "%")}`}`;
+  $("#detective-average-win-loss-note").textContent = "Positive / negative closed-trade P&L";
 
   const visual = (id) => $(`#${id}`);
   const setVisual = (id, variables = {}, classes = []) => {
@@ -1100,6 +1114,10 @@ function renderMetrics(trades) {
   const mfeMagnitude = Math.abs(Number(averageMfe) || 0);
   const excursionTotal = Math.max(1, maeMagnitude + mfeMagnitude);
   setVisual("detective-excursion-visual", { "--mae": `${(maeMagnitude / excursionTotal) * 100}%`, "--mfe": `${(mfeMagnitude / excursionTotal) * 100}%` }, [["is-empty", averageMae == null && averageMfe == null]]);
+  const factorPosition = profitFactor == null ? 0 : profitFactor === Infinity ? 100 : Math.max(0, Math.min(100, (profitFactor / 3) * 100));
+  setVisual("detective-profit-factor-visual", { "--factor-position": `${factorPosition}%` }, [["is-empty", profitFactor == null], ["is-profitable", profitFactor > 1], ["is-losing", profitFactor != null && profitFactor < 1]]);
+  const averageOutcomeTotal = Math.max(.01, (averageWin || 0) + (averageLoss || 0));
+  setVisual("detective-average-outcome-visual", { "--average-win": `${((averageWin || 0) / averageOutcomeTotal) * 100}%`, "--average-loss": `${((averageLoss || 0) / averageOutcomeTotal) * 100}%` }, [["is-empty", averageWin == null && averageLoss == null]]);
   const pnlSeries = [0];
   [...closedTrades].sort((left, right) => tradeTime(left) - tradeTime(right)).forEach((trade) => pnlSeries.push(pnlSeries[pnlSeries.length - 1] + (Number(trade.pnl_percent) || 0)));
   const minPnl = Math.min(...pnlSeries);
@@ -1687,6 +1705,22 @@ function init() {
   pnlMetric.querySelector("p").textContent = "NET P&L";
   pnlMetric.querySelector("small").textContent = "Combined closed-trade return";
   $("#detective-excursion").closest(".metric").querySelector("p").textContent = "AVG MAE / MFE";
+  const metricExplanations = {
+    "detective-win-rate": "Wins ÷ (wins + losses). Break-even trades are excluded.",
+    "detective-current-streak": "Current consecutive win or loss run in chronological order. Break-even trades are neutral.",
+    "detective-longest-win": "Longest historical consecutive win run / loss run.",
+    "detective-average-r": "Average recorded R-multiple across closed trades.",
+    "detective-excursion": "Average maximum adverse excursion / maximum favorable excursion recorded 30 minutes after entry.",
+    "detective-net-pnl": "Sum of logged closed-trade P&L percentages.",
+    "detective-profit-factor": "Total positive P&L ÷ absolute total negative P&L. Above 1.00 is profitable.",
+    "detective-average-win-loss": "Average positive P&L / average absolute negative P&L across closed trades.",
+  };
+  Object.entries(metricExplanations).forEach(([id, explanation]) => {
+    const card = $(`#${id}`)?.closest(".metric");
+    const label = card?.querySelector("p");
+    if (!label || label.querySelector(".metric-info")) return;
+    label.insertAdjacentHTML("beforeend", `<button class="metric-info" type="button" aria-label="How this metric is calculated" data-tooltip="${escapeHtml(explanation)}">i</button>`);
+  });
   document.querySelectorAll("[data-detective-tab]").forEach((button) => button.addEventListener("click", () => setDetectiveTab(button.dataset.detectiveTab)));
   $("#account-balance-form")?.addEventListener("submit", saveAccountWithGroup);
   document.addEventListener("submit", (event) => {
