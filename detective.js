@@ -999,7 +999,7 @@ function renderMetrics(trades) {
   const averageR = average(closedTrades.filter((trade) => trade.r_multiple != null).map((trade) => trade.r_multiple));
   const averageMae = average(closedTrades.filter((trade) => trade.mae_30m != null).map((trade) => trade.mae_30m));
   const averageMfe = average(closedTrades.filter((trade) => trade.mfe_30m != null).map((trade) => trade.mfe_30m));
-  const violations = closedTrades.filter((trade) => Boolean(trade.plan_violation)).length;
+  const totalPnl = closedTrades.reduce((total, trade) => total + (Number(trade.pnl_percent) || 0), 0);
   const winRate = decisiveTrades ? Math.round((wins / decisiveTrades) * 100) : null;
   const streaks = streakMetrics(closedTrades);
   const winRateElement = $("#detective-win-rate");
@@ -1020,7 +1020,9 @@ function renderMetrics(trades) {
   setTone(longestLossElement, "streak-loss");
   $("#detective-average-r").textContent = displayNumber(averageR, "R");
   $("#detective-excursion").textContent = averageMae == null && averageMfe == null ? "—" : `${displayNumber(averageMae)} / ${displayNumber(averageMfe)}`;
-  $("#detective-violations").textContent = String(violations);
+  const pnlElement = $("#detective-net-pnl");
+  pnlElement.textContent = displayNumber(totalPnl, "%");
+  setTone(pnlElement, totalPnl > 0 ? "streak-win" : totalPnl < 0 ? "streak-loss" : null);
 
   const visual = (id) => $(`#${id}`);
   const setVisual = (id, variables = {}, classes = []) => {
@@ -1048,7 +1050,18 @@ function renderMetrics(trades) {
   const mfeMagnitude = Math.abs(Number(averageMfe) || 0);
   const excursionTotal = Math.max(1, maeMagnitude + mfeMagnitude);
   setVisual("detective-excursion-visual", { "--mae": `${(maeMagnitude / excursionTotal) * 100}%`, "--mfe": `${(mfeMagnitude / excursionTotal) * 100}%` }, [["is-empty", averageMae == null && averageMfe == null]]);
-  setVisual("detective-violations-visual", { "--violations": `${Math.min(100, violations * 20)}%` }, [["is-clean", violations === 0]]);
+  const pnlSeries = [0];
+  [...closedTrades].sort((left, right) => tradeTime(left) - tradeTime(right)).forEach((trade) => pnlSeries.push(pnlSeries[pnlSeries.length - 1] + (Number(trade.pnl_percent) || 0)));
+  const minPnl = Math.min(...pnlSeries);
+  const maxPnl = Math.max(...pnlSeries);
+  const pnlRange = Math.max(.01, maxPnl - minPnl);
+  const points = pnlSeries.map((value, index) => `${(index / Math.max(1, pnlSeries.length - 1)) * 100},${100 - ((value - minPnl) / pnlRange) * 100}`).join(" ");
+  const pnlVisual = visual("detective-pnl-visual");
+  if (pnlVisual) {
+    pnlVisual.innerHTML = closedTrades.length ? `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline points="${points}" /></svg>` : "";
+    const zeroPosition = 100 - ((0 - minPnl) / pnlRange) * 100;
+    setVisual("detective-pnl-visual", { "--zero-position": `${Math.max(0, Math.min(100, zeroPosition))}%` }, [["is-positive", totalPnl > 0], ["is-negative", totalPnl < 0], ["is-empty", !closedTrades.length]]);
+  }
 }
 
 let tradeHoverTimer = null;
@@ -1601,9 +1614,9 @@ function init() {
   wireTradeHoverFocus();
   wireTradeRowClick();
   buildFilters();
-  const pnlMetric = $("#detective-violations").closest(".metric");
-  pnlMetric.querySelector("p").textContent = "TOTAL PNL";
-  pnlMetric.querySelector("small").textContent = "Sum across logged trades";
+  const pnlMetric = $("#detective-net-pnl").closest(".metric");
+  pnlMetric.querySelector("p").textContent = "NET P&L";
+  pnlMetric.querySelector("small").textContent = "Combined closed-trade return";
   $("#detective-excursion").closest(".metric").querySelector("p").textContent = "AVG MAE / MFE";
   document.querySelectorAll("[data-detective-tab]").forEach((button) => button.addEventListener("click", () => setDetectiveTab(button.dataset.detectiveTab)));
   $("#account-balance-form")?.addEventListener("submit", saveAccountWithGroup);
