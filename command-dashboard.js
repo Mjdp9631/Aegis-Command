@@ -207,29 +207,41 @@ async function loadMarkets() {
     { id: "casper-network", symbol: "CSPR", price: $("#hero-cspr-price"), change: $("#hero-cspr-change"), digits: 6 },
   ];
   if (!xauPrice || instruments.some((instrument) => !instrument.price || !instrument.change)) return;
-  try {
-    const [goldResponse, cryptoResponse] = await Promise.all([
-      fetch("https://xaus.com/api/v1/spot?compact=1"),
-      fetch("https://api.coingecko.com/api/v3/simple/price?ids=ripple,bitcoin,casper-network&vs_currencies=usd&include_24hr_change=true")
-    ]);
-    if (!goldResponse.ok || !cryptoResponse.ok) throw new Error("Market feed unavailable");
-    const [gold, crypto] = await Promise.all([goldResponse.json(), xrpResponse.json()]);
+  const [goldResult, cryptoResult] = await Promise.allSettled([
+    fetch("https://xaus.com/api/v1/spot?compact=1"),
+    fetch("https://api.coingecko.com/api/v3/simple/price?ids=ripple,bitcoin,casper-network&vs_currencies=usd&include_24hr_change=true")
+  ]);
+  const readJson = async (result) => result.status === "fulfilled" && result.value.ok ? result.value.json().catch(() => null) : null;
+  const [gold, crypto] = await Promise.all([readJson(goldResult), readJson(cryptoResult)]);
+  if (gold?.spot_usd_oz) {
     xauPrice.textContent = money(gold.spot_usd_oz);
     xauState.textContent = gold.stale ? "LAST VERIFIED QUOTE" : "INDICATIVE SPOT";
+  } else {
+    xauPrice.textContent = "UNAVAILABLE";
+    xauState.textContent = "FEED OFFLINE";
+  }
+  if (crypto) {
     const quotes = {};
     instruments.forEach((instrument) => {
       const quote = crypto[instrument.id] || {};
+      const price = Number(quote.usd);
       const change = Number(quote.usd_24h_change);
-      instrument.price.textContent = money(quote.usd, instrument.digits);
-      instrument.change.textContent = Number.isFinite(change) ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}% / 24H` : "INDICATIVE SPOT";
+      if (!Number.isFinite(price) || price <= 0) {
+        instrument.price.textContent = "UNAVAILABLE";
+        instrument.change.textContent = "FEED OFFLINE";
+        instrument.change.classList.remove("negative");
+        return;
+      }
+      instrument.price.textContent = money(price, instrument.digits);
+      instrument.change.textContent = Number.isFinite(change) ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}% / 24H` : "AGGREGATE SPOT";
       instrument.change.classList.toggle("negative", change < 0);
-      quotes[instrument.symbol] = { usd: Number(quote.usd), change24h: change, updatedAt: Date.now() };
+      quotes[instrument.symbol] = { usd: price, change24h: change, updatedAt: Date.now() };
     });
-    window.AEGIS_CRYPTO_QUOTES = quotes;
-    window.dispatchEvent(new CustomEvent("aegis:market-quotes", { detail: { quotes } }));
-  } catch {
-    xauPrice.textContent = "UNAVAILABLE";
-    xauState.textContent = "FEED OFFLINE";
+    if (Object.keys(quotes).length) {
+      window.AEGIS_CRYPTO_QUOTES = quotes;
+      window.dispatchEvent(new CustomEvent("aegis:market-quotes", { detail: { quotes } }));
+    }
+  } else {
     instruments.forEach((instrument) => {
       instrument.price.textContent = "UNAVAILABLE";
       instrument.change.textContent = "FEED OFFLINE";
