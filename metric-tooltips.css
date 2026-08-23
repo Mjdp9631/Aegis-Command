@@ -1,0 +1,2 @@
+/* Metric help must not shrink or clip at the top of the journal grid. */
+#detective.active .detective-metrics .metric{overflow:visible}#detective.active .detective-metrics .metric>p{position:relative;z-index:40;overflow:visible}.metric-info{z-index:41;flex:0 0 15px;min-width:15px;min-height:15px}.metric-info::after{top:calc(100% + 8px);bottom:auto}@media(max-width:700px){.metric-info::after{left:auto;right:0;transform:translate(0,-4px)}.metric-info:hover::after,.metric-info:focus-visible::after{transform:translate(0,0)}}
