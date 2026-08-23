@@ -135,6 +135,56 @@ function money(value) {
   return Number(value).toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
+function executionEstimate(trade) {
+  const entry = Number(trade?.entry_price);
+  const takeProfit = Number(trade?.take_profit_price);
+  const stopLoss = Number(trade?.stop_loss_price);
+  const lots = Number(trade?.lot_size);
+  if (![entry, lots].every((value) => Number.isFinite(value) && value > 0)) return null;
+  const pair = String(trade?.pair || "").toUpperCase().replace(/[^A-Z]/g, "");
+  const dollarMove = (exit) => {
+    if (!Number.isFinite(exit) || exit <= 0) return null;
+    const distance = Math.abs(exit - entry);
+    if (pair === "XAUUSD") return distance * 100 * lots;
+    if (pair === "USDJPY") return (distance * 100000 * lots) / exit;
+    if (pair.endsWith("USD")) return distance * 100000 * lots;
+    return null;
+  };
+  const target = dollarMove(takeProfit);
+  const risk = dollarMove(stopLoss);
+  if (target == null && risk == null) return { target: null, risk: null, basis: null };
+  const basis = pair === "XAUUSD" ? "XAU/USD · 100 oz per standard lot" : pair === "USDJPY" ? "USD/JPY · converted at the exit level" : pair.endsWith("USD") ? "Forex · 100,000 units per standard lot" : null;
+  return { target, risk, basis };
+}
+
+function estimatedPnlLabel(value, sign) {
+  return value == null ? "—" : `${sign}${money(Math.abs(value))}`;
+}
+
+function syncExecutionEstimate() {
+  const preview = $("#detective-execution-estimate");
+  if (!preview) return;
+  const estimate = executionEstimate({
+    pair: $("#detective-pair")?.value,
+    entry_price: $("#detective-entry-price")?.value,
+    take_profit_price: $("#detective-take-profit")?.value,
+    stop_loss_price: $("#detective-stop-loss")?.value,
+    lot_size: $("#detective-lot-size")?.value,
+  });
+  if (!estimate) {
+    preview.textContent = "Enter entry, lot size, and a target or stop to estimate gross P&L.";
+    return;
+  }
+  if (!estimate.basis) {
+    preview.textContent = "Estimate unavailable for this pair. The saved levels will still appear in the trade detail.";
+    return;
+  }
+  const parts = [];
+  if (estimate.target != null) parts.push(`TP ${estimatedPnlLabel(estimate.target, "+")}`);
+  if (estimate.risk != null) parts.push(`SL ${estimatedPnlLabel(estimate.risk, "−")}`);
+  preview.textContent = `Estimated gross P&L: ${parts.join(" · ")} · ${estimate.basis}. Excludes spread and commission.`;
+}
+
 function cents(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
@@ -1187,6 +1237,10 @@ function showTradeDetail(trade) {
   const dialog = ensureTradeDetailDialog();
   const date = trade.traded_at ? new Date(trade.traded_at) : null;
   const value = (item) => item == null || item === "" ? "—" : escapeHtml(String(item));
+  const estimate = executionEstimate(trade);
+  const estimatedGross = estimate?.basis
+    ? `TP ${estimatedPnlLabel(estimate.target, "+")} · SL ${estimatedPnlLabel(estimate.risk, "−")} (spread / commission excluded)`
+    : "—";
   const fields = [
     ["Time", date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : "—"], ["Pair", trade.pair],
     ["Type", trade.trade_type], ["Setup", displaySetup(trade.setup)], ["Market condition", trade.market_condition],
@@ -1195,6 +1249,8 @@ function showTradeDetail(trade) {
     ["Outcome", trade.trade_status === "Open" ? "Open" : resolvedOutcome(trade)], ["Position", trade.position],
     ["Account", trade.account], ["Day", trade.trade_day], ["Month", trade.trade_month],
     ["Session time", trade.session_time], ["Entry timeframe", trade.entry_timeframe], ["Wick", trade.wick],
+    ["Entry price", trade.entry_price], ["Take profit", trade.take_profit_price], ["Stop loss", trade.stop_loss_price], ["Lot size", trade.lot_size],
+    ["Estimated gross P&L", estimatedGross], ["Estimate basis", estimate?.basis],
     ["Followed plan", trade.plan_violation ? "No" : "Yes"], ["Rule violation", trade.violation_type],
   ];
   const number = loadedTrades.slice().sort((a, b) => new Date(a.traded_at || a.created_at) - new Date(b.traded_at || b.created_at)).findIndex((item) => String(item.id) === String(trade.id)) + 1;
@@ -1383,6 +1439,7 @@ function clearForm() {
   $("#detective-debrief-note").value = "";
   $("#detective-additional-note").value = "";
   syncPlanAdherenceUi();
+  syncExecutionEstimate();
   syncSetupUi();
   currentTradeId = null;
   editFormSnapshot = null;
@@ -1449,6 +1506,10 @@ function readTradeFormValues() {
     cb_hour: $("#detective-cb-hour").value.trim() || null,
     r_multiple: numberOrNull($("#detective-r").value),
     pnl_percent: numberOrNull($("#detective-pnl").value),
+    entry_price: numberOrNull($("#detective-entry-price").value),
+    take_profit_price: numberOrNull($("#detective-take-profit").value),
+    stop_loss_price: numberOrNull($("#detective-stop-loss").value),
+    lot_size: numberOrNull($("#detective-lot-size").value),
     outcome: $("#detective-outcome").value === "Open" ? null : $("#detective-outcome").value,
     trade_status: $("#detective-outcome").value === "Open" ? "Open" : "Closed",
     mae_30m: numberOrNull($("#detective-mae").value),
@@ -1490,12 +1551,14 @@ function editTrade(trade) {
   });
   Array.from($("#detective-setup").options).forEach((option) => { option.selected = selectedSetups.includes(option.value); });
   ["mae", "mfe", "r", "pnl"].forEach((field) => { $("#detective-" + field).value = trade[{ mae: "mae_30m", mfe: "mfe_30m", r: "r_multiple", pnl: "pnl_percent" }[field]] ?? ""; });
+  [["entry-price", "entry_price"], ["take-profit", "take_profit_price"], ["stop-loss", "stop_loss_price"], ["lot-size", "lot_size"]].forEach(([field, column]) => { $("#detective-" + field).value = trade[column] ?? ""; });
   if (trade.traded_at) $("#detective-time").value = localDateTimeValue(trade.traded_at);
   $("#detective-followed-plan").value = trade.plan_violation ? "no" : "yes";
   $("#detective-violation-reason").value = trade.violation_type || "";
   $("#detective-debrief-note").value = trade.debrief_note || "";
   $("#detective-additional-note").value = trade.note || "";
   syncPlanAdherenceUi();
+  syncExecutionEstimate();
   syncSetupUi();
   editFormSnapshot = readTradeFormValues();
   $("#save-detective-trade").textContent = "Update debrief";
@@ -1582,6 +1645,12 @@ function init() {
       if (!existing.has(value)) sessionTime.add(new Option(label, value));
     });
   }
+  ["#detective-pair", "#detective-entry-price", "#detective-take-profit", "#detective-stop-loss", "#detective-lot-size"].forEach((selector) => {
+    const input = $(selector);
+    input?.addEventListener("input", syncExecutionEstimate);
+    input?.addEventListener("change", syncExecutionEstimate);
+  });
+  syncExecutionEstimate();
   const account = $("#detective-account");
   if (account && !Array.from(account.options).some((option) => option.value === "Theoretical")) account.insertAdjacentHTML("beforeend", '<option>Theoretical</option>');
   const setup = $("#detective-setup");
