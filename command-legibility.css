@@ -225,6 +225,19 @@
 #detective.active .trade-panel tbody tr[data-trade-id] { cursor: pointer; }
 #detective.active .trade-panel tbody tr[data-trade-id]:focus-visible { outline: 2px solid rgba(103, 191, 255, .72); outline-offset: -2px; }
 #detective.active .trade-panel { backdrop-filter: blur(4px) saturate(110%); }
+
+/* The journal itself owns both axes of scrolling, so its column labels can
+   stay pinned while the trade ledger moves beneath them. */
+#detective.active .journal-trade-window .table-wrap { overflow: visible; }
+#detective.active .journal-trade-window table { border-collapse: separate; border-spacing: 0; }
+#detective.active .journal-trade-window thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  white-space: nowrap;
+  background: rgba(5, 17, 31, .98);
+  box-shadow: 0 1px 0 rgba(103, 191, 255, .28), 0 8px 18px rgba(0, 0, 0, .22);
+}
 .trade-detail-dialog .dialog-card {
   width: min(900px, calc(100vw - 36px));
   max-height: calc(100vh - 36px);

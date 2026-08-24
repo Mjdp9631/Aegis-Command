@@ -1762,6 +1762,8 @@ function init() {
   outcome.insertAdjacentHTML("afterbegin", '<option value="Open">Open</option>');
   syncPlanAdherenceUi();
   const header = $("#trade-log").closest("table").querySelector("thead tr");
+  const outcomeHeader = Array.from(header.cells).find((cell) => cell.textContent.trim() === "WIN / B/E / LOSS");
+  if (outcomeHeader) outcomeHeader.textContent = "OUTCOME";
   header.insertAdjacentHTML("afterbegin", "<th>#</th>");
   wireTradeHoverFocus();
   wireTradeRowClick();
