@@ -195,12 +195,8 @@ async function load() {
     }
   }
   dispatchPhase(); render();
-  if (db && userId && typeof db.channel === "function") {
-    if (phaseSyncChannel) db.removeChannel(phaseSyncChannel);
-    phaseSyncChannel = db.channel(`aegis-phase-sync-${userId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "phase_protocols", filter: `user_id=eq.${userId}` }, () => { void load(); })
-      .subscribe();
-  }
+  // cross-browser-sync.js owns the one shared Realtime channel. Keeping a
+  // phase-only channel here delivered the same phase row twice per change.
   })();
   try {
     return await phaseLoadInFlight;
@@ -234,6 +230,9 @@ load();
 if (db) db.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; setTimeout(load, 100); });
 window.addEventListener("aegis:character-levels-changed", render);
 window.addEventListener("aegis:missions-changed", () => setTimeout(load, 100));
+window.addEventListener("aegis:data-changed", (event) => {
+  if (event.detail?.source === "remote-phase") void load();
+});
 window.addEventListener("focus", () => { void load(); });
 window.addEventListener("online", () => { void load(); });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void load(); });

@@ -1019,19 +1019,9 @@ async function refreshDurableOperationState() {
 }
 
 function subscribeToOperationSync() {
-  if (!client || !currentUser || typeof client.channel !== "function") return;
-  try {
-    if (operationSyncChannel) client.removeChannel(operationSyncChannel);
-    operationSyncChannel = client.channel(`aegis-operation-sync-${currentUser.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "operations", filter: `user_id=eq.${currentUser.id}` }, () => { scheduleDurableOperationRefresh(250); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "operation_occurrences", filter: `user_id=eq.${currentUser.id}` }, () => { scheduleDurableOperationRefresh(250); })
-      .subscribe();
-  } catch (error) {
-    // Realtime is an enhancement only. A channel failure must not abort boot
-    // or replace the already-renderable local/cloud queue with starter data.
-    console.warn("Operation realtime sync unavailable", error);
-    operationSyncChannel = null;
-  }
+  // cross-browser-sync.js owns the single application Realtime channel.
+  // This historical second subscription duplicated every operations and
+  // occurrence payload before the queue even began its durable refresh.
 }
 
 let operationRefreshTimer = null;
@@ -1048,6 +1038,9 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("storage", (event) => {
   if (event.key === operationsCacheKey() || event.key === occurrenceCacheKey()) scheduleDurableOperationRefresh();
+});
+window.addEventListener("aegis:data-changed", (event) => {
+  if (event.detail?.source === "remote-operations") scheduleDurableOperationRefresh(250);
 });
 
 function normalizedStatus(operation) {
