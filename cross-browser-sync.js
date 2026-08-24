@@ -71,7 +71,20 @@ async function subscribe() {
 
 if (supabase) {
   void subscribe();
-  supabase.auth.onAuthStateChange(() => { subscribedUser = ""; setTimeout(() => { void subscribe(); }, 0); });
+  supabase.auth.onAuthStateChange((event) => {
+    // TOKEN_REFRESHED is normal session maintenance, not a user transition.
+    // Rebuilding the channel here repeatedly re-delivered live row payloads
+    // and made every listening module treat the refresh as new remote data.
+    if (event === "SIGNED_OUT") {
+      subscribedUser = "";
+      if (channel) void supabase.removeChannel(channel);
+      channel = null;
+      return;
+    }
+    if (event !== "SIGNED_IN" && event !== "INITIAL_SESSION") return;
+    subscribedUser = "";
+    setTimeout(() => { void subscribe(); }, 0);
+  });
   // A focus event is common while switching tabs or returning from a form.
   // Rebuilding the realtime channel on every focus caused subscription churn
   // and duplicate event bursts. Keep the healthy channel; reconnect only when

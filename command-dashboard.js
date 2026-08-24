@@ -316,7 +316,7 @@ document.addEventListener("keydown", (event) => { if ((event.key === "Enter" || 
 
 if (supabase) {
   void load();
-  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; scheduleDashboardLoad(120); });
+  supabase.auth.onAuthStateChange((event) => { if (event !== "SIGNED_IN") return; scheduleDashboardLoad(120); });
   window.addEventListener("aegis:missions-changed", () => scheduleDashboardLoad(140));
   window.addEventListener("aegis:operations-changed", () => scheduleDashboardLoad(140));
   window.addEventListener("aegis:mastery-changed", () => scheduleDashboardLoad(140));

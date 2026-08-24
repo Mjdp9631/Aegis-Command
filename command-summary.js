@@ -108,7 +108,7 @@ document.addEventListener("click", (event) => {
 
 if (supabase) {
   void load();
-  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; scheduleSummaryLoad(120); });
+  supabase.auth.onAuthStateChange((event) => { if (event !== "SIGNED_IN") return; scheduleSummaryLoad(120); });
   window.addEventListener("aegis:missions-changed", () => scheduleSummaryLoad(120));
   window.addEventListener("aegis:operations-changed", () => scheduleSummaryLoad(120));
   window.addEventListener("aegis:mastery-changed", () => scheduleSummaryLoad(120));

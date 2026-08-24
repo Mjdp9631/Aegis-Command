@@ -1394,6 +1394,7 @@ if (cloudReady) {
       renderCommandMissions();
       return;
     }
+    if (_event !== "INITIAL_SESSION" && _event !== "SIGNED_IN") return;
     // The auth callback already gives us the authoritative session. Do not
     // immediately call getSession() again: during token refresh Supabase can
     // briefly return an empty snapshot, leaving the mission ledger on its

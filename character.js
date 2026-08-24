@@ -846,7 +846,7 @@ document.addEventListener("click", async (event) => {
 
 if (supabase) {
   void load();
-  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; scheduleCharacterLoad(80); });
+  supabase.auth.onAuthStateChange((event) => { if (event !== "SIGNED_IN") return; scheduleCharacterLoad(80); });
   document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) scheduleCharacterLoad(700); });
   window.addEventListener("aegis:mastery-changed", () => scheduleCharacterLoad(120));
   window.addEventListener("aegis:data-changed", (event) => { if (["mastery", "operation-status"].includes(event.detail?.source)) return; scheduleCharacterLoad(120); });

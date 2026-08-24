@@ -895,7 +895,7 @@ if (supabase) {
     }
     (action === "finance" ? $("#finance-dialog") : $("#content-dialog")).showModal();
   });
-  supabase.auth.onAuthStateChange((event) => { if (event !== "INITIAL_SESSION") setTimeout(load, 50); });
+  supabase.auth.onAuthStateChange((event) => { if (event === "SIGNED_IN") setTimeout(load, 50); });
 }
 
 window.addEventListener("aegis:market-quotes", () => {

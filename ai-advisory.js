@@ -669,7 +669,7 @@ if (supabase) {
   };
   supabase.auth.getSession().then(({ data: { session } }) => { if (session) restoreAdvisory(); });
   supabase.auth.onAuthStateChange((event, session) => {
-    if (!session || event === "INITIAL_SESSION") return;
+    if (!session || event !== "SIGNED_IN") return;
     setTimeout(() => restoreAdvisory(), 150);
   });
   window.addEventListener("aegis:navigation", () => { mount(); paintLatestAdvisory(); });

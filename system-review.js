@@ -216,5 +216,5 @@ async function load() {
 if (supabase) {
   void load();
   ["aegis:missions-changed", "aegis:operations-changed", "aegis:mastery-changed", "aegis:data-changed"].forEach((eventName) => window.addEventListener(eventName, () => scheduleReviewLoad(220)));
-  supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; scheduleReviewLoad(180); });
+  supabase.auth.onAuthStateChange((event) => { if (event !== "SIGNED_IN") return; scheduleReviewLoad(180); });
 }

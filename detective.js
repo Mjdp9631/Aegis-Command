@@ -1809,7 +1809,7 @@ function init() {
   if (supabase) {
     void loadTrades();
     void loadAccountLedger();
-    supabase.auth.onAuthStateChange((event) => { if (event === "INITIAL_SESSION") return; scheduleTradeLoad(100); });
+    supabase.auth.onAuthStateChange((event) => { if (event !== "SIGNED_IN") return; scheduleTradeLoad(100); });
   }
 }
 
