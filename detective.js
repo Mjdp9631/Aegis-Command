@@ -1763,7 +1763,7 @@ function init() {
   syncPlanAdherenceUi();
   const header = $("#trade-log").closest("table").querySelector("thead tr");
   const outcomeHeader = Array.from(header.cells).find((cell) => cell.textContent.trim() === "WIN / B/E / LOSS");
-  if (outcomeHeader) outcomeHeader.textContent = "OUTCOME";
+  if (outcomeHeader) outcomeHeader.textContent = "WIN / LOSS";
   header.insertAdjacentHTML("afterbegin", "<th>#</th>");
   wireTradeHoverFocus();
   wireTradeRowClick();
