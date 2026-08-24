@@ -15,6 +15,7 @@ let accountGroups = [];
 let accountMemberships = [];
 let groupTradeLinks = [];
 let groupTradeAllocations = [];
+let tradeAccountExecutions = [];
 let groupWithdrawals = [];
 let withdrawalAllocations = [];
 let accountDeposits = [];
@@ -176,11 +177,11 @@ function syncRiskRewardInput() {
   return estimate;
 }
 
-function executionEstimate(trade) {
+function executionEstimate(trade, lotSize = trade?.lot_size) {
   const entry = Number(trade?.entry_price);
   const takeProfit = Number(trade?.take_profit_price);
   const stopLoss = Number(trade?.stop_loss_price);
-  const lots = Number(trade?.lot_size);
+  const lots = Number(lotSize);
   if (![entry, lots].every((value) => Number.isFinite(value) && value > 0)) return null;
   const pair = String(trade?.pair || "").toUpperCase().replace(/[^A-Z]/g, "");
   const dollarMove = (exit) => {
@@ -198,6 +199,96 @@ function executionEstimate(trade) {
   return { target, risk, basis };
 }
 
+function tradeExecutionsFor(tradeId) {
+  return tradeAccountExecutions.filter((execution) => String(execution.trade_debrief_id) === String(tradeId));
+}
+
+function executionAccount(execution) {
+  return accountBalances.find((account) => String(account.id) === String(execution.account_id)) || null;
+}
+
+function executionAccountName(execution) {
+  return executionAccount(execution)?.account_name || "Unknown account";
+}
+
+function tradeAccountLabel(trade) {
+  const executions = tradeExecutionsFor(trade.id);
+  if (!executions.length) return trade.account || "â€”";
+  const names = executions.map(executionAccountName);
+  return names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`;
+}
+
+function rawTradeExecutionRows() {
+  return Array.from(document.querySelectorAll("[data-trade-execution-row]")).map((row) => ({
+    account_id: row.querySelector("[data-trade-execution-account]")?.value || "",
+    lot_size: row.querySelector("[data-trade-execution-lot]")?.value || "",
+  }));
+}
+
+function executionRowsFromForm({ validate = false } = {}) {
+  const rawRows = rawTradeExecutionRows();
+  const hasIncompleteRow = rawRows.some((row) => !row.account_id || !(Number(row.lot_size) > 0));
+  const rows = rawRows
+    .filter((row) => row.account_id && Number(row.lot_size) > 0)
+    .map((row) => ({ account_id: row.account_id, lot_size: Number(row.lot_size) }));
+  const hasDuplicateAccount = new Set(rows.map((row) => row.account_id)).size !== rows.length;
+  if (validate && (!rows.length || hasIncompleteRow || hasDuplicateAccount)) {
+    return { rows, error: !rows.length ? "Add at least one account execution with a lot size." : hasDuplicateAccount ? "Each account can appear only once per trade." : "Complete or remove every account execution row." };
+  }
+  return { rows, error: null };
+}
+
+function executionRowMarkup(execution = {}) {
+  const selected = String(execution.account_id || "");
+  const options = accountBalances.length
+    ? `<option value="">Choose account</option>${accountBalances.map((account) => `<option value="${escapeHtml(account.id)}" ${String(account.id) === selected ? "selected" : ""}>${escapeHtml(account.account_name)}</option>`).join("")}`
+    : '<option value="">Create an account in Accounts first</option>';
+  return `<div class="trade-execution-row" data-trade-execution-row><label>Account<select data-trade-execution-account required ${accountBalances.length ? "" : "disabled"}>${options}</select></label><label>Lot size<input data-trade-execution-lot required type="number" min="0" step="any" inputmode="decimal" value="${execution.lot_size ?? ""}" placeholder="e.g. 0.50" /></label><small data-trade-execution-estimate>Enter levels to estimate this account.</small><button class="trade-execution-remove" type="button" data-trade-execution-remove aria-label="Remove account execution">Remove</button></div>`;
+}
+
+function renderTradeExecutionRows(rows = []) {
+  const host = $("#detective-account-execution-rows");
+  if (!host) return;
+  host.innerHTML = (rows.length ? rows : [{}]).map(executionRowMarkup).join("");
+  syncExecutionEstimate();
+}
+
+function refreshTradeExecutionAccountOptions() {
+  if (!$("#detective-account-execution-rows")) return;
+  renderTradeExecutionRows(rawTradeExecutionRows());
+}
+
+function ensureTradeExecutionFields() {
+  const form = $("#detective-trade-dialog form");
+  const estimate = $("#detective-execution-estimate");
+  if (!form || !estimate) return;
+  const lotSizeField = $("#detective-lot-size")?.closest("label");
+  if (lotSizeField) {
+    lotSizeField.closest(".two-col")?.classList.add("single-col");
+    lotSizeField.remove();
+  }
+  const accountField = $("#detective-account")?.closest("label");
+  if (accountField) {
+    accountField.closest(".two-col")?.classList.add("single-col");
+    accountField.remove();
+  }
+  if (!$("#detective-account-executions")) {
+    estimate.insertAdjacentHTML("beforebegin", `<section class="trade-account-executions" id="detective-account-executions"><div class="trade-execution-heading"><div><p>ACCOUNT EXECUTIONS</p><small>Use one row per account. Estimates are calculated per account and combined below.</small></div><button class="secondary compact" type="button" data-trade-execution-add>+ Add account</button></div><div id="detective-account-execution-rows"></div></section>`);
+  }
+  renderTradeExecutionRows();
+}
+
+function combinedExecutionEstimate(trade, rows) {
+  const estimates = rows.map((row) => ({ row, estimate: executionEstimate(trade, row.lot_size) })).filter((item) => item.estimate?.basis);
+  if (!estimates.length) return null;
+  return {
+    target: estimates.reduce((total, item) => total + Number(item.estimate.target || 0), 0),
+    risk: estimates.reduce((total, item) => total + Number(item.estimate.risk || 0), 0),
+    basis: estimates[0].estimate.basis,
+    estimates,
+  };
+}
+
 function estimatedPnlLabel(value, sign) {
   return value == null ? "—" : `${sign}${money(Math.abs(value))}`;
 }
@@ -207,17 +298,31 @@ function syncExecutionEstimate() {
   if (!preview) return;
   const riskReward = syncRiskRewardInput();
   const riskRewardLabel = riskReward ? `Planned R:R 1:${riskReward.ratio.toFixed(2)}.` : "";
-  const estimate = executionEstimate({
+  const { rows } = executionRowsFromForm();
+  const estimate = combinedExecutionEstimate({
     pair: $("#detective-pair")?.value,
     entry_price: $("#detective-entry-price")?.value,
     take_profit_price: $("#detective-take-profit")?.value,
     stop_loss_price: $("#detective-stop-loss")?.value,
-    lot_size: $("#detective-lot-size")?.value,
+  }, rows);
+  document.querySelectorAll("[data-trade-execution-row]").forEach((row) => {
+    const lotSize = row.querySelector("[data-trade-execution-lot]")?.value;
+    const rowEstimate = executionEstimate({
+      pair: $("#detective-pair")?.value,
+      entry_price: $("#detective-entry-price")?.value,
+      take_profit_price: $("#detective-take-profit")?.value,
+      stop_loss_price: $("#detective-stop-loss")?.value,
+    }, lotSize);
+    const rowPreview = row.querySelector("[data-trade-execution-estimate]");
+    if (!rowPreview) return;
+    rowPreview.textContent = rowEstimate?.basis
+      ? `TP ${estimatedPnlLabel(rowEstimate.target, "+")} · SL ${estimatedPnlLabel(rowEstimate.risk, "−")}`
+      : "Enter entry, TP, SL, and lot size to estimate this account.";
   });
   if (!estimate) {
     preview.textContent = riskRewardLabel
-      ? `${riskRewardLabel} Add lot size to estimate gross P&L.`
-      : "Enter entry, take profit, and stop loss to calculate R:R. Add lot size to estimate gross P&L.";
+      ? `${riskRewardLabel} Add an account execution and lot size to estimate gross P&L.`
+      : "Enter entry, take profit, and stop loss to calculate R:R. Add account executions to estimate gross P&L.";
     return;
   }
   if (!estimate.basis) {
@@ -227,7 +332,7 @@ function syncExecutionEstimate() {
   const parts = [];
   if (estimate.target != null) parts.push(`TP ${estimatedPnlLabel(estimate.target, "+")}`);
   if (estimate.risk != null) parts.push(`SL ${estimatedPnlLabel(estimate.risk, "−")}`);
-  preview.textContent = `${riskRewardLabel ? `${riskRewardLabel} ` : ""}Estimated gross P&L: ${parts.join(" · ")} · ${estimate.basis}. Excludes spread and commission.`;
+  preview.textContent = `${riskRewardLabel ? `${riskRewardLabel} ` : ""}Combined estimated gross P&L across ${estimate.estimates.length} account${estimate.estimates.length === 1 ? "" : "s"}: ${parts.join(" · ")} · ${estimate.basis}. Excludes spread and commission.`;
 }
 
 function cents(value) {
@@ -800,6 +905,8 @@ async function loadAccountLedger() {
   withdrawalAllocations = allocationsResult.data || [];
   accountDeposits = depositsResult.error ? [] : (depositsResult.data || []);
   accountTestTrades = testTradesResult.data || [];
+  refreshTradeExecutionAccountOptions();
+  if (loadedTrades.length) applyFilters();
   renderGroupedAccountBalances();
 }
 
@@ -1309,7 +1416,10 @@ function showTradeDetail(trade) {
   const dialog = ensureTradeDetailDialog();
   const date = trade.traded_at ? new Date(trade.traded_at) : null;
   const value = (item) => item == null || item === "" ? "—" : escapeHtml(String(item));
-  const estimate = executionEstimate(trade);
+  const savedExecutions = tradeExecutionsFor(trade.id);
+  const legacyAccount = accountBalances.find((account) => account.account_name === trade.account);
+  const executions = savedExecutions.length ? savedExecutions : legacyAccount && Number(trade.lot_size) > 0 ? [{ account_id: legacyAccount.id, lot_size: trade.lot_size }] : [];
+  const estimate = combinedExecutionEstimate(trade, executions);
   const estimatedGross = estimate?.basis
     ? `TP ${estimatedPnlLabel(estimate.target, "+")} · SL ${estimatedPnlLabel(estimate.risk, "−")} (spread / commission excluded)`
     : "—";
@@ -1319,9 +1429,9 @@ function showTradeDetail(trade) {
     ["CB hour", trade.cb_hour], ["MAE", displayNumber(trade.mae_30m)], ["MFE", displayNumber(trade.mfe_30m)],
     ["Risk / reward", displayNumber(trade.r_multiple, "R")], ["PnL", displayNumber(trade.pnl_percent, "%")],
     ["Outcome", trade.trade_status === "Open" ? "Open" : resolvedOutcome(trade)], ["Position", trade.position],
-    ["Account", trade.account], ["Day", trade.trade_day], ["Month", trade.trade_month],
+    ["Account", tradeAccountLabel(trade)], ["Account executions", executions.length ? executions.map((execution) => `${executionAccountName(execution)} · ${displayNumber(execution.lot_size)} lots`).join(" | ") : null], ["Day", trade.trade_day], ["Month", trade.trade_month],
     ["Session time", trade.session_time], ["Entry timeframe", trade.entry_timeframe], ["Wick", trade.wick],
-    ["Entry price", trade.entry_price], ["Take profit", trade.take_profit_price], ["Stop loss", trade.stop_loss_price], ["Lot size", trade.lot_size],
+    ["Entry price", trade.entry_price], ["Take profit", trade.take_profit_price], ["Stop loss", trade.stop_loss_price],
     ["Estimated gross P&L", estimatedGross], ["Estimate basis", estimate?.basis],
     ["Followed plan", trade.plan_violation ? "No" : "Yes"], ["Rule violation", trade.violation_type],
   ];
@@ -1379,7 +1489,7 @@ function renderTrades(trades) {
       <td class="${Number(trade.pnl_percent) > 0 ? "result-positive" : Number(trade.pnl_percent) < 0 ? "result-negative" : ""}">${displayNumber(trade.pnl_percent, "%")}</td>
       <td class="${resultClass}">${outcome}</td>
       <td>${escapeHtml(trade.position || "—")}</td>
-      <td>${escapeHtml(trade.account || "—")}${isTheoretical(trade) ? "<small class=\"theoretical-account\">Review only</small>" : ""}</td>
+      <td>${escapeHtml(tradeAccountLabel(trade))}${isTheoretical(trade) ? "<small class=\"theoretical-account\">Review only</small>" : ""}</td>
       <td>${escapeHtml(trade.trade_day || "—")}</td>
       <td>${escapeHtml(trade.trade_month || "—")}</td>
       <td>${escapeHtml(trade.session_time || "—")}</td>
@@ -1424,6 +1534,11 @@ async function loadTrades() {
     return;
   }
   loadedTrades = data || [];
+  const loadExecutions = () => supabase.from("trade_account_executions").select("*").eq("user_id", userId).order("created_at", { ascending: true });
+  const executionsResult = window.AEGIS_DATA_GUARD
+    ? await window.AEGIS_DATA_GUARD.run("detective:trade-executions", loadExecutions)
+    : await loadExecutions();
+  tradeAccountExecutions = executionsResult.error ? [] : executionsResult.data || [];
   applyFilters();
   renderGroupedAccountBalances();
   } finally {
@@ -1507,6 +1622,7 @@ document.addEventListener("click", (event) => {
 function clearForm() {
   $("#detective-trade-dialog form").reset();
   delete $("#detective-r")?.dataset.autoRiskReward;
+  renderTradeExecutionRows();
   $("#detective-outcome").value = "Open";
   $("#detective-followed-plan").value = "yes";
   $("#detective-debrief-note").value = "";
@@ -1564,6 +1680,7 @@ function ensureAdditionalNoteField() {
 
 function setSelectValue(selector, value) {
   const control = $(selector);
+  if (!control) return;
   if (value == null || value === "") return;
   const normalized = String(value);
   if (!Array.from(control.options).some((option) => option.value === normalized)) control.add(new Option(normalized, normalized));
@@ -1571,6 +1688,8 @@ function setSelectValue(selector, value) {
 }
 
 function readTradeFormValues() {
+  const executionRows = executionRowsFromForm().rows;
+  const executionAccounts = executionRows.map((row) => executionAccount(row)?.account_name).filter(Boolean);
   return {
     pair: $("#detective-pair").value.trim().toUpperCase(),
     setup: JSON.stringify(Array.from($("#detective-setup").selectedOptions).map((option) => option.value)),
@@ -1582,13 +1701,13 @@ function readTradeFormValues() {
     entry_price: numberOrNull($("#detective-entry-price").value),
     take_profit_price: numberOrNull($("#detective-take-profit").value),
     stop_loss_price: numberOrNull($("#detective-stop-loss").value),
-    lot_size: numberOrNull($("#detective-lot-size").value),
+    lot_size: null,
     outcome: $("#detective-outcome").value === "Open" ? null : $("#detective-outcome").value,
     trade_status: $("#detective-outcome").value === "Open" ? "Open" : "Closed",
     mae_30m: numberOrNull($("#detective-mae").value),
     mfe_30m: numberOrNull($("#detective-mfe").value),
     position: $("#detective-position").value.trim() || null,
-    account: $("#detective-account").value.trim() || null,
+    account: executionAccounts.length === 1 ? executionAccounts[0] : executionAccounts.length > 1 ? "Multiple accounts" : null,
     trade_day: $("#detective-day").value.trim() || null,
     trade_month: $("#detective-month").value.trim() || null,
     session_time: $("#detective-session-time").value.trim() || null,
@@ -1624,7 +1743,10 @@ function editTrade(trade) {
   });
   Array.from($("#detective-setup").options).forEach((option) => { option.selected = selectedSetups.includes(option.value); });
   ["mae", "mfe", "r", "pnl"].forEach((field) => { $("#detective-" + field).value = trade[{ mae: "mae_30m", mfe: "mfe_30m", r: "r_multiple", pnl: "pnl_percent" }[field]] ?? ""; });
-  [["entry-price", "entry_price"], ["take-profit", "take_profit_price"], ["stop-loss", "stop_loss_price"], ["lot-size", "lot_size"]].forEach(([field, column]) => { $("#detective-" + field).value = trade[column] ?? ""; });
+  [["entry-price", "entry_price"], ["take-profit", "take_profit_price"], ["stop-loss", "stop_loss_price"]].forEach(([field, column]) => { $("#detective-" + field).value = trade[column] ?? ""; });
+  const savedExecutions = tradeExecutionsFor(trade.id);
+  const legacyAccount = accountBalances.find((account) => account.account_name === trade.account);
+  renderTradeExecutionRows(savedExecutions.length ? savedExecutions : legacyAccount && Number(trade.lot_size) > 0 ? [{ account_id: legacyAccount.id, lot_size: trade.lot_size }] : []);
   const savedRiskReward = Number(trade.r_multiple);
   const calculatedRiskReward = riskRewardEstimate(trade);
   if (calculatedRiskReward && Number.isFinite(savedRiskReward) && Math.abs(savedRiskReward - calculatedRiskReward.ratio) < 0.01) {
@@ -1655,12 +1777,44 @@ async function deleteTrade(id) {
   await loadTrades();
 }
 
+function sameTradeExecutions(left, right) {
+  const normalized = (rows) => rows.map((row) => `${row.account_id}:${Number(row.lot_size)}`).sort();
+  return JSON.stringify(normalized(left)) === JSON.stringify(normalized(right));
+}
+
+async function saveTradeExecutions(tradeId, rows, userId) {
+  const removeResult = await supabase.from("trade_account_executions").delete().eq("trade_debrief_id", tradeId).eq("user_id", userId);
+  if (removeResult.error) return removeResult.error;
+  const insertResult = await supabase.from("trade_account_executions").insert(rows.map((row) => ({
+    user_id: userId,
+    trade_debrief_id: tradeId,
+    account_id: row.account_id,
+    lot_size: row.lot_size,
+  })));
+  return insertResult.error || null;
+}
+
+async function verifyTradeExecutionStorage() {
+  const { error } = await supabase.from("trade_account_executions").select("id").limit(1);
+  return error || null;
+}
+
 async function saveTrade(event) {
   event.preventDefault();
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) {
     alert("Please sign in before logging a trade.");
+    return;
+  }
+  const storageError = await verifyTradeExecutionStorage();
+  if (storageError) {
+    alert(`Account execution storage is not ready: ${storageError.message}. Run migration 101 first.`);
+    return;
+  }
+  const executionState = executionRowsFromForm({ validate: true });
+  if (executionState.error) {
+    alert(executionState.error);
     return;
   }
   const formValues = readTradeFormValues();
@@ -1671,22 +1825,33 @@ async function saveTrade(event) {
     ? Object.fromEntries(Object.entries(formValues).filter(([field, value]) => value !== editFormSnapshot[field]))
     : { ...formValues };
   const timeChanged = !hasSnapshot || formValues.traded_at_local !== editFormSnapshot.traded_at_local;
+  const executionsChanged = isNewTrade || !sameTradeExecutions(executionState.rows, tradeExecutionsFor(currentTradeId));
   delete payload.traded_at_local;
   if (timeChanged) payload.traded_at = isoFromLocalDateTime(formValues.traded_at_local, existingTrade?.traded_at || new Date().toISOString());
   if (isNewTrade) payload.execution_grade = "A";
-  if (!isNewTrade && Object.keys(payload).length === 0) {
+  if (!isNewTrade && Object.keys(payload).length === 0 && !executionsChanged) {
     $("#detective-trade-dialog").close();
     clearForm();
     $("#save-detective-trade").textContent = "Save debrief";
     return;
   }
-  const request = currentTradeId
-    ? supabase.from("trade_debriefs").update(payload).eq("id", currentTradeId)
-    : supabase.from("trade_debriefs").insert(payload);
-  const { error } = await request;
+  const request = isNewTrade
+    ? supabase.from("trade_debriefs").insert(payload).select().single()
+    : Object.keys(payload).length
+      ? supabase.from("trade_debriefs").update(payload).eq("id", currentTradeId).select().single()
+      : null;
+  const { data: savedTrade, error } = request ? await request : { data: existingTrade, error: null };
   if (error) {
     alert(`The debrief could not be saved: ${error.message}`);
     return;
+  }
+  if (executionsChanged) {
+    const executionError = await saveTradeExecutions(savedTrade?.id || currentTradeId, executionState.rows, sessionData.session.user.id);
+    if (executionError) {
+      const migrationHint = /relation|schema cache|does not exist/i.test(String(executionError.message || "")) ? " Run migration 101 first." : "";
+      alert(`The trade was saved, but its account executions could not be saved: ${executionError.message}.${migrationHint}`);
+      return;
+    }
   }
   $("#detective-trade-dialog").close();
   clearForm();
@@ -1697,6 +1862,7 @@ async function saveTrade(event) {
 
 function init() {
   ensurePlanAdherenceFields();
+  ensureTradeExecutionFields();
   const dialog = $("#detective-trade-dialog");
   const tradeTime = $("#detective-time");
   if (tradeTime) {
@@ -1725,13 +1891,31 @@ function init() {
       if (!existing.has(value)) sessionTime.add(new Option(label, value));
     });
   }
-  ["#detective-pair", "#detective-position", "#detective-entry-price", "#detective-take-profit", "#detective-stop-loss", "#detective-lot-size"].forEach((selector) => {
+  ["#detective-pair", "#detective-position", "#detective-entry-price", "#detective-take-profit", "#detective-stop-loss"].forEach((selector) => {
     const input = $(selector);
     input?.addEventListener("input", syncExecutionEstimate);
     input?.addEventListener("change", syncExecutionEstimate);
   });
   $("#detective-r")?.addEventListener("input", (event) => {
     if (event.isTrusted) delete event.currentTarget.dataset.autoRiskReward;
+  });
+  dialog?.addEventListener("input", (event) => {
+    if (event.target.closest("[data-trade-execution-account], [data-trade-execution-lot]")) syncExecutionEstimate();
+  });
+  dialog?.addEventListener("change", (event) => {
+    if (event.target.closest("[data-trade-execution-account], [data-trade-execution-lot]")) syncExecutionEstimate();
+  });
+  dialog?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-trade-execution-add]")) {
+      const rows = rawTradeExecutionRows();
+      renderTradeExecutionRows([...rows, {}]);
+      return;
+    }
+    const remove = event.target.closest("[data-trade-execution-remove]");
+    if (!remove) return;
+    remove.closest("[data-trade-execution-row]")?.remove();
+    if (!document.querySelector("[data-trade-execution-row]")) renderTradeExecutionRows();
+    syncExecutionEstimate();
   });
   syncExecutionEstimate();
   const account = $("#detective-account");
