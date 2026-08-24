@@ -135,6 +135,47 @@ function money(value) {
   return Number(value).toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
+function riskRewardEstimate(trade) {
+  const entry = Number(trade?.entry_price);
+  const takeProfit = Number(trade?.take_profit_price);
+  const stopLoss = Number(trade?.stop_loss_price);
+  if (![entry, takeProfit, stopLoss].every((value) => Number.isFinite(value) && value > 0)) return null;
+
+  const position = String(trade?.position || "").trim().toLowerCase();
+  const isLongStructure = stopLoss < entry && takeProfit > entry;
+  const isShortStructure = stopLoss > entry && takeProfit < entry;
+  if ((position === "long" && !isLongStructure) || (position === "short" && !isShortStructure)) return null;
+
+  const riskDistance = Math.abs(entry - stopLoss);
+  const rewardDistance = Math.abs(takeProfit - entry);
+  if (riskDistance === 0 || rewardDistance === 0) return null;
+  return { ratio: rewardDistance / riskDistance, riskDistance, rewardDistance };
+}
+
+function syncRiskRewardInput() {
+  const input = $("#detective-r");
+  if (!input) return null;
+  const estimate = riskRewardEstimate({
+    position: $("#detective-position")?.value,
+    entry_price: $("#detective-entry-price")?.value,
+    take_profit_price: $("#detective-take-profit")?.value,
+    stop_loss_price: $("#detective-stop-loss")?.value,
+  });
+  if (!estimate) {
+    if (input.dataset.autoRiskReward === "true") {
+      input.value = "";
+      delete input.dataset.autoRiskReward;
+    }
+    return null;
+  }
+
+  if (input.dataset.autoRiskReward === "true" || !input.value.trim()) {
+    input.value = String(Math.round(estimate.ratio * 100) / 100);
+    input.dataset.autoRiskReward = "true";
+  }
+  return estimate;
+}
+
 function executionEstimate(trade) {
   const entry = Number(trade?.entry_price);
   const takeProfit = Number(trade?.take_profit_price);
@@ -164,6 +205,8 @@ function estimatedPnlLabel(value, sign) {
 function syncExecutionEstimate() {
   const preview = $("#detective-execution-estimate");
   if (!preview) return;
+  const riskReward = syncRiskRewardInput();
+  const riskRewardLabel = riskReward ? `Planned R:R 1:${riskReward.ratio.toFixed(2)}.` : "";
   const estimate = executionEstimate({
     pair: $("#detective-pair")?.value,
     entry_price: $("#detective-entry-price")?.value,
@@ -172,17 +215,19 @@ function syncExecutionEstimate() {
     lot_size: $("#detective-lot-size")?.value,
   });
   if (!estimate) {
-    preview.textContent = "Enter entry, lot size, and a target or stop to estimate gross P&L.";
+    preview.textContent = riskRewardLabel
+      ? `${riskRewardLabel} Add lot size to estimate gross P&L.`
+      : "Enter entry, take profit, and stop loss to calculate R:R. Add lot size to estimate gross P&L.";
     return;
   }
   if (!estimate.basis) {
-    preview.textContent = "Estimate unavailable for this pair. The saved levels will still appear in the trade detail.";
+    preview.textContent = `${riskRewardLabel ? `${riskRewardLabel} ` : ""}Estimate unavailable for this pair. The saved levels will still appear in the trade detail.`;
     return;
   }
   const parts = [];
   if (estimate.target != null) parts.push(`TP ${estimatedPnlLabel(estimate.target, "+")}`);
   if (estimate.risk != null) parts.push(`SL ${estimatedPnlLabel(estimate.risk, "−")}`);
-  preview.textContent = `Estimated gross P&L: ${parts.join(" · ")} · ${estimate.basis}. Excludes spread and commission.`;
+  preview.textContent = `${riskRewardLabel ? `${riskRewardLabel} ` : ""}Estimated gross P&L: ${parts.join(" · ")} · ${estimate.basis}. Excludes spread and commission.`;
 }
 
 function cents(value) {
@@ -1461,6 +1506,7 @@ document.addEventListener("click", (event) => {
 
 function clearForm() {
   $("#detective-trade-dialog form").reset();
+  delete $("#detective-r")?.dataset.autoRiskReward;
   $("#detective-outcome").value = "Open";
   $("#detective-followed-plan").value = "yes";
   $("#detective-debrief-note").value = "";
@@ -1579,6 +1625,13 @@ function editTrade(trade) {
   Array.from($("#detective-setup").options).forEach((option) => { option.selected = selectedSetups.includes(option.value); });
   ["mae", "mfe", "r", "pnl"].forEach((field) => { $("#detective-" + field).value = trade[{ mae: "mae_30m", mfe: "mfe_30m", r: "r_multiple", pnl: "pnl_percent" }[field]] ?? ""; });
   [["entry-price", "entry_price"], ["take-profit", "take_profit_price"], ["stop-loss", "stop_loss_price"], ["lot-size", "lot_size"]].forEach(([field, column]) => { $("#detective-" + field).value = trade[column] ?? ""; });
+  const savedRiskReward = Number(trade.r_multiple);
+  const calculatedRiskReward = riskRewardEstimate(trade);
+  if (calculatedRiskReward && Number.isFinite(savedRiskReward) && Math.abs(savedRiskReward - calculatedRiskReward.ratio) < 0.01) {
+    $("#detective-r").dataset.autoRiskReward = "true";
+  } else {
+    delete $("#detective-r")?.dataset.autoRiskReward;
+  }
   if (trade.traded_at) $("#detective-time").value = localDateTimeValue(trade.traded_at);
   $("#detective-followed-plan").value = trade.plan_violation ? "no" : "yes";
   $("#detective-violation-reason").value = trade.violation_type || "";
@@ -1672,10 +1725,13 @@ function init() {
       if (!existing.has(value)) sessionTime.add(new Option(label, value));
     });
   }
-  ["#detective-pair", "#detective-entry-price", "#detective-take-profit", "#detective-stop-loss", "#detective-lot-size"].forEach((selector) => {
+  ["#detective-pair", "#detective-position", "#detective-entry-price", "#detective-take-profit", "#detective-stop-loss", "#detective-lot-size"].forEach((selector) => {
     const input = $(selector);
     input?.addEventListener("input", syncExecutionEstimate);
     input?.addEventListener("change", syncExecutionEstimate);
+  });
+  $("#detective-r")?.addEventListener("input", (event) => {
+    if (event.isTrusted) delete event.currentTarget.dataset.autoRiskReward;
   });
   syncExecutionEstimate();
   const account = $("#detective-account");
