@@ -238,6 +238,8 @@
   background: rgba(5, 17, 31, .98);
   box-shadow: 0 1px 0 rgba(103, 191, 255, .28), 0 8px 18px rgba(0, 0, 0, .22);
 }
+#detective.active .journal-trade-window thead th:nth-child(12),
+#detective.active .journal-trade-window #trade-log > tr > td:nth-child(12) { text-align: center; }
 .trade-detail-dialog .dialog-card {
   width: min(900px, calc(100vw - 36px));
   max-height: calc(100vh - 36px);
