@@ -14,13 +14,24 @@ on:
         type: choice
         options:
           - morning
+      operating_date:
+        description: Optional one-date repair (YYYY-MM-DD, within the last seven days)
+        required: false
+        type: string
 
 jobs:
   scan:
     runs-on: ubuntu-latest
+    env:
+      MODE: ${{ inputs.mode || 'morning' }}
+      OPERATING_DATE: ${{ inputs.operating_date || '' }}
     steps:
       - name: Run the AEGIS local-time check
         run: |
+          scan_url="${{ secrets.AEGIS_APP_URL }}/api/scheduled-advisory?mode=${MODE}"
+          if [ -n "${OPERATING_DATE}" ]; then
+            scan_url="${scan_url}&operating_date=${OPERATING_DATE}"
+          fi
           curl --fail-with-body --silent --show-error \
             -H "Authorization: Bearer ${{ secrets.AEGIS_CRON_SECRET }}" \
-            "${{ secrets.AEGIS_APP_URL }}/api/scheduled-advisory?mode=${{ inputs.mode }}"
+            "${scan_url}"

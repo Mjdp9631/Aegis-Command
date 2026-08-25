@@ -55,6 +55,12 @@ function shiftDay(date, amount) {
   return value.toISOString().slice(0, 10);
 }
 
+function validOperatingDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return false;
+  const parsed = new Date(`${value}T12:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 // Forex closes Friday at 5 PM Eastern and reopens Sunday at 5 PM Eastern.
 // The generated pre-market path therefore runs Sunday through Thursday only.
 function isPreMarketAnalysisDay(date) {
@@ -555,28 +561,38 @@ module.exports = async (req, res) => {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ error: "Unauthorized scheduled request." });
   try {
     const clock = easternClock();
-    const requestedMode = new URL(req.url, "https://aegis-command.local").searchParams.get("mode");
+    const params = new URL(req.url, "https://aegis-command.local").searchParams;
+    const requestedMode = params.get("mode");
+    const requestedOperatingDate = String(params.get("operating_date") || "").trim();
+    if (requestedOperatingDate && !validOperatingDate(requestedOperatingDate)) return res.status(400).json({ error: "operating_date must use YYYY-MM-DD." });
+    const operatingDate = requestedOperatingDate || clock.date;
+    // A manual repair is intentionally limited to the immediately preceding
+    // week. It restores a specific missed advisory without replaying a long
+    // sequence of scans (which would create needless egress and invented
+    // historical advice).
+    if (operatingDate > clock.date || operatingDate < shiftDay(clock.date, -7)) return res.status(400).json({ error: "operating_date must be within the last seven days." });
+    const isBackfill = Boolean(requestedOperatingDate && operatingDate !== clock.date);
     // The only automated scan is the 5am morning pass. GitHub Actions can
     // start a scheduled job late, so accept any post-5am invocation from the
-    // morning workflow while still rejecting every pre-5am rollover. Bedtime
-    // debriefs are initiated by the signed-in user through /api/advisory.
-    const mode = clock.hour >= 5 && (requestedMode === "morning" || !requestedMode) ? "morning" : null;
+    // morning workflow while still rejecting every pre-5am rollover. A
+    // signed scheduler request may explicitly repair one earlier operating
+    // date at any time. Bedtime debriefs remain user-triggered.
+    const mode = (clock.hour >= 5 || isBackfill) && (requestedMode === "morning" || !requestedMode) ? "morning" : null;
     if (!mode) return res.status(204).end();
     const director = await adminUser(process.env.SUPABASE_SERVICE_ROLE_KEY);
     if (!director) throw new Error("Director account not found.");
-    // Repair one missed/delayed run without touching any existing status or
-    // schedule. This is append-only and makes the prior day visible on the
-    // calendar even if GitHub started yesterday's workflow after its window.
+    // Backfills restore an advisory only. They never rewrite past operations.
+    // Normal morning runs retain the existing one-day operation repair.
     const repairDate = shiftDay(clock.date, -1);
-    const repaired = clock.hour >= 5 ? await rolloverOperations(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, repairDate) : { operations: 0, occurrences: 0, ongoing: 0 };
-    const current = clock.hour >= 5 ? await rolloverOperations(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date) : { operations: 0, occurrences: 0, ongoing: 0 };
+    const repaired = !isBackfill && clock.hour >= 5 ? await rolloverOperations(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, repairDate) : { operations: 0, occurrences: 0, ongoing: 0 };
+    const current = !isBackfill && clock.hour >= 5 ? await rolloverOperations(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date) : { operations: 0, occurrences: 0, ongoing: 0 };
     const rollover = { operations: repaired.operations + current.operations, occurrences: repaired.occurrences + current.occurrences, ongoing: repaired.ongoing + current.ongoing, repaired_date: repairDate };
     const recent = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, `ai_advisories?user_id=eq.${director.id}&select=advisory_type,payload&order=created_at.desc&limit=12`).then((response) => response.ok ? response.json() : []);
-    if (recent.some((item) => item.advisory_type === mode && item.payload?.schedule_date === clock.date)) return res.status(200).json({ status: "already-complete", mode, date: clock.date });
-    const context = await buildContext(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date, mode);
-    const advisory = addInactivityDirective(sanitizeAdvisory(await askOpenAI(context, mode), context), context, clock.date);
-    advisory.schedule_date = clock.date;
-    let stored = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_advisories", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ user_id: director.id, advisory_type: mode, payload: advisory, scan_mode: mode, operating_date: clock.date }) });
+    if (recent.some((item) => item.advisory_type === mode && item.payload?.schedule_date === operatingDate)) return res.status(200).json({ status: "already-complete", mode, date: operatingDate, backfill: isBackfill });
+    const context = await buildContext(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, operatingDate, mode);
+    const advisory = addInactivityDirective(sanitizeAdvisory(await askOpenAI(context, mode), context), context, operatingDate);
+    advisory.schedule_date = operatingDate;
+    let stored = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_advisories", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ user_id: director.id, advisory_type: mode, payload: advisory, scan_mode: mode, operating_date: operatingDate }) });
     if (!stored.ok) stored = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_advisories", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ user_id: director.id, advisory_type: mode, payload: advisory }) });
     if (!stored.ok) throw new Error("Could not store the scheduled advisory.");
     const [record] = await stored.json();
@@ -608,7 +624,7 @@ module.exports = async (req, res) => {
       }
       if (item.id) await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, `ai_mission_suggestions?id=eq.${item.id}`, { method: "PATCH", body: JSON.stringify({ status: "acknowledged", resolved_at: new Date().toISOString() }) });
     }
-    await saveCalibrationReview(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, clock.date, context);
-    return res.status(200).json({ status: "complete", mode, date: clock.date, rollover, directives: directives.length, roadmap: roadmap.length });
+    await saveCalibrationReview(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, operatingDate, context);
+    return res.status(200).json({ status: "complete", mode, date: operatingDate, backfill: isBackfill, rollover, directives: directives.length, roadmap: roadmap.length });
   } catch (error) { return res.status(500).json({ error: String(error.message || error) }); }
 };
