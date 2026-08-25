@@ -719,27 +719,6 @@ function directorReviewPanel() {
   return `<section class="panel director-review-panel"><div><p class="eyebrow amber">QUARTERLY DIRECTOR REVIEW</p><h3>${quarterKey()} · Measure the whole system.</h3><p>Review the person behind the data: wins, bottlenecks, standards, and the next quarter’s focus.</p></div><button class="primary compact" type="button" id="open-director-review">${review.id ? "Update Director Review" : "Open Director Review"}</button>${review.id ? `<div class="director-review-preview"><span><b>Wins</b>${escape(review.wins || "Not recorded")}</span><span><b>Next focus</b>${escape(review.next_focus || "Not recorded")}</span></div>` : ""}</section>`;
 }
 
-function intelligenceRunLedger(advisories = []) {
-  const scans = advisories
-    .filter((item) => item.advisory_type === "morning" || item.payload?.scan_mode === "morning")
-    .map((item) => {
-      const payload = item.payload && typeof item.payload === "object" ? item.payload : {};
-      return {
-        id: item.id,
-        date: String(payload.schedule_date || payload.operating_date || item.created_at || "").slice(0, 10),
-        createdAt: item.created_at || "",
-        hasSignal: Boolean(payload.signal?.jarvis || payload.signal?.alfred),
-      };
-    })
-    .filter((item) => item.date)
-    .sort((left, right) => right.date.localeCompare(left.date) || String(right.createdAt).localeCompare(String(left.createdAt)))
-    .slice(0, 14);
-  const rows = scans.length
-    ? scans.map((scan) => `<article><span><b>${escape(new Date(`${scan.date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }))}</b><small>5 AM morning intelligence scan${scan.hasSignal ? " · Jarvis + Alfred brief stored" : " · system record stored"}</small></span><strong>LOGGED</strong></article>`).join("")
-    : '<p class="intelligence-run-empty">No scheduled intelligence runs recorded yet.</p>';
-  return `<section class="panel intelligence-run-ledger"><div class="panel-head"><div><p class="eyebrow blue-text">SYSTEM RECORD</p><h3>Intelligence Run Ledger</h3></div><span class="status-pill muted">${scans.length} RECENT</span></div><p class="body-copy">Automatic scans are recorded here for auditability. They never award XP or create progress by themselves.</p><div class="intelligence-run-list">${rows}</div></section>`;
-}
-
 async function exportSystemData(button) {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
@@ -771,7 +750,7 @@ async function exportSystemData(button) {
   button.textContent = "Export system data";
 }
 
-function render({ operations, occurrences, trades, missions, projects, contentItems, masteryEntries, masteryChallenges, trainingSessions, capabilityLogs, capabilityBenchmarkRewards, financialFoundation, advisories }) {
+function render({ operations, occurrences, trades, missions, projects, contentItems, masteryEntries, masteryChallenges, trainingSessions, capabilityLogs, capabilityBenchmarkRewards, financialFoundation }) {
   const metrics = characterMetrics({ operations, occurrences, trades, projects, contentItems, masteryEntries, masteryChallenges, trainingSessions, capabilityLogs, capabilityBenchmarkRewards, financialFoundation }, xpCampaign?.started_at);
   const { discipline, trading, ccfx, mastery } = metrics;
   const recovery = missions.find((mission) => mission.category === "Recovery");
@@ -781,7 +760,6 @@ function render({ operations, occurrences, trades, missions, projects, contentIt
     directorReviews,
     metrics,
     recovery: recovery ? [recovery.id, recovery.title, recovery.completion_type, recovery.target_count, recovery.completed_count, recovery.completed] : null,
-    intelligenceRuns: (advisories || []).map((item) => [item.id, item.advisory_type, item.payload?.schedule_date || item.payload?.operating_date || null, item.created_at]),
   });
   if (renderKey === lastCharacterRenderKey && $("#character")?.dataset.characterReady === "true") return;
   lastCharacterRenderKey = renderKey;
@@ -789,7 +767,7 @@ function render({ operations, occurrences, trades, missions, projects, contentIt
   window.dispatchEvent(new CustomEvent("aegis:character-levels-changed", { detail: levels }));
   const launch = !xpCampaign ? `<section class="panel xp-launch-panel"><p class="eyebrow amber">CAMPAIGN CALIBRATION</p><h3>XP is paused.</h3><p class="body-copy">Nothing logged before activation will count. When you are ready, start the five-year campaign and the ledger will begin from that moment forward.</p>${xpCampaignError ? `<p class="body-copy">${escape(xpCampaignError)}</p>` : `<button class="primary compact" type="button" id="start-xp-campaign">Start campaign tracking</button>`}</section>` : "";
   const characterView = $("#character");
-  characterView.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p><div class="character-intro-actions"><button class="ghost compact" type="button" id="export-system-data">Export system data</button><small>Private JSON backup of records available to this account.</small></div></div>${launch}${characterFocus(metrics, recovery)}${directorReviewPanel()}${intelligenceRunLedger(advisories)}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>${characterLifePanel(levels)}`;
+  characterView.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">CHARACTER SYSTEMS / EARNED LOADOUT</p><h2>Level the person doing the work.</h2><p>${xpCampaign ? `Campaign tracking began ${new Date(xpCampaign.started_at).toLocaleDateString()}. Only evidence logged after that date counts.` : "XP calibration is paused. Log normally; nothing is gained or lost until you authorize the start."}</p><div class="character-intro-actions"><button class="ghost compact" type="button" id="export-system-data">Export system data</button><small>Private JSON backup of records available to this account.</small></div></div>${launch}${characterFocus(metrics, recovery)}${directorReviewPanel()}<section class="panel evidence-note"><p class="eyebrow">JARVIS / ALFRED PROTOCOL</p><div class="protocol-line"><p>&ldquo;The ledger records evidence, not ambition. Give it something worth recording.&rdquo;</p><span>- JARVIS</span></div><div class="protocol-line"><p>&ldquo;And give the work your full attention, sir. The results will follow in their time.&rdquo;</p><span>- ALFRED</span></div></section>${characterLifePanel(levels)}`;
   characterView.dataset.characterReady = "true";
   characterView.setAttribute("aria-busy", "false");
   bindCharacterFocusHover();
@@ -822,16 +800,14 @@ async function load() {
     supabase.from("capability_skill_logs").select("*, capability_skills(skill_type, title)").order("practiced_on", { ascending: false }),
     supabase.from("capability_benchmark_completion_ledger").select("*, capability_benchmarks(level, xp_reward, capability_skills(skill_type, title))").order("created_at", { ascending: false }),
     supabase.from("financial_foundations").select("*").maybeSingle(),
-    // Narrow audit query: scans are visible records, never XP or progress.
-    supabase.from("ai_advisories").select("id, advisory_type, payload, created_at").order("created_at", { ascending: false }).limit(14)
   ]);
-  const [operationsResult, occurrenceResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, campaignResult, reviewResult, challengeResult, capabilityLogsResult, capabilityBenchmarkRewardsResult, financialFoundationResult, advisoriesResult] = window.AEGIS_DATA_GUARD
+  const [operationsResult, occurrenceResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, campaignResult, reviewResult, challengeResult, capabilityLogsResult, capabilityBenchmarkRewardsResult, financialFoundationResult] = window.AEGIS_DATA_GUARD
     ? await window.AEGIS_DATA_GUARD.run("character:snapshot", loadSnapshot)
     : await loadSnapshot();
   xpCampaign = campaignResult.data || null;
   directorReviews = reviewResult.data || [];
   xpCampaignError = campaignResult.error ? "XP campaign setup is awaiting its one-time database migration." : null;
-  render({ operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], trades: tradesResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], capabilityLogs: capabilityLogsResult.data || [], capabilityBenchmarkRewards: capabilityBenchmarkRewardsResult.data || [], financialFoundation: financialFoundationResult.data || null, advisories: advisoriesResult.data || [] });
+  render({ operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], trades: tradesResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], capabilityLogs: capabilityLogsResult.data || [], capabilityBenchmarkRewards: capabilityBenchmarkRewardsResult.data || [], financialFoundation: financialFoundationResult.data || null });
   } finally {
     characterLoadInFlight = false;
     if (characterLoadQueued) {
