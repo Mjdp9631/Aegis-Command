@@ -227,13 +227,14 @@ function rawTradeExecutionRows() {
 
 function executionRowsFromForm({ validate = false } = {}) {
   const rawRows = rawTradeExecutionRows();
-  const hasIncompleteRow = rawRows.some((row) => !row.account_id || !(Number(row.lot_size) > 0));
-  const rows = rawRows
+  const startedRows = rawRows.filter((row) => row.account_id || row.lot_size !== "");
+  const hasIncompleteRow = startedRows.some((row) => !row.account_id || !(Number(row.lot_size) > 0));
+  const rows = startedRows
     .filter((row) => row.account_id && Number(row.lot_size) > 0)
     .map((row) => ({ account_id: row.account_id, lot_size: Number(row.lot_size) }));
   const hasDuplicateAccount = new Set(rows.map((row) => row.account_id)).size !== rows.length;
-  if (validate && (!rows.length || hasIncompleteRow || hasDuplicateAccount)) {
-    return { rows, error: !rows.length ? "Add at least one account execution with a lot size." : hasDuplicateAccount ? "Each account can appear only once per trade." : "Complete or remove every account execution row." };
+  if (validate && (hasIncompleteRow || hasDuplicateAccount)) {
+    return { rows, error: hasDuplicateAccount ? "Each account can appear only once per trade." : "Complete or remove every account execution row." };
   }
   return { rows, error: null };
 }
@@ -243,7 +244,7 @@ function executionRowMarkup(execution = {}) {
   const options = accountBalances.length
     ? `<option value="">Choose account</option>${accountBalances.map((account) => `<option value="${escapeHtml(account.id)}" ${String(account.id) === selected ? "selected" : ""}>${escapeHtml(account.account_name)}</option>`).join("")}`
     : '<option value="">Create an account in Accounts first</option>';
-  return `<div class="trade-execution-row" data-trade-execution-row><label>Account<select data-trade-execution-account required ${accountBalances.length ? "" : "disabled"}>${options}</select></label><label>Lot size<input data-trade-execution-lot required type="number" min="0" step="any" inputmode="decimal" value="${execution.lot_size ?? ""}" placeholder="e.g. 0.50" /></label><small data-trade-execution-estimate>Enter levels to estimate this account.</small><button class="trade-execution-remove" type="button" data-trade-execution-remove aria-label="Remove account execution">Remove</button></div>`;
+  return `<div class="trade-execution-row" data-trade-execution-row><label>Account<select data-trade-execution-account ${accountBalances.length ? "" : "disabled"}>${options}</select></label><label>Lot size<input data-trade-execution-lot type="number" min="0" step="any" inputmode="decimal" value="${execution.lot_size ?? ""}" placeholder="e.g. 0.50" /></label><small data-trade-execution-estimate>Enter levels to estimate this account.</small><button class="trade-execution-remove" type="button" data-trade-execution-remove aria-label="Remove account execution">Remove</button></div>`;
 }
 
 function renderTradeExecutionRows(rows = []) {
@@ -1807,11 +1808,6 @@ async function saveTrade(event) {
     alert("Please sign in before logging a trade.");
     return;
   }
-  const storageError = await verifyTradeExecutionStorage();
-  if (storageError) {
-    alert(`Account execution storage is not ready: ${storageError.message}. Run migration 101 first.`);
-    return;
-  }
   const executionState = executionRowsFromForm({ validate: true });
   if (executionState.error) {
     alert(executionState.error);
@@ -1821,11 +1817,20 @@ async function saveTrade(event) {
   const existingTrade = currentTradeId ? loadedTrades.find((trade) => String(trade.id) === String(currentTradeId)) : null;
   const hasSnapshot = Boolean(currentTradeId && editFormSnapshot);
   const isNewTrade = !currentTradeId;
+  const existingExecutions = isNewTrade ? [] : tradeExecutionsFor(currentTradeId);
   const payload = hasSnapshot
     ? Object.fromEntries(Object.entries(formValues).filter(([field, value]) => value !== editFormSnapshot[field]))
     : { ...formValues };
   const timeChanged = !hasSnapshot || formValues.traded_at_local !== editFormSnapshot.traded_at_local;
-  const executionsChanged = isNewTrade || !sameTradeExecutions(executionState.rows, tradeExecutionsFor(currentTradeId));
+  const executionsChanged = !sameTradeExecutions(executionState.rows, existingExecutions);
+  const needsExecutionStorage = executionsChanged && (executionState.rows.length > 0 || existingExecutions.length > 0);
+  if (needsExecutionStorage) {
+    const storageError = await verifyTradeExecutionStorage();
+    if (storageError) {
+      alert(`Account execution storage is not ready: ${storageError.message}. Run migration 101 first.`);
+      return;
+    }
+  }
   delete payload.traded_at_local;
   if (timeChanged) payload.traded_at = isoFromLocalDateTime(formValues.traded_at_local, existingTrade?.traded_at || new Date().toISOString());
   if (isNewTrade) payload.execution_grade = "A";
@@ -1845,7 +1850,7 @@ async function saveTrade(event) {
     alert(`The debrief could not be saved: ${error.message}`);
     return;
   }
-  if (executionsChanged) {
+  if (needsExecutionStorage) {
     const executionError = await saveTradeExecutions(savedTrade?.id || currentTradeId, executionState.rows, sessionData.session.user.id);
     if (executionError) {
       const migrationHint = /relation|schema cache|does not exist/i.test(String(executionError.message || "")) ? " Run migration 101 first." : "";
