@@ -598,20 +598,24 @@ module.exports = async (req, res) => {
     const [record] = await stored.json();
     const directives = advisory.directives || [];
     const roadmap = advisory.roadmap || [];
+    const warnings = [];
     let savedSuggestions = [];
     if (directives.length) {
       const suggestionRows = directives.map((item) => ({ ...item, evidence_ids: item.evidence_ids || [], user_id: director.id, advisory_id: record.id }));
       let suggestionResponse = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_mission_suggestions", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(suggestionRows) });
       // Keep the scheduled scan compatible while migration 055 is being applied.
       if (!suggestionResponse.ok) suggestionResponse = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_mission_suggestions", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(suggestionRows.map(({ evidence_ids, ...row }) => row)) });
-      if (!suggestionResponse.ok) throw new Error("Could not store the scheduled mission suggestions.");
-      savedSuggestions = await suggestionResponse.json();
+      if (!suggestionResponse.ok) {
+        // The advisory is the durable morning record. A stale optional-table
+        // schema must not make a saved advisory look as though it never ran.
+        warnings.push("Mission suggestions were not saved; the advisory itself is complete.");
+      } else savedSuggestions = await suggestionResponse.json();
     }
     if (roadmap.length) {
       const roadmapRows = roadmap.map((item) => ({ ...item, evidence_ids: item.evidence_ids || [], user_id: director.id, advisory_id: record.id }));
       let roadmapResponse = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_roadmap_missions", { method: "POST", body: JSON.stringify(roadmapRows) });
       if (!roadmapResponse.ok) roadmapResponse = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "ai_roadmap_missions", { method: "POST", body: JSON.stringify(roadmapRows.map(({ evidence_ids, ...row }) => row)) });
-      if (!roadmapResponse.ok) throw new Error("Could not store the scheduled roadmap objective.");
+      if (!roadmapResponse.ok) warnings.push("Roadmap follow-up was not saved; the advisory itself is complete.");
     }
     const corrective = savedSuggestions.filter((item) => item.mission_kind === "corrective");
     for (const item of corrective) {
@@ -620,11 +624,14 @@ module.exports = async (req, res) => {
         const missionPayload = { user_id: director.id, title: item.title, category: item.category, priority: "Do now", completion_type: "binary", completion_definition: `System corrective from ${item.advisor}: ${item.rationale}`, completed: false, completed_count: 0, progress: 0, source_suggestion_id: item.id, source_advisory_id: record.id, evidence_ids: item.evidence_ids || [], accepted_at: new Date().toISOString(), outcome_status: "accepted" };
         let missionResponse = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "missions", { method: "POST", body: JSON.stringify(missionPayload) });
         if (!missionResponse.ok) missionResponse = await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, "missions", { method: "POST", body: JSON.stringify(((payload) => { const { source_suggestion_id, source_advisory_id, evidence_ids, accepted_at, outcome_status, ...legacy } = payload; return legacy; })(missionPayload)) });
-        if (!missionResponse.ok) throw new Error("Could not create the scheduled corrective mission.");
+        if (!missionResponse.ok) {
+          warnings.push("A corrective mission was not materialized; the advisory itself is complete.");
+          continue;
+        }
       }
       if (item.id) await rest(process.env.SUPABASE_SERVICE_ROLE_KEY, `ai_mission_suggestions?id=eq.${item.id}`, { method: "PATCH", body: JSON.stringify({ status: "acknowledged", resolved_at: new Date().toISOString() }) });
     }
-    await saveCalibrationReview(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, operatingDate, context);
-    return res.status(200).json({ status: "complete", mode, date: operatingDate, backfill: isBackfill, rollover, directives: directives.length, roadmap: roadmap.length });
+    if (!await saveCalibrationReview(process.env.SUPABASE_SERVICE_ROLE_KEY, director.id, operatingDate, context)) warnings.push("Calibration review was not saved; the advisory itself is complete.");
+    return res.status(200).json({ status: "complete", mode, date: operatingDate, backfill: isBackfill, rollover, directives: directives.length, roadmap: roadmap.length, warnings });
   } catch (error) { return res.status(500).json({ error: String(error.message || error) }); }
 };
