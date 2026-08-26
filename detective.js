@@ -1323,7 +1323,10 @@ function renderJournalCalendar(trades) {
   const monthEnd = new Date(Date.UTC(year, month + 1, 0, 12));
   const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
   const grouped = new Map();
-  (trades || []).forEach((trade) => {
+  // P&L calendar follows the same default practice-trade exclusion as the
+  // Journal metrics; the table still displays all logged records.
+  const calendarTrades = (trades || []).filter((trade) => includePracticeTradesInAnalysis || !isPracticeTrade(trade));
+  calendarTrades.forEach((trade) => {
     const key = journalDateKey(trade);
     if (!key.startsWith(monthKey)) return;
     const day = grouped.get(key) || { count: 0, pnl: 0 };
@@ -1353,6 +1356,8 @@ function renderJournalCalendar(trades) {
   const monthPnl = [...grouped.values()].reduce((total, day) => total + day.pnl, 0);
   const monthName = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(firstDay);
   root.innerHTML = `<div class="journal-calendar-head"><div><p class="eyebrow blue-text">03 — JOURNAL CALENDAR</p><h3>${monthName}</h3></div><div class="journal-calendar-actions"><button type="button" data-journal-calendar="previous" aria-label="Previous month">‹</button><button type="button" data-journal-calendar="current">This month</button><button type="button" data-journal-calendar="next" aria-label="Next month">›</button></div></div><div class="journal-calendar-stats"><span>${monthTrades} trade${monthTrades === 1 ? "" : "s"}</span><b class="${monthPnl > 0 ? "result-positive" : monthPnl < 0 ? "result-negative" : ""}">${journalPnlLabel(monthPnl)} logged PnL</b><small>Reflects current journal filters</small></div><div class="journal-calendar-body"><div class="journal-calendar-main"><div class="journal-calendar-weekdays"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div><div class="journal-calendar-grid">${calendarDays}</div></div><aside class="journal-week-totals" style="--journal-week-count:${weekCount}"><span class="journal-week-total-head">WEEKLY</span>${weekTotals}</aside></div>`;
+  const statsNote = root.querySelector(".journal-calendar-stats small");
+  if (statsNote) statsNote.textContent = `Reflects current journal filters · practice ${includePracticeTradesInAnalysis ? "included" : "excluded"}`;
 }
 
 function clearTradeHoverFocus() {
@@ -1555,11 +1560,8 @@ function buildFilters() {
   filterBar.className = "detective-filter-bar";
   filterBar.innerHTML = `<div class="filter-heading"><p class="eyebrow blue-text">02 — FILTER INTELLIGENCE</p><small id="filter-result-count">All trades</small></div><div class="filter-controls"><label>Pair <select data-filter="pair"><option value="">All pairs</option>${selectOptions("#detective-pair")}</select></label><label>Setup <select data-filter="setup"><option value="">All setups</option>${selectOptions("#detective-setup")}</select></label><label>CB Hour <select data-filter="cb_hour"><option value="">All CB hours</option>${selectOptions("#detective-cb-hour")}</select></label><label>Session time <select data-filter="session_time"><option value="">All sessions</option>${selectOptions("#detective-session-time")}</select></label><label>Type <select data-filter="trade_type"><option value="">All types</option>${selectOptions("#detective-type")}</select></label><label>Market condition <select data-filter="market_condition"><option value="">All conditions</option>${selectOptions("#detective-market-condition")}</select></label><label>Position <select data-filter="position"><option value="">Long + Short</option>${selectOptions("#detective-position")}</select></label><button type="button" class="clear-filters">Clear filters</button></div>`;
   const journalWindow = $(".trade-panel .journal-trade-window");
-  const tradeTable = $(".trade-panel .table-wrap");
-  // The table now lives inside its own scroll surface. Keep filters in that
-  // surface, but insert them relative to their actual parent so startup does
-  // not abort before the stored journal can load.
-  journalWindow?.insertBefore(filterBar, tradeTable);
+  // Keep controls outside the scroll surface; only the long journal table scrolls.
+  journalWindow?.before(filterBar);
   const theoreticalToggle = document.createElement("label");
   theoreticalToggle.className = "theoretical-analysis-toggle";
   theoreticalToggle.innerHTML = '<input type="checkbox" id="filter-include-theoretical" /> Include practice trades <small>Theoretical, Backtest, and Hindsight · Detective calculations only</small>';
