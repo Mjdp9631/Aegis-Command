@@ -9,7 +9,7 @@ let currentTradeId = null;
 let editFormSnapshot = null;
 let loadedTrades = [];
 let activeFilters = {};
-let includeTheoreticalInAnalysis = false;
+let includePracticeTradesInAnalysis = false;
 let accountBalances = [];
 let accountGroups = [];
 let accountMemberships = [];
@@ -79,6 +79,10 @@ function resolvedOutcome(trade) {
 
 function isTheoretical(trade) {
   return String(trade.account || "").trim().toLowerCase() === "theoretical";
+}
+
+function isPracticeTrade(trade) {
+  return ["theoretical", "backtest", "backtesting"].includes(String(trade.account || "").trim().toLowerCase());
 }
 
 function tradeTime(trade) {
@@ -268,11 +272,6 @@ function ensureTradeExecutionFields() {
     lotSizeField.closest(".two-col")?.classList.add("single-col");
     lotSizeField.remove();
   }
-  const accountField = $("#detective-account")?.closest("label");
-  if (accountField) {
-    accountField.closest(".two-col")?.classList.add("single-col");
-    accountField.remove();
-  }
   if (!$("#detective-account-executions")) {
     estimate.insertAdjacentHTML("beforebegin", `<section class="trade-account-executions" id="detective-account-executions"><div class="trade-execution-heading"><div><p>ACCOUNT EXECUTIONS</p><small>Use one row per account. Estimates are calculated per account and combined below.</small></div><button class="secondary compact" type="button" data-trade-execution-add>+ Add account</button></div><div id="detective-account-execution-rows"></div></section>`);
   }
@@ -389,7 +388,7 @@ function groupLinksForAccount(accountId) {
 
 function accountTrades(accountName) {
   return loadedTrades
-    .filter((trade) => !isTheoretical(trade) && String(trade.account || "").trim() === accountName && resolvedOutcome(trade) !== "Open")
+    .filter((trade) => !isPracticeTrade(trade) && String(trade.account || "").trim() === accountName && resolvedOutcome(trade) !== "Open")
     .sort((a, b) => new Date(a.traded_at || a.created_at) - new Date(b.traded_at || b.created_at));
 }
 
@@ -413,11 +412,10 @@ function accountProfit(account) {
 
 function updateAccountSelect() {
   const control = $("#detective-account");
-  if (!control || !accountBalances.length) return;
-  const selected = control.value;
-  const names = [...new Set([...Array.from(control.options).map((option) => option.value), ...accountBalances.map((account) => account.account_name)])];
-  control.innerHTML = names.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
-  if (names.includes(selected)) control.value = selected;
+  if (!control) return;
+  const accountTypes = ["Master", "Prop", "Theoretical", "Forwardtest", "Backtest", "Hindsight"];
+  const existing = new Set(Array.from(control.options).map((option) => option.value));
+  accountTypes.filter((type) => !existing.has(type)).forEach((type) => control.add(new Option(type, type)));
 }
 
 function renderAccountAdminControls() {
@@ -494,7 +492,7 @@ function closedTradesAvailableForGroup(groupId) {
   const linkedToThisGroup = new Set(groupTradeLinks
     .filter((link) => String(link.group_id) === String(groupId))
     .map((link) => String(link.trade_id)));
-  return loadedTrades.filter((trade) => !isTheoretical(trade)
+  return loadedTrades.filter((trade) => !isPracticeTrade(trade)
     && resolvedOutcome(trade) !== "Open"
     && !linkedToThisGroup.has(String(trade.id)));
 }
@@ -1189,11 +1187,11 @@ function applyFilters() {
   renderMetrics(trades);
   renderTrades(trades);
   const count = $("#filter-result-count");
-  if (count) count.textContent = `${trades.length} matching trade${trades.length === 1 ? "" : "s"} · ${includeTheoreticalInAnalysis ? "live + theoretical analysis" : "live analysis"}`;
+  if (count) count.textContent = `${trades.length} matching trade${trades.length === 1 ? "" : "s"} · ${includePracticeTradesInAnalysis ? "live + practice analysis" : "live analysis"}`;
 }
 
 function renderMetrics(trades) {
-  const closedTrades = trades.filter((trade) => (includeTheoreticalInAnalysis || !isTheoretical(trade)) && resolvedOutcome(trade) !== "Open");
+  const closedTrades = trades.filter((trade) => (includePracticeTradesInAnalysis || !isPracticeTrade(trade)) && resolvedOutcome(trade) !== "Open");
   const outcomes = closedTrades.map(resolvedOutcome);
   const wins = outcomes.filter((outcome) => outcome === "Win").length;
   const losses = outcomes.filter((outcome) => outcome === "Loss").length;
@@ -1220,7 +1218,7 @@ function renderMetrics(trades) {
 
   winRateElement.textContent = winRate == null ? "—" : `${winRate}%`;
   setTone(winRateElement, winRateTone(winRate));
-  $("#detective-win-rate-note").textContent = decisiveTrades ? `${wins} win${wins === 1 ? "" : "s"} / ${decisiveTrades} closed trade${decisiveTrades === 1 ? "" : "s"}${includeTheoreticalInAnalysis ? " · theoretical included" : ""}` : "Log closed trades to calculate";
+  $("#detective-win-rate-note").textContent = decisiveTrades ? `${wins} win${wins === 1 ? "" : "s"} / ${decisiveTrades} closed trade${decisiveTrades === 1 ? "" : "s"}${includePracticeTradesInAnalysis ? " · theoretical + backtest included" : ""}` : "Log closed trades to calculate";
   currentStreakElement.textContent = streaks.currentLength ? `${streaks.currentLength}${streaks.currentType === "Win" ? "W" : "L"}` : "—";
   setTone(currentStreakElement, streaks.currentType === "Win" ? "streak-win" : streaks.currentType === "Loss" ? "streak-loss" : null);
   currentStreakNote.textContent = streaks.currentLength ? `Current ${streaks.currentType.toLowerCase()} streak` : "Awaiting decisive trades";
@@ -1430,7 +1428,7 @@ function showTradeDetail(trade) {
     ["CB hour", trade.cb_hour], ["MAE", displayNumber(trade.mae_30m)], ["MFE", displayNumber(trade.mfe_30m)],
     ["Risk / reward", displayNumber(trade.r_multiple, "R")], ["PnL", displayNumber(trade.pnl_percent, "%")],
     ["Outcome", trade.trade_status === "Open" ? "Open" : resolvedOutcome(trade)], ["Position", trade.position],
-    ["Account", tradeAccountLabel(trade)], ["Account executions", executions.length ? executions.map((execution) => `${executionAccountName(execution)} · ${displayNumber(execution.lot_size)} lots`).join(" | ") : null], ["Day", trade.trade_day], ["Month", trade.trade_month],
+    ["Account type", trade.account], ["Account executions", executions.length ? executions.map((execution) => `${executionAccountName(execution)} · ${displayNumber(execution.lot_size)} lots`).join(" | ") : null], ["Day", trade.trade_day], ["Month", trade.trade_month],
     ["Session time", trade.session_time], ["Entry timeframe", trade.entry_timeframe], ["Wick", trade.wick],
     ["Entry price", trade.entry_price], ["Take profit", trade.take_profit_price], ["Stop loss", trade.stop_loss_price],
     ["Estimated gross P&L", estimatedGross], ["Estimate basis", estimate?.basis],
@@ -1490,7 +1488,7 @@ function renderTrades(trades) {
       <td class="${Number(trade.pnl_percent) > 0 ? "result-positive" : Number(trade.pnl_percent) < 0 ? "result-negative" : ""}">${displayNumber(trade.pnl_percent, "%")}</td>
       <td class="${resultClass}">${outcome}</td>
       <td>${escapeHtml(trade.position || "—")}</td>
-      <td>${escapeHtml(tradeAccountLabel(trade))}${isTheoretical(trade) ? "<small class=\"theoretical-account\">Review only</small>" : ""}</td>
+      <td>${escapeHtml(tradeAccountLabel(trade))}${trade.account ? `<small class="theoretical-account">${escapeHtml(trade.account)}${isPracticeTrade(trade) ? " · Review only" : ""}</small>` : ""}</td>
       <td>${escapeHtml(trade.trade_day || "—")}</td>
       <td>${escapeHtml(trade.trade_month || "—")}</td>
       <td>${escapeHtml(trade.session_time || "—")}</td>
@@ -1564,11 +1562,11 @@ function buildFilters() {
   journalWindow?.insertBefore(filterBar, tradeTable);
   const theoreticalToggle = document.createElement("label");
   theoreticalToggle.className = "theoretical-analysis-toggle";
-  theoreticalToggle.innerHTML = '<input type="checkbox" id="filter-include-theoretical" /> Include theoretical trades <small>Detective calculations only</small>';
+  theoreticalToggle.innerHTML = '<input type="checkbox" id="filter-include-theoretical" /> Include theoretical + backtest trades <small>Detective calculations only</small>';
   filterBar.querySelector(".clear-filters").insertAdjacentElement("beforebegin", theoreticalToggle);
   filterBar.addEventListener("change", (event) => {
     if (event.target.id === "filter-include-theoretical") {
-      includeTheoreticalInAnalysis = event.target.checked;
+      includePracticeTradesInAnalysis = event.target.checked;
       applyFilters();
       return;
     }
@@ -1598,7 +1596,7 @@ function buildFilters() {
   });
   filterBar.querySelector(".clear-filters").addEventListener("click", () => {
     activeFilters = {};
-    includeTheoreticalInAnalysis = false;
+    includePracticeTradesInAnalysis = false;
     filterBar.querySelectorAll("select").forEach((select) => { select.value = ""; });
     $("#filter-include-theoretical").checked = false;
     syncSetupFilter();
@@ -1607,8 +1605,8 @@ function buildFilters() {
 }
 
 function resetTheoreticalAnalysis() {
-  if (!includeTheoreticalInAnalysis) return;
-  includeTheoreticalInAnalysis = false;
+  if (!includePracticeTradesInAnalysis) return;
+  includePracticeTradesInAnalysis = false;
   const toggle = $("#filter-include-theoretical");
   if (toggle) toggle.checked = false;
   applyFilters();
@@ -1690,7 +1688,6 @@ function setSelectValue(selector, value) {
 
 function readTradeFormValues() {
   const executionRows = executionRowsFromForm().rows;
-  const executionAccounts = executionRows.map((row) => executionAccount(row)?.account_name).filter(Boolean);
   return {
     pair: $("#detective-pair").value.trim().toUpperCase(),
     setup: JSON.stringify(Array.from($("#detective-setup").selectedOptions).map((option) => option.value)),
@@ -1708,7 +1705,9 @@ function readTradeFormValues() {
     mae_30m: numberOrNull($("#detective-mae").value),
     mfe_30m: numberOrNull($("#detective-mfe").value),
     position: $("#detective-position").value.trim() || null,
-    account: executionAccounts.length === 1 ? executionAccounts[0] : executionAccounts.length > 1 ? "Multiple accounts" : null,
+    // This is the journal classification (Master, Prop, Theoretical, etc.).
+    // Per-account execution rows carry the actual accounts and lot sizes.
+    account: $("#detective-account").value.trim() || null,
     trade_day: $("#detective-day").value.trim() || null,
     trade_month: $("#detective-month").value.trim() || null,
     session_time: $("#detective-session-time").value.trim() || null,

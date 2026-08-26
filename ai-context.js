@@ -288,7 +288,7 @@
       return { ...parent, id: `occurrence:${occurrence.id}`, operation_id: occurrence.operation_id, operation_date: occurrence.occurrence_date, scheduled_date: occurrence.occurrence_date, completed_on: occurrence.completed_on, started_on: occurrence.started_on || parent.started_on || null, last_rollover_on: occurrence.last_rollover_on || parent.last_rollover_on || null, rollover_count: occurrence.rollover_count ?? parent.rollover_count ?? 0, completed: Boolean(occurrence.completed), status: occurrence.completed ? "Complete" : occurrence.status || parent.status || "Queued", scheduled_time: occurrence.scheduled_time || parent.scheduled_time, _occurrence: occurrence };
     });
     const effectiveOperations = dedupeOperations([...operations.filter((operation) => !recurringIds.has(idOf(operation)) || !occurrences.some((occurrence) => String(occurrence.operation_id) === idOf(operation))), ...occurrenceRows].map((operation) => ongoingDisplay(completedDisplay(operation), operatingDate)));
-    const liveTrades = trades.filter((trade) => String(trade.account || "").trim().toLowerCase() !== "theoretical");
+    const liveTrades = trades.filter((trade) => !["theoretical", "backtest", "backtesting"].includes(String(trade.account || "").trim().toLowerCase()));
     const closed = liveTrades.filter((trade) => tradeOutcome(trade) !== "open");
     const wins = closed.filter((trade) => tradeOutcome(trade) === "win").length;
     const losses = closed.filter((trade) => tradeOutcome(trade) === "loss").length;

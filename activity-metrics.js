@@ -116,7 +116,7 @@ function monthKey(value) {
 }
 
 function closedTrade(trade) {
-  return String(trade.account || "").trim().toLowerCase() !== "theoretical"
+  return !["theoretical", "backtest", "backtesting"].includes(String(trade.account || "").trim().toLowerCase())
     && String(trade.trade_status || "").trim().toLowerCase() !== "open"
     && trade.pnl_percent != null;
 }

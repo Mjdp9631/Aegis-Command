@@ -37,7 +37,7 @@ function render({ missions, trades, projects, content, recoveryLogs, operations,
   if (!target) return;
   const activeMissions = missions.filter((mission) => missionProgress(mission) < 100);
   const priority = activeMissions.find((mission) => mission.priority === "Do now") || activeMissions[0];
-  const closed = trades.filter((trade) => String(trade.account || "").trim().toLowerCase() !== "theoretical" && outcome(trade) !== "Open");
+  const closed = trades.filter((trade) => !["theoretical", "backtest", "backtesting"].includes(String(trade.account || "").trim().toLowerCase()) && outcome(trade) !== "Open");
   const wins = closed.filter((trade) => outcome(trade) === "Win").length;
   const losses = closed.filter((trade) => outcome(trade) === "Loss").length;
   const winRate = wins + losses ? `${Math.round((wins / (wins + losses)) * 100)}%` : "--";

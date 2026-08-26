@@ -24,7 +24,7 @@ function progress(mission) {
 }
 
 function closedTrade(trade) {
-  return String(trade.account || "").trim().toLowerCase() !== "theoretical" && String(trade.trade_status || "").trim().toLowerCase() !== "open";
+  return !["theoretical", "backtest", "backtesting"].includes(String(trade.account || "").trim().toLowerCase()) && String(trade.trade_status || "").trim().toLowerCase() !== "open";
 }
 
 function tradeOutcome(trade) {
