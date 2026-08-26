@@ -791,6 +791,9 @@ function decorateGroupTradeAllocations() {
       return `${account?.account_name || "Account"}: ${pnl > 0 ? "+" : ""}${money(pnl)}`;
     }).join(" · ");
     row?.append(breakdown);
+    if (!row?.querySelector("[data-group-trade-edit]")) {
+      button.insertAdjacentHTML("beforebegin", `<button type="button" class="account-action" data-group-trade-edit="${link.id}">Edit P&amp;L</button>`);
+    }
   });
 }
 
@@ -1093,6 +1096,72 @@ async function saveGroupTrade(groupId, form) {
   }
   await loadAccountLedger();
   window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
+}
+
+async function openLinkedTradePnlEditor(linkId) {
+  const link = groupTradeLinks.find((item) => String(item.id) === String(linkId));
+  const allocations = link ? tradeAllocationsForLink(link.id) : [];
+  if (!link || !supabase) return;
+  if (!allocations.length) {
+    alert("This older linked trade has no per-account allocation to edit. Unlink and re-link it once with the exact account amounts.");
+    return;
+  }
+
+  const trade = loadedTrades.find((item) => String(item.id) === String(link.trade_id));
+  const dialog = document.createElement("dialog");
+  dialog.className = "detective-dialog";
+  dialog.innerHTML = `<form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow blue-text">EDIT LINKED TRADE</p><h2>${escapeHtml(trade?.pair || "Journal trade")} P&amp;L</h2><p class="mission-details-definition">Correct the realized result for each linked account. Use a minus sign for a loss. This updates the existing link; it will not create a duplicate trade.</p><div class="group-allocation-grid">${allocations.map((allocation) => {
+    const account = accountBalances.find((item) => String(item.id) === String(allocation.account_id));
+    return `<label>${escapeHtml(account?.account_name || "Account")}<input type="number" step="0.01" data-linked-trade-allocation="${allocation.id}" value="${Number(allocation.pnl_usd || 0)}" required /></label>`;
+  }).join("")}</div><button class="primary" type="submit">Save linked P&amp;L</button></form>`;
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
+  dialog.querySelector("form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const updates = allocations.map((allocation) => {
+      const input = dialog.querySelector(`[data-linked-trade-allocation="${allocation.id}"]`);
+      const pnl = numberOrNull(String(input?.value || "").trim());
+      return { allocation, pnl };
+    });
+    if (updates.some(({ pnl }) => pnl == null || !Number.isFinite(pnl))) {
+      alert("Enter a valid dollar P&L for every linked account.");
+      return;
+    }
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) return alert("Please sign in before editing a linked trade.");
+    const submit = event.currentTarget.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    submit.textContent = "Saving…";
+    const results = await Promise.all(updates.map(({ allocation, pnl }) => supabase
+      .from("account_group_trade_allocations")
+      .update({ pnl_usd: cents(pnl) })
+      .eq("id", allocation.id)
+      .eq("user_id", sessionData.session.user.id)));
+    const allocationError = results.find((result) => result.error)?.error;
+    if (allocationError) {
+      submit.disabled = false;
+      submit.textContent = "Save linked P&L";
+      alert(`The linked P&L could not be updated: ${allocationError.message}`);
+      return;
+    }
+    const totalPnl = cents(updates.reduce((total, { pnl }) => total + pnl, 0));
+    const { error: linkError } = await supabase
+      .from("account_group_trade_links")
+      .update({ actual_pnl_usd: totalPnl })
+      .eq("id", link.id)
+      .eq("user_id", sessionData.session.user.id);
+    if (linkError) {
+      submit.disabled = false;
+      submit.textContent = "Save linked P&L";
+      alert(`The account amounts were saved, but the group total could not be refreshed: ${linkError.message}`);
+      return;
+    }
+    dialog.close();
+    await loadAccountLedger();
+    window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
+  });
+  dialog.showModal();
 }
 
 async function unlinkGroupTrade(linkId) {
@@ -2047,6 +2116,8 @@ function init() {
     if (groupEditButton) editGroup(groupEditButton.dataset.groupEdit);
     const groupDeleteButton = event.target.closest("[data-group-delete]");
     if (groupDeleteButton) deleteGroup(groupDeleteButton.dataset.groupDelete);
+    const groupTradeEditButton = event.target.closest("[data-group-trade-edit]");
+    if (groupTradeEditButton) openLinkedTradePnlEditor(groupTradeEditButton.dataset.groupTradeEdit);
     const groupTradeUnlinkButton = event.target.closest("[data-group-trade-unlink]");
     if (groupTradeUnlinkButton) unlinkGroupTrade(groupTradeUnlinkButton.dataset.groupTradeUnlink);
     const theoreticalDeleteButton = event.target.closest("[data-theoretical-trade-delete]");
