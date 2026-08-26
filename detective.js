@@ -410,6 +410,28 @@ function accountProfit(account) {
   return cents(calculatedBalance(account) - Number(account.starting_balance || 0) - accountDepositTotal(account.id) + accountWithdrawalTotal(account.id));
 }
 
+function accountUnwithdrawnPnl(account) {
+  return cents(calculatedBalance(account) - Number(account.starting_balance || 0) - accountDepositTotal(account.id));
+}
+
+function accountAvailableProfit(account) {
+  return cents(Math.max(0, accountUnwithdrawnPnl(account)));
+}
+
+function isActiveFundedPropAccount(account) {
+  if ((account.account_type || "Live") !== "Prop Firm") return false;
+  const membership = currentMembership(account.id);
+  const group = membership ? accountGroups.find((item) => item.id === membership.group_id) : null;
+  return Boolean(group && normalizedPropStatus(group.prop_status) === "funded");
+}
+
+function fundedAccountTotalProfit(account) {
+  // Prop payouts are locked gross profit. A separate account's drawdown must
+  // never reduce them; only profit still sitting above this account's baseline
+  // remains available and can change.
+  return cents(accountWithdrawalTotal(account.id) + accountAvailableProfit(account));
+}
+
 function updateAccountSelect() {
   const control = $("#detective-account");
   if (!control) return;
@@ -547,32 +569,32 @@ function renderEarnedSummary() {
 function renderBalanceSummary() {
   const summary = $("#account-balance-summary");
   if (!summary) return;
-  const liveTotal = accountBalances
-    .filter((account) => (account.account_type || "Live") === "Live")
+  const liveAccounts = accountBalances.filter((account) => (account.account_type || "Live") === "Live");
+  const fundedAccounts = accountBalances.filter(isActiveFundedPropAccount);
+  const liveTotal = liveAccounts
     .reduce((total, account) => total + calculatedBalance(account), 0);
-  const fundedTotal = accountBalances
-    .filter((account) => (account.account_type || "Live") === "Prop Firm")
-    .filter((account) => {
-      const membership = currentMembership(account.id);
-      const group = membership ? accountGroups.find((item) => item.id === membership.group_id) : null;
-      return group && normalizedPropStatus(group.prop_status) === "funded";
-    })
+  const fundedTotal = fundedAccounts
     .reduce((total, account) => total + calculatedBalance(account), 0);
-  const liveProfit = accountBalances
-    .filter((account) => (account.account_type || "Live") === "Live")
+  const liveProfit = liveAccounts
     .reduce((total, account) => total + accountProfit(account), 0);
-  const fundedProfit = accountBalances
-    .filter((account) => (account.account_type || "Live") === "Prop Firm")
-    .filter((account) => {
-      const membership = currentMembership(account.id);
-      const group = membership ? accountGroups.find((item) => item.id === membership.group_id) : null;
-      return group && normalizedPropStatus(group.prop_status) === "funded";
-    })
-    .reduce((total, account) => total + accountProfit(account), 0);
-  summary.querySelector("[data-account-live-total]").textContent = money(liveTotal);
-  summary.querySelector("[data-account-funded-total]").textContent = money(fundedTotal);
-  summary.querySelector("[data-account-live-profit]").textContent = money(liveProfit);
-  summary.querySelector("[data-account-funded-profit]").textContent = money(fundedProfit);
+  const fundedProfit = fundedAccounts
+    .reduce((total, account) => total + fundedAccountTotalProfit(account), 0);
+  const liveAvailableProfit = liveAccounts
+    .reduce((total, account) => total + accountAvailableProfit(account), 0);
+  const fundedAvailableProfit = fundedAccounts
+    .reduce((total, account) => total + accountAvailableProfit(account), 0);
+  const setMetric = (selector, amount) => {
+    const target = summary.querySelector(selector);
+    if (!target) return;
+    target.textContent = money(amount);
+    target.classList.toggle("result-negative", amount < 0);
+  };
+  setMetric("[data-account-live-total]", liveTotal);
+  setMetric("[data-account-funded-total]", fundedTotal);
+  setMetric("[data-account-live-profit]", liveProfit);
+  setMetric("[data-account-funded-profit]", fundedProfit);
+  setMetric("[data-account-live-available-profit]", liveAvailableProfit);
+  setMetric("[data-account-funded-available-profit]", fundedAvailableProfit);
 }
 
 let accountCalendarMonth = null;
