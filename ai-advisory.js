@@ -122,7 +122,7 @@ function legacyBuildContext({ operations, occurrences = [], missions, trades, re
     return { ...parent, id: `occurrence:${occurrence.id}`, operation_date: occurrence.occurrence_date, scheduled_date: occurrence.occurrence_date, completed_on: occurrence.completed_on, completed: occurrence.completed, status: occurrence.completed ? "Complete" : parent.status || "Queued" };
   });
   const effectiveOperations = [...operations.filter(operation => !recurringIds.has(String(operation.id)) || !occurrences.some(occurrence => String(occurrence.operation_id) === String(operation.id))), ...occurrenceRows];
-  const liveTrades = trades.filter((trade) => !["theoretical", "backtest", "backtesting"].includes(String(trade.account || "").trim().toLowerCase()));
+  const liveTrades = trades.filter((trade) => !["theoretical", "backtest", "backtesting", "hindsight"].includes(String(trade.account || "").trim().toLowerCase()));
   const closed = liveTrades.filter((trade) => outcome(trade) !== "open");
   const wins = closed.filter((trade) => outcome(trade) === "win").length;
   const losses = closed.filter((trade) => outcome(trade) === "loss").length;

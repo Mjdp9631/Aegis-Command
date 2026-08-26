@@ -44,7 +44,7 @@ function render({ operations, missions, trades }) {
   const completed = operations.length - remaining.length;
   const nextOperation = remaining[0]?.title || "Close the day deliberately and protect recovery.";
   const activeMission = [...missions].filter((mission) => missionProgress(mission) < 100).sort((a, b) => missionProgress(b) - missionProgress(a))[0];
-  const closedTrades = trades.filter((trade) => !["theoretical", "backtest", "backtesting"].includes(String(trade.account || "").trim().toLowerCase()) && outcomeOf(trade) !== "Open");
+  const closedTrades = trades.filter((trade) => !["theoretical", "backtest", "backtesting", "hindsight"].includes(String(trade.account || "").trim().toLowerCase()) && outcomeOf(trade) !== "Open");
   const wins = closedTrades.filter((trade) => outcomeOf(trade) === "Win").length;
   const losses = closedTrades.filter((trade) => outcomeOf(trade) === "Loss").length;
   const decisive = wins + losses;

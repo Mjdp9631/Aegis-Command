@@ -82,7 +82,7 @@ function isTheoretical(trade) {
 }
 
 function isPracticeTrade(trade) {
-  return ["theoretical", "backtest", "backtesting"].includes(String(trade.account || "").trim().toLowerCase());
+  return ["theoretical", "backtest", "backtesting", "hindsight"].includes(String(trade.account || "").trim().toLowerCase());
 }
 
 function tradeTime(trade) {
@@ -1218,7 +1218,7 @@ function renderMetrics(trades) {
 
   winRateElement.textContent = winRate == null ? "—" : `${winRate}%`;
   setTone(winRateElement, winRateTone(winRate));
-  $("#detective-win-rate-note").textContent = decisiveTrades ? `${wins} win${wins === 1 ? "" : "s"} / ${decisiveTrades} closed trade${decisiveTrades === 1 ? "" : "s"}${includePracticeTradesInAnalysis ? " · theoretical + backtest included" : ""}` : "Log closed trades to calculate";
+  $("#detective-win-rate-note").textContent = decisiveTrades ? `${wins} win${wins === 1 ? "" : "s"} / ${decisiveTrades} closed trade${decisiveTrades === 1 ? "" : "s"}${includePracticeTradesInAnalysis ? " · practice trades included" : ""}` : "Log closed trades to calculate";
   currentStreakElement.textContent = streaks.currentLength ? `${streaks.currentLength}${streaks.currentType === "Win" ? "W" : "L"}` : "—";
   setTone(currentStreakElement, streaks.currentType === "Win" ? "streak-win" : streaks.currentType === "Loss" ? "streak-loss" : null);
   currentStreakNote.textContent = streaks.currentLength ? `Current ${streaks.currentType.toLowerCase()} streak` : "Awaiting decisive trades";
@@ -1562,7 +1562,7 @@ function buildFilters() {
   journalWindow?.insertBefore(filterBar, tradeTable);
   const theoreticalToggle = document.createElement("label");
   theoreticalToggle.className = "theoretical-analysis-toggle";
-  theoreticalToggle.innerHTML = '<input type="checkbox" id="filter-include-theoretical" /> Include theoretical + backtest trades <small>Detective calculations only</small>';
+  theoreticalToggle.innerHTML = '<input type="checkbox" id="filter-include-theoretical" /> Include practice trades <small>Theoretical, Backtest, and Hindsight · Detective calculations only</small>';
   filterBar.querySelector(".clear-filters").insertAdjacentElement("beforebegin", theoreticalToggle);
   filterBar.addEventListener("change", (event) => {
     if (event.target.id === "filter-include-theoretical") {

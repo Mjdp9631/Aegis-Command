@@ -128,7 +128,7 @@ async function buildContext(serviceKey, userId, operatingDate, mode = "morning")
   const datedProjects = projects.map((project) => ({ ...project, created_at: project.logged_on || project.created_at }));
   const datedContent = contentItems.map((item) => ({ ...item, created_at: item.logged_on || item.created_at }));
   return sharedBuildContext({ operations, occurrences, missions, trades, recovery, mastery: datedMastery, projects: datedProjects, capabilities: capabilitySkills, capabilityLogs, financialFoundation: financialFoundations[0] || null, phase, directives, roadmap, deepWork: datedDeepWork, challenges, directorReviews, trainingSessions, trainingSets, weightLogs, foodLogs, activityEvents, accounts, groups, withdrawals, advisoryHistory, feedback, calibration: calibrationReviews, contentItems: datedContent, tradeReviews, tradeReviewCorrections, scenarios, progressEvents, campaign }, operatingDate, mode);
-  const liveTrades = trades.filter((trade) => !["theoretical", "backtest", "backtesting"].includes(String(trade.account || "").trim().toLowerCase()));
+  const liveTrades = trades.filter((trade) => !["theoretical", "backtest", "backtesting", "hindsight"].includes(String(trade.account || "").trim().toLowerCase()));
   const closed = liveTrades.filter((trade) => tradeOutcome(trade) !== "open");
   const wins = closed.filter((trade) => tradeOutcome(trade) === "win").length;
   const losses = closed.filter((trade) => tradeOutcome(trade) === "loss").length;

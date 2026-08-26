@@ -20,7 +20,7 @@ function normalOutcome(value) {
 }
 
 function isClosed(trade) {
-  return !["theoretical", "backtest", "backtesting"].includes(String(trade.account || "").trim().toLowerCase()) && String(trade.trade_status || "").trim().toLowerCase() !== "open";
+  return !["theoretical", "backtest", "backtesting", "hindsight"].includes(String(trade.account || "").trim().toLowerCase()) && String(trade.trade_status || "").trim().toLowerCase() !== "open";
 }
 
 function tradeOutcome(trade) {
