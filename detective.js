@@ -181,6 +181,59 @@ function syncRiskRewardInput() {
   return estimate;
 }
 
+function syncTheoreticalPnl() {
+  const account = $("#detective-account");
+  const riskReward = $("#detective-r");
+  const pnl = $("#detective-pnl");
+  const outcome = $("#detective-outcome");
+  if (!account || !riskReward || !pnl || !outcome) return;
+
+  let note = $("#detective-theoretical-pnl-note");
+  if (!note) {
+    note = document.createElement("small");
+    note.id = "detective-theoretical-pnl-note";
+    note.className = "theoretical-pnl-note";
+    pnl.insertAdjacentElement("afterend", note);
+  }
+
+  const theoretical = String(account.value || "").trim().toLowerCase() === "theoretical";
+  if (!theoretical) {
+    pnl.readOnly = false;
+    pnl.removeAttribute("aria-label");
+    note.hidden = true;
+    delete pnl.dataset.autoTheoreticalPnl;
+    return;
+  }
+
+  const rawR = String(riskReward.value || "").trim();
+  const r = rawR === "" ? Number.NaN : Number(rawR);
+  const selectedOutcome = String(outcome.value || "").trim().toLowerCase();
+  const isBreakEven = selectedOutcome === "b/e";
+  const isLoss = selectedOutcome === "loss" || selectedOutcome === "small loss";
+  const isWin = selectedOutcome === "win" || selectedOutcome === "small win";
+  if (!Number.isFinite(r) || (!isBreakEven && !isLoss && !isWin)) {
+    if (pnl.dataset.autoTheoreticalPnl === "true") pnl.value = "";
+    pnl.readOnly = false;
+    delete pnl.dataset.autoTheoreticalPnl;
+    pnl.placeholder = "Enter manually if R is unavailable";
+    note.textContent = "Theoretical uses 0.5% risk when an R result is entered.";
+    note.hidden = false;
+    return;
+  }
+
+  // An automatically derived R:R is a planned positive ratio. A loss that
+  // reaches the stop is one unit of the fixed 0.5% theoretical risk.
+  const signedR = isBreakEven ? 0 : isLoss ? (r < 0 ? r : -1) : Math.abs(r);
+  const calculatedPnl = cents(signedR * 0.5);
+  pnl.value = String(calculatedPnl);
+  pnl.readOnly = true;
+  pnl.setAttribute("aria-label", "PnL automatically calculated from 0.5 percent risk");
+  pnl.dataset.autoTheoreticalPnl = "true";
+  pnl.placeholder = "Auto from 0.5% risk";
+  note.textContent = `Auto: ${calculatedPnl > 0 ? "+" : ""}${calculatedPnl}% from 0.5% risk and ${isBreakEven ? "B/E" : `${Math.abs(signedR)}R`}.`;
+  note.hidden = false;
+}
+
 function executionEstimate(trade, lotSize = trade?.lot_size) {
   const entry = Number(trade?.entry_price);
   const takeProfit = Number(trade?.take_profit_price);
@@ -297,6 +350,7 @@ function syncExecutionEstimate() {
   const preview = $("#detective-execution-estimate");
   if (!preview) return;
   const riskReward = syncRiskRewardInput();
+  syncTheoreticalPnl();
   const riskRewardLabel = riskReward ? `Planned R:R 1:${riskReward.ratio.toFixed(2)}.` : "";
   const { rows } = executionRowsFromForm();
   const estimate = combinedExecutionEstimate({
@@ -1995,6 +2049,10 @@ function init() {
   });
   $("#detective-r")?.addEventListener("input", (event) => {
     if (event.isTrusted) delete event.currentTarget.dataset.autoRiskReward;
+    syncExecutionEstimate();
+  });
+  ["#detective-account", "#detective-outcome"].forEach((selector) => {
+    $(selector)?.addEventListener("change", syncExecutionEstimate);
   });
   dialog?.addEventListener("input", (event) => {
     if (event.target.closest("[data-trade-execution-account], [data-trade-execution-lot]")) syncExecutionEstimate();
