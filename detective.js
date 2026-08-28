@@ -604,7 +604,7 @@ function payoutRequestMarkup(withdrawal, group) {
   if (group?.account_type !== "Prop Firm") return '<em class="withdrawal-status approved">RECORDED</em>';
   if (status === "pending") return `<em class="withdrawal-status pending">PENDING</em><span class="account-actions"><button type="button" class="account-action" data-withdrawal-approve="${withdrawal.id}">Approve</button><button type="button" class="account-action danger" data-withdrawal-deny="${withdrawal.id}">Deny</button></span>`;
   if (status === "denied") return `<em class="withdrawal-status denied">DENIED${withdrawal.denial_reason ? ` · ${escapeHtml(withdrawal.denial_reason)}` : ""}</em><button type="button" class="account-action" data-withdrawal-pending="${withdrawal.id}">Reopen</button>`;
-  return `<em class="withdrawal-status approved">APPROVED</em><button type="button" class="account-action" data-withdrawal-pending="${withdrawal.id}">Reopen</button>`;
+  return `<em class="withdrawal-status approved">APPROVED</em><span class="account-actions"><button type="button" class="account-action" data-withdrawal-pending="${withdrawal.id}">Reopen</button><button type="button" class="account-action danger" data-withdrawal-deny="${withdrawal.id}">Mark denied</button></span>`;
 }
 
 function withdrawalIsEligible(withdrawal) {
@@ -645,8 +645,8 @@ function renderEarnedSummary() {
   summary.querySelector("[data-account-live-earned]").textContent = money(earnedForAccountType("Live"));
   summary.querySelector("[data-account-funded-earned]").textContent = money(earnedForAccountType("Prop Firm"));
   summary.querySelector("[data-account-total-earned]").textContent = money(totalEarned());
-  summary.querySelector("[data-account-pending-payouts]").textContent = money(payoutRequestsTotal("pending"));
-  summary.querySelector("[data-account-denied-payouts]").textContent = money(payoutRequestsTotal("denied"));
+  $("[data-account-pending-payouts]").textContent = money(payoutRequestsTotal("pending"));
+  $("[data-account-denied-payouts]").textContent = money(payoutRequestsTotal("denied"));
 }
 
 function renderBalanceSummary() {
