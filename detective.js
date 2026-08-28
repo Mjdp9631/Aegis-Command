@@ -417,9 +417,18 @@ function accountDepositTotal(accountId) {
     .reduce((total, deposit) => total + Number(deposit.amount_usd || 0), 0);
 }
 
+function withdrawalStatus(withdrawal) {
+  return ["pending", "approved", "denied"].includes(withdrawal?.payout_status)
+    ? withdrawal.payout_status
+    : "approved";
+}
+
 function accountWithdrawalTotal(accountId) {
   return withdrawalAllocations
-    .filter((allocation) => allocation.account_id === accountId)
+    .filter((allocation) => {
+      const withdrawal = groupWithdrawals.find((item) => String(item.id) === String(allocation.withdrawal_id));
+      return allocation.account_id === accountId && withdrawalStatus(withdrawal) === "approved";
+    })
     .reduce((total, allocation) => total + Number(allocation.gross_deduction_usd || 0), 0);
 }
 
@@ -590,11 +599,29 @@ function groupWithdrawalLedger(group) {
   return groupWithdrawals.filter((withdrawal) => withdrawal.group_id === group.id).sort((a, b) => new Date(b.withdrawn_at) - new Date(a.withdrawn_at));
 }
 
+function payoutRequestMarkup(withdrawal, group) {
+  const status = withdrawalStatus(withdrawal);
+  if (group?.account_type !== "Prop Firm") return '<em class="withdrawal-status approved">RECORDED</em>';
+  if (status === "pending") return `<em class="withdrawal-status pending">PENDING</em><span class="account-actions"><button type="button" class="account-action" data-withdrawal-approve="${withdrawal.id}">Approve</button><button type="button" class="account-action danger" data-withdrawal-deny="${withdrawal.id}">Deny</button></span>`;
+  if (status === "denied") return `<em class="withdrawal-status denied">DENIED${withdrawal.denial_reason ? ` · ${escapeHtml(withdrawal.denial_reason)}` : ""}</em><button type="button" class="account-action" data-withdrawal-pending="${withdrawal.id}">Reopen</button>`;
+  return `<em class="withdrawal-status approved">APPROVED</em><button type="button" class="account-action" data-withdrawal-pending="${withdrawal.id}">Reopen</button>`;
+}
+
 function withdrawalIsEligible(withdrawal) {
   const group = accountGroups.find((item) => item.id === withdrawal.group_id);
+  if (withdrawalStatus(withdrawal) !== "approved") return false;
   return group?.account_type === "Theoretical"
     ? withdrawal.include_in_total_earned === true
     : withdrawal.include_in_total_earned !== false;
+}
+
+function payoutRequestsTotal(status) {
+  return cents(groupWithdrawals.reduce((total, withdrawal) => {
+    const group = accountGroups.find((item) => item.id === withdrawal.group_id);
+    return group?.account_type === "Prop Firm" && withdrawalStatus(withdrawal) === status
+      ? total + Number(withdrawal.payout_total_usd || 0)
+      : total;
+  }, 0));
 }
 
 function earnedForAccountType(accountType) {
@@ -618,6 +645,8 @@ function renderEarnedSummary() {
   summary.querySelector("[data-account-live-earned]").textContent = money(earnedForAccountType("Live"));
   summary.querySelector("[data-account-funded-earned]").textContent = money(earnedForAccountType("Prop Firm"));
   summary.querySelector("[data-account-total-earned]").textContent = money(totalEarned());
+  summary.querySelector("[data-account-pending-payouts]").textContent = money(payoutRequestsTotal("pending"));
+  summary.querySelector("[data-account-denied-payouts]").textContent = money(payoutRequestsTotal("denied"));
 }
 
 function renderBalanceSummary() {
@@ -675,7 +704,10 @@ function accountCalendarEvents() {
   accountBalances.forEach((account) => {
     const entries = [
       ...accountDeposits.filter((deposit) => String(deposit.account_id) === String(account.id)).map((deposit) => ({ type: "deposit", at: deposit.deposited_at || deposit.created_at, amount: Number(deposit.amount_usd || 0) })),
-      ...withdrawalAllocations.filter((allocation) => String(allocation.account_id) === String(account.id)).map((allocation) => {
+      ...withdrawalAllocations.filter((allocation) => {
+        const withdrawal = withdrawalsById.get(String(allocation.withdrawal_id));
+        return String(allocation.account_id) === String(account.id) && withdrawalStatus(withdrawal) === "approved";
+      }).map((allocation) => {
         const withdrawal = withdrawalsById.get(String(allocation.withdrawal_id));
         return { type: "withdrawal", at: withdrawal?.withdrawn_at || allocation.created_at, amount: Number(allocation.gross_deduction_usd || 0), groupId: withdrawal?.group_id || null };
       }),
@@ -850,6 +882,21 @@ function decorateGroupAllocationForms() {
   });
 }
 
+function decoratePayoutRequestForms() {
+  document.querySelectorAll("[data-group-withdrawal-form]").forEach((form) => {
+    const group = accountGroups.find((item) => String(item.id) === String(form.dataset.groupWithdrawalForm));
+    if (!group || group.account_type !== "Prop Firm") return;
+    const requestDate = form.querySelector(`[data-withdrawal-date="${group.id}"]`);
+    if (requestDate?.closest("label")?.firstChild) requestDate.closest("label").firstChild.textContent = "Request date ";
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit) submit.textContent = "Request payout";
+    const preview = form.querySelector(`[data-withdrawal-preview="${group.id}"]`);
+    if (preview) preview.textContent = "A prop payout stays pending until you mark it approved or denied.";
+    const summary = form.closest(".group-withdrawal-details")?.querySelector("summary");
+    if (summary?.firstChild) summary.firstChild.textContent = "REQUEST / VIEW PAYOUTS ";
+  });
+}
+
 function decorateGroupTradeAllocations() {
   document.querySelectorAll("[data-group-trade-unlink]").forEach((button) => {
     const link = groupTradeLinks.find((item) => String(item.id) === String(button.dataset.groupTradeUnlink));
@@ -899,6 +946,7 @@ function renderGroupedAccountBalances() {
   renderAccountCalendar();
   renderTheoreticalTradeControls();
   setTimeout(decorateGroupAllocationForms, 0);
+  setTimeout(decoratePayoutRequestForms, 0);
   setTimeout(decorateGroupTradeAllocations, 0);
   setTimeout(decorateTheoreticalWithdrawalForms, 0);
   setTimeout(decoratePropStatusControls, 0);
@@ -912,7 +960,12 @@ function renderGroupedAccountBalances() {
       .sort((a, b) => tradeTime(loadedTrades.find((trade) => trade.id === b.trade_id) || {}) - tradeTime(loadedTrades.find((trade) => trade.id === a.trade_id) || {}));
     const split = group.account_type === "Prop Firm" ? Number(group.profit_split_percent) : 100;
     const tradeOptions = closedTradesAvailableForGroup(group.id).map((trade) => `<option value="${trade.id}">#${String(tradeNumberFor(trade.id)).padStart(3, "0")} · ${escapeHtml(trade.pair)} · ${escapeHtml(resolvedOutcome(trade))}</option>`).join("");
-    const ledger = withdrawals.length ? withdrawals.map((withdrawal) => `<div class="withdrawal-ledger-row"><div><strong>${new Date(withdrawal.withdrawn_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</strong><small>${withdrawal.account_count} account${withdrawal.account_count === 1 ? "" : "s"} · ${Number(withdrawal.profit_split_percent).toFixed(2).replace(/\.00$/, "")}% payout${withdrawal.note ? ` · ${escapeHtml(withdrawal.note)}` : ""}</small></div><span><b>-${money(withdrawal.gross_total_usd)}</b><em>tracked ${money(withdrawal.payout_total_usd)}</em></span></div>`).join("") : '<p class="ledger-empty">No withdrawals recorded for this group.</p>';
+    let ledger = withdrawals.length ? withdrawals.map((withdrawal) => `<div class="withdrawal-ledger-row"><div><strong>${new Date(withdrawal.withdrawn_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</strong><small>${withdrawal.account_count} account${withdrawal.account_count === 1 ? "" : "s"} · ${Number(withdrawal.profit_split_percent).toFixed(2).replace(/\.00$/, "")}% payout${withdrawal.note ? ` · ${escapeHtml(withdrawal.note)}` : ""}</small></div><span><b>-${money(withdrawal.gross_total_usd)}</b><em>tracked ${money(withdrawal.payout_total_usd)}</em></span></div>`).join("") : '<p class="ledger-empty">No withdrawals recorded for this group.</p>';
+    ledger = withdrawals.length ? withdrawals.map((withdrawal) => {
+      const status = withdrawalStatus(withdrawal);
+      const statusLabel = status === "pending" ? "request" : status === "denied" ? "denied request" : "approved payout";
+      return `<div class="withdrawal-ledger-row"><div><strong>${new Date(withdrawal.withdrawn_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</strong><small>${withdrawal.account_count} account${withdrawal.account_count === 1 ? "" : "s"} · ${Number(withdrawal.profit_split_percent).toFixed(2).replace(/\.00$/, "")}% payout${withdrawal.note ? ` · ${escapeHtml(withdrawal.note)}` : ""}</small><div class="withdrawal-status-line">${payoutRequestMarkup(withdrawal, group)}</div></div><span><b>-${money(withdrawal.gross_total_usd)}</b><em>${statusLabel} ${money(withdrawal.payout_total_usd)}</em></span></div>`;
+    }).join("") : '<p class="ledger-empty">No withdrawal requests recorded for this group.</p>';
     const memberRows = members.length ? members.map((account) => `<div class="group-account-row"><span>${escapeHtml(account.account_name)}${account.is_primary ? " · PRIMARY" : ""}</span><select data-account-move="${account.id}" aria-label="Move ${escapeHtml(account.account_name)}"><option value="${group.id}">${escapeHtml(group.name)}</option>${accountGroups.filter((candidate) => candidate.id !== group.id && candidate.account_type === account.account_type).map((candidate) => `<option value="${candidate.id}">${escapeHtml(candidate.name)}</option>`).join("")}</select><b>${money(calculatedBalance(account))}</b><span class="account-actions"><button type="button" class="account-action" data-account-edit="${account.id}">Edit</button><button type="button" class="account-action danger" data-account-delete="${account.id}">Delete</button></span></div>`).join("") : '<p class="ledger-empty">Add a matching account to activate this group.</p>';
     const linkRows = links.length ? links.map((link) => { const trade = loadedTrades.find((item) => item.id === link.trade_id); const pnl = Number(link.actual_pnl_usd || 0); return `<div class="group-account-row"><span>#${String(tradeNumberFor(link.trade_id)).padStart(3, "0")} · ${escapeHtml(trade?.pair || "Trade")} · ${escapeHtml(resolvedOutcome(trade || {}))}</span><b class="${pnl > 0 ? "result-positive" : pnl < 0 ? "result-negative" : ""}">${pnl > 0 ? "+" : ""}${money(pnl)} / acct</b><button type="button" class="account-action danger" data-group-trade-unlink="${link.id}" title="Remove this trade from the group without deleting the journal trade">Unlink</button></div>`; }).join("") : '<p class="ledger-empty">No group trades attached yet.</p>';
     return `<article class="account-group-card" data-group-id="${group.id}"><div class="account-group-header"><div><p class="account-group-kicker">${escapeHtml(group.account_type)} GROUP</p><h4>${escapeHtml(group.name)}</h4><small>${members.length} account${members.length === 1 ? "" : "s"} · ${group.account_type === "Prop Firm" ? `${split}% payout` : "100% payout"}</small></div><div class="account-group-total"><span>GROUP BALANCE</span><strong>${money(total)}</strong></div></div><div class="group-accounts">${memberRows}</div><form class="group-trade-form" data-group-trade-form="${group.id}"><label>Attach journal trade <select data-group-trade-select="${group.id}"><option value="">Choose a closed trade</option>${tradeOptions}</select></label><label>Exact PnL / account <input data-group-trade-pnl="${group.id}" type="number" step="0.01" placeholder="e.g. 250.00" /></label><button class="primary compact" type="submit">Add trade</button></form><details class="group-withdrawal-details"><summary>Record / view withdrawals <span>${withdrawals.length} record${withdrawals.length === 1 ? "" : "s"}</span></summary><form class="group-withdrawal-form" data-group-withdrawal-form="${group.id}"><label>Gross withdrawal / account <input data-withdrawal-gross="${group.id}" type="number" min="0.01" step="0.01" required placeholder="1000.00" /></label><label>Withdrawal date <input data-withdrawal-date="${group.id}" type="datetime-local" value="${localDateTimeInput()}" required /></label><label>Note <input data-withdrawal-note="${group.id}" maxlength="240" placeholder="Optional" /></label><button class="primary compact" type="submit">Record withdrawal</button><small class="withdrawal-preview" data-withdrawal-preview="${group.id}">Gross deduction and net payout will calculate from the group split.</small></form><div class="withdrawal-ledger">${ledger}</div></details><details class="group-trade-details"><summary>Linked journal trades <span>${links.length} trade${links.length === 1 ? "" : "s"}</span></summary><div class="withdrawal-ledger">${linkRows}</div></details></article>`;
@@ -1287,12 +1340,16 @@ async function saveGroupWithdrawal(groupId, form) {
   if (!group || !accountGroupAccounts(groupId).length) return alert("Add at least one matching account to this group before recording a withdrawal.");
   if (!allocations?.length || !withdrawnAt) return alert("Enter the gross withdrawal for every account involved and a withdrawal date.");
   const split = group.account_type === "Prop Firm" ? Number(group.profit_split_percent) : 100;
+  const payoutStatus = group.account_type === "Prop Firm" ? "pending" : "approved";
   const grossTotal = cents(allocations.reduce((total, allocation) => total + allocation.amount, 0));
   const payoutTotal = cents(allocations.reduce((total, allocation) => total + cents(allocation.amount * split / 100), 0));
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return alert("Please sign in before recording a withdrawal.");
-  const withdrawalResult = await supabase.from("account_group_withdrawals").insert({ user_id: sessionData.session.user.id, group_id: groupId, withdrawn_at: isoFromLocalDateTime(withdrawnAt), gross_amount_per_account_usd: cents(grossTotal / allocations.length), payout_amount_per_account_usd: cents(payoutTotal / allocations.length), gross_total_usd: grossTotal, payout_total_usd: payoutTotal, profit_split_percent: split, account_count: allocations.length, include_in_total_earned: includeInEarned, note }).select().single();
-  if (withdrawalResult.error) return alert(`The withdrawal could not be recorded: ${withdrawalResult.error.message}`);
+  const withdrawalResult = await supabase.from("account_group_withdrawals").insert({ user_id: sessionData.session.user.id, group_id: groupId, withdrawn_at: isoFromLocalDateTime(withdrawnAt), gross_amount_per_account_usd: cents(grossTotal / allocations.length), payout_amount_per_account_usd: cents(payoutTotal / allocations.length), gross_total_usd: grossTotal, payout_total_usd: payoutTotal, profit_split_percent: split, account_count: allocations.length, include_in_total_earned: includeInEarned, payout_status: payoutStatus, status_decided_at: payoutStatus === "approved" ? new Date().toISOString() : null, note }).select().single();
+  if (withdrawalResult.error) {
+    const migrationHint = /payout_status|status_decided_at|schema cache|column/i.test(String(withdrawalResult.error.message || "")) ? " Run migration 103 first." : "";
+    return alert(`The ${payoutStatus === "pending" ? "payout request" : "withdrawal"} could not be recorded: ${withdrawalResult.error.message}.${migrationHint}`);
+  }
   const allocationResult = await supabase.from("account_group_withdrawal_allocations").insert(allocations.map((allocation) => ({ user_id: sessionData.session.user.id, withdrawal_id: withdrawalResult.data.id, account_id: allocation.accountId, gross_deduction_usd: allocation.amount, payout_amount_usd: cents(allocation.amount * split / 100) })));
   if (allocationResult.error) {
     await supabase.from("account_group_withdrawals").delete().eq("id", withdrawalResult.data.id);
@@ -1300,6 +1357,55 @@ async function saveGroupWithdrawal(groupId, form) {
   }
   await loadAccountLedger();
   window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
+}
+
+async function updatePayoutRequestStatus(withdrawalId, status, denialReason = null) {
+  const withdrawal = groupWithdrawals.find((item) => String(item.id) === String(withdrawalId));
+  if (!withdrawal || !supabase) return;
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) return alert("Please sign in before changing a payout request.");
+  const payload = {
+    payout_status: status,
+    denial_reason: status === "denied" ? denialReason : null,
+    status_decided_at: status === "pending" ? null : new Date().toISOString(),
+  };
+  const { error } = await supabase.from("account_group_withdrawals")
+    .update(payload)
+    .eq("id", withdrawal.id)
+    .eq("user_id", sessionData.session.user.id);
+  if (error) {
+    const migrationHint = /payout_status|denial_reason|status_decided_at|schema cache|column/i.test(String(error.message || "")) ? " Run migration 103 first." : "";
+    alert(`The payout request status could not be changed: ${error.message}.${migrationHint}`);
+    return false;
+  }
+  await loadAccountLedger();
+  window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
+  return true;
+}
+
+function openPayoutDenialDialog(withdrawalId) {
+  const withdrawal = groupWithdrawals.find((item) => String(item.id) === String(withdrawalId));
+  if (!withdrawal) return;
+  const dialog = document.createElement("dialog");
+  dialog.className = "detective-dialog";
+  dialog.innerHTML = `<form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">PAYOUT REQUEST</p><h2>Record the denial.</h2><p class="mission-details-definition">${money(withdrawal.payout_total_usd)} will move to Denied Prop Payouts and will not affect earned funds or account balance.</p><label>Why was it denied?<textarea name="denial_reason" rows="4" maxlength="500" required placeholder="e.g. consistency rule, minimum trading days, prohibited strategy"></textarea></label><button type="submit" class="primary">Save denial</button></form>`;
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.querySelector(".dialog-close")?.addEventListener("click", () => dialog.close());
+  dialog.querySelector("form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const reason = event.currentTarget.elements.denial_reason.value.trim();
+    if (!reason) return;
+    const submit = event.currentTarget.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    submit.textContent = "Saving…";
+    if (await updatePayoutRequestStatus(withdrawalId, "denied", reason)) dialog.close();
+    else {
+      submit.disabled = false;
+      submit.textContent = "Save denial";
+    }
+  });
+  dialog.showModal();
 }
 
 function updateWithdrawalPreview(groupId) {
@@ -1311,7 +1417,9 @@ function updateWithdrawalPreview(groupId) {
   const split = group.account_type === "Prop Firm" ? Number(group.profit_split_percent) : 100;
   const grossTotal = cents(allocations.reduce((total, allocation) => total + allocation.amount, 0));
   const payoutTotal = cents(allocations.reduce((total, allocation) => total + cents(allocation.amount * split / 100), 0));
-  preview.textContent = `Deduct ${money(grossTotal)} across ${allocations.length} account${allocations.length === 1 ? "" : "s"} · track ${money(payoutTotal)} net at ${split}% payout.`;
+  preview.textContent = group.account_type === "Prop Firm"
+    ? `Request ${money(grossTotal)} gross across ${allocations.length} account${allocations.length === 1 ? "" : "s"} · ${money(payoutTotal)} net at ${split}% pending approval.`
+    : `Deduct ${money(grossTotal)} across ${allocations.length} account${allocations.length === 1 ? "" : "s"} · track ${money(payoutTotal)} net.`;
 }
 
 function filteredTrades() {
@@ -2196,6 +2304,12 @@ function init() {
     if (groupEditButton) editGroup(groupEditButton.dataset.groupEdit);
     const groupDeleteButton = event.target.closest("[data-group-delete]");
     if (groupDeleteButton) deleteGroup(groupDeleteButton.dataset.groupDelete);
+    const withdrawalApproveButton = event.target.closest("[data-withdrawal-approve]");
+    if (withdrawalApproveButton) updatePayoutRequestStatus(withdrawalApproveButton.dataset.withdrawalApprove, "approved");
+    const withdrawalDenyButton = event.target.closest("[data-withdrawal-deny]");
+    if (withdrawalDenyButton) openPayoutDenialDialog(withdrawalDenyButton.dataset.withdrawalDeny);
+    const withdrawalPendingButton = event.target.closest("[data-withdrawal-pending]");
+    if (withdrawalPendingButton) updatePayoutRequestStatus(withdrawalPendingButton.dataset.withdrawalPending, "pending");
     const groupTradeEditButton = event.target.closest("[data-group-trade-edit]");
     if (groupTradeEditButton) openLinkedTradePnlEditor(groupTradeEditButton.dataset.groupTradeEdit);
     const groupTradeUnlinkButton = event.target.closest("[data-group-trade-unlink]");
