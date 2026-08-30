@@ -528,7 +528,10 @@ async function rolloverOperations(serviceKey, userId, date) {
 
   let created = [];
   if (inserts.length) {
-    const inserted = await rest(serviceKey, "operations", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(inserts) });
+    // The browser's daily repair and this scheduled pass can arrive together.
+    // Let the database retain the first canonical row instead of turning an
+    // otherwise-successful scan into a retry that can fan out duplicate work.
+    const inserted = await rest(serviceKey, "operations", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" }, body: JSON.stringify(inserts) });
     if (!inserted.ok) throw new Error("Could not create today’s operations during the morning rollover.");
     created = await inserted.json();
   }

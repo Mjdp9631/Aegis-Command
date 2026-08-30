@@ -54,6 +54,10 @@ const isPreMarketAnalysisDay = (key) => {
 };
 const isPreMarketAnalysisOperation = (operation) => Boolean(operation?.is_daily)
   && String(operation?.title || "").trim().toLowerCase() === "pre-market analysis";
+// This title is reserved for the single generated market-preparation path.
+// Some older rows were saved without `is_daily`, so using that flag as part of
+// the duplicate identity let those legacy rows bypass the one-per-day guard.
+const hasPreMarketAnalysisTitle = (operation) => String(operation?.title || "").trim().toLowerCase() === "pre-market analysis";
 const hideClosedMarketPreMarket = (records = [], activeDay = operatingDayKey()) => records.filter((operation) => {
   if (!isPreMarketAnalysisOperation(operation)) return true;
   const scheduledDay = dateOnly(operation.scheduled_date || operation.operation_date);
@@ -734,8 +738,7 @@ function dedupeOperationInstances(items) {
     // could save it with different times, making the normal title+date+time
     // identity show both rows. Render one authoritative row while the durable
     // migration removes the historical duplicate.
-    const isDailyPreMarket = Boolean(operation?.is_daily)
-      && String(operation?.title || "").trim().toLowerCase() === "pre-market analysis";
+    const isDailyPreMarket = hasPreMarketAnalysisTitle(operation);
     const preMarketDay = dateOnly(operation?._occurrence?.occurrence_date || operation?.scheduled_date || operation?.operation_date);
     const key = isDailyPreMarket && preMarketDay
       ? `daily-pre-market|${preMarketDay}`
@@ -2418,10 +2421,32 @@ async function seedIfEmpty() {
   return ensureTodayOperations(inserted || seed);
 }
 
+let todayOperationRepairPromise = null;
+let todayOperationRepairDate = "";
+
+// Daily repairs can be requested by hydration, a realtime refresh, and a
+// status-change refresh almost simultaneously. Serialize them per operating
+// day so they all observe the same first insert rather than racing to create
+// their own daily rows.
 async function ensureTodayOperations(records = []) {
+  const activeDay = operatingDayKey();
+  if (todayOperationRepairPromise && todayOperationRepairDate === activeDay) return todayOperationRepairPromise;
+  const repair = ensureTodayOperationsForDay(records, activeDay);
+  todayOperationRepairPromise = repair;
+  todayOperationRepairDate = activeDay;
+  try {
+    return await repair;
+  } finally {
+    if (todayOperationRepairPromise === repair) {
+      todayOperationRepairPromise = null;
+      todayOperationRepairDate = "";
+    }
+  }
+}
+
+async function ensureTodayOperationsForDay(records = [], activeDay = operatingDayKey()) {
   // operatingDayKey() keeps this on the prior day before 5 AM. Repairing that
   // day is safe; the next day's pillars still cannot appear until rollover.
-  const activeDay = operatingDayKey();
   records = hideClosedMarketPreMarket(records, activeDay);
   const daily = [
     ["Review charts and document one lesson", "Trading", "Review one relevant chart or completed trade, capture one process lesson, and file it in Detective or Self Mastery."],
@@ -2480,6 +2505,19 @@ async function ensureTodayOperations(records = []) {
   });
   const { data, error } = await client.from("operations").insert(prepared).select();
   if (error) {
+    // A second tab or the scheduled rollover may win the same daily insert.
+    // Reload that durable winner instead of appending a fake local duplicate
+    // that would be rendered alongside it until the next refresh.
+    if (/duplicate|unique|already exists/i.test(String(error.message || ""))) {
+      const { data: latest, error: reloadError } = await client.from("operations")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .order("scheduled_date", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (!reloadError && Array.isArray(latest)) {
+        return ensureWeeklyGymPlan(mergeSavedStatus(await reconcileCachedOperationEdits(latest)), activeDay);
+      }
+    }
     console.warn("Could not create today's operations", error.message);
     const combined = appendOperationsWithoutTouchingExisting(records, prepared.map((item, index) => ({ ...item, id: `local-${activeDay}-${index}-${item.title}` })));
     return ensureWeeklyGymPlan(combined, activeDay);
