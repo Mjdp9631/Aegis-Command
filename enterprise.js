@@ -63,7 +63,14 @@ const CRYPTO_ASSETS = Object.freeze({
 const capitalChange = (entry) => ["Expense", "Capital withdrawal"].includes(String(entry.entry_type || "")) ? -Number(entry.amount_usd || 0) : Number(entry.amount_usd || 0);
 const capitalTotal = () => capitalEntries.reduce((total, entry) => total + capitalChange(entry), 0);
 const accountName = (accountId) => accountBalances.find((account) => String(account.id) === String(accountId))?.account_name || "Unlinked account";
-const cryptoSymbol = (assetOrSymbol) => String(typeof assetOrSymbol === "object" ? assetOrSymbol?.symbol : assetOrSymbol || "").trim().toUpperCase();
+const cryptoSymbol = (assetOrSymbol) => {
+  const supplied = typeof assetOrSymbol === "object"
+    ? (assetOrSymbol?.symbol || assetOrSymbol?.title || "")
+    : assetOrSymbol || "";
+  const normalized = String(supplied).trim().toUpperCase();
+  const match = Object.entries(CRYPTO_ASSETS).find(([symbol, asset]) => symbol === normalized || asset.name.toUpperCase() === normalized);
+  return match?.[0] || normalized;
+};
 const cryptoQuote = (assetOrSymbol) => Number(window.AEGIS_CRYPTO_QUOTES?.[cryptoSymbol(assetOrSymbol)]?.usd || 0);
 // Assets display the last value the director explicitly refreshed. Live prices
 // remain available in Command Center, but they do not constantly redraw or
