@@ -7,6 +7,7 @@ const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => 
 const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 const PROJECT_XP = Object.freeze({ Minor: 10, Standard: 25, Major: 50, Flagship: 100 });
 let projects = [], projectSteps = [], content = [], financialFoundation = null, capitalEntries = [], businessAssets = [], accountBalances = [];
+let assetValueUpdateInFlight = false;
 const ENTERPRISE_TAB_STORAGE_KEY = "aegis-enterprise-active-tab";
 const enterpriseTabFromStorage = (() => {
   try {
@@ -64,14 +65,16 @@ const capitalTotal = () => capitalEntries.reduce((total, entry) => total + capit
 const accountName = (accountId) => accountBalances.find((account) => String(account.id) === String(accountId))?.account_name || "Unlinked account";
 const cryptoSymbol = (assetOrSymbol) => String(typeof assetOrSymbol === "object" ? assetOrSymbol?.symbol : assetOrSymbol || "").trim().toUpperCase();
 const cryptoQuote = (assetOrSymbol) => Number(window.AEGIS_CRYPTO_QUOTES?.[cryptoSymbol(assetOrSymbol)]?.usd || 0);
-const assetCurrentValue = (asset) => {
-  const quote = String(asset?.asset_type || "") === "Crypto" ? cryptoQuote(asset) : 0;
-  const quantity = Number(asset?.quantity);
-  return quote > 0 && Number.isFinite(quantity) ? quote * quantity : Number(asset?.current_value_usd || 0);
-};
+// Assets display the last value the director explicitly refreshed. Live prices
+// remain available in Command Center, but they do not constantly redraw or
+// overwrite this ownership ledger.
+const assetCurrentValue = (asset) => Number(asset?.current_value_usd || 0);
 
 function enterpriseTabs() {
-  return `<div class="enterprise-tabs" role="tablist" aria-label="Enterprise HQ areas">${[["projects", "Projects"], ["capital", "Capital"], ["assets", "Assets"]].map(([id, label]) => `<button type="button" class="enterprise-tab ${activeEnterpriseTab === id ? "active" : ""}" role="tab" aria-selected="${activeEnterpriseTab === id}" data-enterprise-tab="${id}">${label}</button>`).join("")}</div>`;
+  const updateValues = activeEnterpriseTab === "assets"
+    ? `<button type="button" class="ghost compact enterprise-update-values" data-enterprise-action="asset-values" ${assetValueUpdateInFlight ? "disabled" : ""}>${assetValueUpdateInFlight ? "Updating values…" : "Update values"}</button>`
+    : "";
+  return `<div class="enterprise-tabs" role="tablist" aria-label="Enterprise HQ areas">${[["projects", "Projects"], ["capital", "Capital"], ["assets", "Assets"]].map(([id, label]) => `<button type="button" class="enterprise-tab ${activeEnterpriseTab === id ? "active" : ""}" role="tab" aria-selected="${activeEnterpriseTab === id}" data-enterprise-tab="${id}">${label}</button>`).join("")}${updateValues}</div>`;
 }
 
 function capitalPanel() {
@@ -87,11 +90,16 @@ function capitalPanel() {
 }
 
 function assetsPanel() {
+  queueMicrotask(() => {
+    if (activeEnterpriseTab !== "assets") return;
+    const notes = $("#enterprise .enterprise-capital-metrics")?.querySelectorAll("span") || [];
+    if (notes[0]) notes[0].textContent = "Last saved values";
+    if (notes[2]) notes[2].textContent = "Refreshes only when requested";
+  });
   const trackedValue = businessAssets.reduce((sum, asset) => sum + assetCurrentValue(asset), 0);
   const cryptoHoldings = businessAssets.filter((asset) => String(asset.asset_type || "") === "Crypto").length;
   const assets = businessAssets.length ? businessAssets.map((asset) => {
-    const quote = String(asset.asset_type || "") === "Crypto" ? cryptoQuote(asset) : 0;
-    const liveNote = quote > 0 && Number.isFinite(Number(asset.quantity)) ? `<small>LIVE: ${money(quote, 6)} × ${escape(asset.quantity)}</small>` : "";
+    const liveNote = "";
     return `<article class="enterprise-ledger-row"><div><strong>${escape(asset.title)}${asset.symbol ? ` (${escape(asset.symbol)})` : ""}</strong><small>${escape(asset.asset_type)} · acquired ${escape(asset.acquired_on || "")}</small>${asset.quantity != null ? `<small>QUANTITY: ${escape(asset.quantity)}</small>` : ""}${liveNote}${asset.notes ? `<small>${escape(asset.notes)}</small>` : ""}</div><div class="enterprise-ledger-actions"><b>${money(assetCurrentValue(asset))}</b><button class="enterprise-edit" type="button" data-asset-edit="${escape(asset.id)}">Edit</button><button class="enterprise-remove" type="button" data-asset-remove="${escape(asset.id)}">Remove</button></div></article>`;
   }).join("") : '<p class="enterprise-empty">No owned assets registered yet. Crypto, equity, and durable business assets all belong here.</p>';
   return `<div class="enterprise-tab-panel"><div class="enterprise-tab-heading"><div><p class="eyebrow amber">OWNED ASSETS</p><h3>Build and protect what you own.</h3><p class="body-copy">Track investable holdings and durable business assets separately from deployable Capital.</p></div><button class="primary compact" type="button" data-enterprise-action="asset">+ Add asset</button></div><div class="enterprise-capital-metrics"><article><small>TRACKED ASSET VALUE</small><strong>${money(trackedValue)}</strong><span>Live crypto quote × recorded quantity</span></article><article><small>REGISTERED ASSETS</small><strong>${businessAssets.length}</strong><span>Crypto, equity, and business assets</span></article><article><small>CRYPTO HOLDINGS</small><strong>${cryptoHoldings}</strong><span>Assets valued from live quotes</span></article></div><section class="panel enterprise-ledger"><div class="panel-head"><div><p class="eyebrow">ASSET REGISTER</p><h3>Things the enterprise owns.</h3></div><span class="status-pill muted">${businessAssets.length} TRACKED</span></div>${assets}</section></div>`;
@@ -630,6 +638,41 @@ async function saveAsset(event) {
   }
 }
 
+async function updateAssetValues() {
+  if (assetValueUpdateInFlight) return;
+  const refreshable = businessAssets.filter((asset) => {
+    const crypto = String(asset.asset_type || "") === "Crypto" ? CRYPTO_ASSETS[cryptoSymbol(asset)] : null;
+    return crypto && Number.isFinite(Number(asset.quantity)) && Number(asset.quantity) >= 0;
+  });
+  if (!refreshable.length) return alert("Add a quantity to at least one supported crypto asset before updating values.");
+  try {
+    assetValueUpdateInFlight = true;
+    const coinIds = [...new Set(refreshable.map((asset) => CRYPTO_ASSETS[cryptoSymbol(asset)].coinId))];
+    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coinIds.join(","))}&vs_currencies=usd`);
+    if (!response.ok) throw new Error("The live quote service is unavailable. Try again shortly.");
+    const quotes = await response.json();
+    const updates = refreshable.map((asset) => {
+      const coinId = CRYPTO_ASSETS[cryptoSymbol(asset)].coinId;
+      const price = Number(quotes?.[coinId]?.usd);
+      if (!Number.isFinite(price) || price <= 0) return null;
+      return { asset, currentValue: Math.round(price * Number(asset.quantity) * 100) / 100 };
+    }).filter(Boolean);
+    if (!updates.length) throw new Error("No current quote was returned for your tracked crypto.");
+    const results = await Promise.all(updates.map(({ asset, currentValue }) => supabase
+      .from("business_assets")
+      .update({ current_value_usd: currentValue })
+      .eq("id", asset.id)));
+    const failed = results.find((result) => result.error);
+    if (failed?.error) throw failed.error;
+    await load();
+    window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "business-asset-values" } }));
+  } catch (error) {
+    alert(`Asset values could not be updated: ${error.message || error}`);
+  } finally {
+    assetValueUpdateInFlight = false;
+  }
+}
+
 function buildDialogs() {
   const dialogs = document.createElement("div");
   dialogs.innerHTML = `<dialog id="project-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">NEW SPECIAL PROJECT</p><h2>Finish a useful milestone.</h2><input id="project-edit-id" type="hidden" /><input id="project-parent-id" type="hidden" /><p class="enterprise-parent-context" id="project-parent-context" aria-live="polite"></p><label>Log date <input id="project-logged-on" type="date" required /></label><label>Project <input id="project-title" required placeholder="e.g. Aegis Command v2" /></label><div class="two-col"><label>Type <select id="project-type"><option>Real-world project</option><option>Aegis system</option><option>CCFX system</option><option>Business asset</option><option>Learning build</option></select></label><label>Mode <select id="project-mode"><option value="Milestone">Finite milestone</option><option value="Ongoing system">Ongoing system</option></select></label></div><div class="two-col"><label>Weight <select id="project-effort-band"><option value="Minor">Minor — 2–8 hr / 10 XP</option><option value="Standard" selected>Standard — 8–24 hr / 25 XP</option><option value="Major">Major — 24–80 hr / 50 XP</option><option value="Flagship">Flagship — 80+ hr / 100 XP</option></select></label><label>Estimated effort (hours) <input id="project-estimated-hours" type="number" min="1" max="10000" placeholder="e.g. 120" /></label></div><p class="enterprise-xp-note" id="project-xp-reward"></p><label>Priority <select id="project-priority"><option>Do now</option><option selected>Schedule</option><option>Delegate</option><option>Eliminate</option></select></label><label>Definition of done <textarea id="project-outcome" required placeholder="What must exist, work, or be delivered for this milestone to be complete?"></textarea></label><label>Project steps — one per line <textarea id="project-steps" required placeholder="Deploy the first usable version&#10;Verify login and saved data&#10;Run a production walkthrough"></textarea></label><p class="body-copy">Only the next incomplete step enters Operations. Project progress is completed steps ÷ total steps, and the project closes automatically when every step is complete.</p><label>Due date <input id="project-due" type="date" /></label><button class="primary" id="project-submit" value="default">Open project and first operation</button></form></dialog><dialog id="content-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">NEW CONTENT ITEM</p><h2>Ship a useful signal.</h2><label>Log date <input id="content-logged-on" type="date" required /></label><label>Working title <input id="content-title" required placeholder="e.g. The risk rule that protects a funded account" /></label><div class="two-col"><label>Platform <select id="content-platform"><option>YouTube</option><option>Instagram</option><option>X</option><option>Newsletter</option></select></label><label>Status <select id="content-status"><option>Idea</option><option>Drafting</option><option>Ready</option><option>Published</option></select></label></div><button class="primary" value="default">Add to pipeline</button></form></dialog><dialog id="finance-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">FINANCIAL FOUNDATION</p><h2>Protect the mission.</h2><label>Log date <input id="finance-logged-on" type="date" required /></label><div class="two-col"><label>Monthly income <input id="finance-income" type="number" min="0" step="0.01" /></label><label>Monthly expenses <input id="finance-expenses" type="number" min="0" step="0.01" /></label><label>Liquid reserves <input id="finance-reserves" type="number" min="0" step="0.01" /></label><label>Emergency fund target <input id="finance-emergency" type="number" min="0" step="0.01" /></label><label>Debt balance <input id="finance-debt" type="number" min="0" step="0.01" /></label><label>Business revenue / month <input id="finance-revenue" type="number" min="0" step="0.01" /></label></div><label>Notes <textarea id="finance-notes" placeholder="Rules, obligations, or the next financial priority."></textarea></label><button class="primary" value="default">Save foundation</button></form></dialog>`;
@@ -884,6 +927,7 @@ if (supabase) {
     if (action === "project") return openProjectDialog();
     if (action === "capital") return openCapitalDialog();
     if (action === "asset") return openAssetDialog();
+    if (action === "asset-values") return void updateAssetValues();
     if (action === "content") $("#content-logged-on").value = easternDateKey();
     if (action === "finance") {
       $("#finance-logged-on").value = financialFoundation?.logged_on || easternDateKey();
@@ -897,11 +941,6 @@ if (supabase) {
   });
   supabase.auth.onAuthStateChange((event) => { if (event === "SIGNED_IN") setTimeout(load, 50); });
 }
-
-window.addEventListener("aegis:market-quotes", () => {
-  syncAssetQuote();
-  if (activeEnterpriseTab === "assets") render();
-});
 
 window.addEventListener("aegis:data-changed", (event) => {
   if (["remote-enterprise"].includes(event.detail?.source)) setTimeout(load, 120);
