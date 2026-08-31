@@ -1,10 +1,10 @@
 -- AEGIS 104 - one canonical Pre-market analysis operation per day.
 --
 -- Migration 089 protected only rows marked `is_daily`. Some legacy/client
--- races created the same reserved operation without that flag, letting them
--- bypass both that guard and display de-duplication. Keep the best completion
--- record for each user/day, normalize it, and protect the title regardless of
--- the old flag value.
+-- races created the same reserved operation without that flag or with a
+-- different hyphen character, letting them bypass both that guard and display
+-- de-duplication. Keep the best completion record for each user/day, normalize
+-- it, and protect the title regardless of the old flag value or punctuation.
 
 with ranked_pre_market as (
   select
@@ -17,7 +17,7 @@ with ranked_pre_market as (
         id asc
     ) as row_number
   from public.operations
-  where lower(trim(coalesce(title, ''))) = 'pre-market analysis'
+  where lower(regexp_replace(coalesce(title, ''), '[^a-z0-9]+', '', 'g')) = 'premarketanalysis'
     and coalesce(scheduled_date, operation_date) is not null
 )
 delete from public.operations as operation
@@ -33,11 +33,11 @@ set
   schedule_mode = 'one_time',
   scheduled_date = coalesce(scheduled_date, operation_date),
   operation_date = coalesce(operation_date, scheduled_date)
-where lower(trim(coalesce(title, ''))) = 'pre-market analysis'
+where lower(regexp_replace(coalesce(title, ''), '[^a-z0-9]+', '', 'g')) = 'premarketanalysis'
   and coalesce(scheduled_date, operation_date) is not null;
 
 drop index if exists public.operations_daily_pre_market_once_per_day;
 
 create unique index if not exists operations_pre_market_once_per_user_day
   on public.operations (user_id, (coalesce(scheduled_date, operation_date)))
-  where lower(trim(coalesce(title, ''))) = 'pre-market analysis';
+  where lower(regexp_replace(coalesce(title, ''), '[^a-z0-9]+', '', 'g')) = 'premarketanalysis';

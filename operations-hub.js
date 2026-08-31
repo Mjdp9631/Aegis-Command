@@ -52,12 +52,13 @@ const isPreMarketAnalysisDay = (key) => {
   const weekday = date?.getUTCDay();
   return weekday === 0 || (weekday >= 1 && weekday <= 4);
 };
-const isPreMarketAnalysisOperation = (operation) => Boolean(operation?.is_daily)
-  && String(operation?.title || "").trim().toLowerCase() === "pre-market analysis";
+const preMarketTitleKey = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 // This title is reserved for the single generated market-preparation path.
-// Some older rows were saved without `is_daily`, so using that flag as part of
-// the duplicate identity let those legacy rows bypass the one-per-day guard.
-const hasPreMarketAnalysisTitle = (operation) => String(operation?.title || "").trim().toLowerCase() === "pre-market analysis";
+// Normalize punctuation too: old writes used both hyphen variants, and a
+// literal title comparison allowed them to evade the per-day consolidation.
+const hasPreMarketAnalysisTitle = (operation) => preMarketTitleKey(operation?.title) === "premarketanalysis";
+const isPreMarketAnalysisOperation = (operation) => Boolean(operation?.is_daily)
+  && hasPreMarketAnalysisTitle(operation);
 const hideClosedMarketPreMarket = (records = [], activeDay = operatingDayKey()) => records.filter((operation) => {
   if (!isPreMarketAnalysisOperation(operation)) return true;
   const scheduledDay = dateOnly(operation.scheduled_date || operation.operation_date);
