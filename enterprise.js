@@ -8,6 +8,18 @@ const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", 
 const PROJECT_XP = Object.freeze({ Minor: 10, Standard: 25, Major: 50, Flagship: 100 });
 let projects = [], projectSteps = [], content = [], financialFoundation = null, capitalEntries = [], businessAssets = [], accountBalances = [];
 let assetValueUpdateInFlight = false;
+let enterpriseLoadInFlight = false;
+let enterpriseLoadQueued = false;
+const assetSnapshotKey = (userId) => `aegis-enterprise-assets:${userId || "anonymous"}`;
+const cachedAssetSnapshot = (userId) => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(assetSnapshotKey(userId)) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+};
+const saveAssetSnapshot = (userId, assets) => {
+  try { localStorage.setItem(assetSnapshotKey(userId), JSON.stringify(Array.isArray(assets) ? assets : [])); } catch { /* cache is only a safety copy */ }
+};
 const ENTERPRISE_TAB_STORAGE_KEY = "aegis-enterprise-active-tab";
 const enterpriseTabFromStorage = (() => {
   try {
@@ -152,8 +164,19 @@ function render() {
 
 async function load() {
   if (!supabase) return;
+  // Realtime notifications and the explicit post-save refresh can arrive at
+  // nearly the same time. Let one request own the state, then run one fresh
+  // follow-up rather than allowing an older response to overwrite it.
+  if (enterpriseLoadInFlight) {
+    enterpriseLoadQueued = true;
+    return;
+  }
+  enterpriseLoadInFlight = true;
+  try {
   const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) return;
+  const userId = sessionData.session?.user?.id;
+  if (!userId) return;
+  const priorAssets = cachedAssetSnapshot(userId);
   let [projectResult, stepResult, contentResult, foundationResult, missionResult, capitalResult, assetResult, accountResult] = await Promise.all([
     supabase.from("business_projects").select("*").order("logged_on", { ascending: false }),
     supabase.from("business_project_steps").select("*").order("project_id").order("position"),
@@ -172,6 +195,12 @@ async function load() {
     contentResult = await supabase.from("content_items").select("*").order("created_at", { ascending: false });
     if (contentResult.error) contentResult = await supabase.from("content_items").select("*");
   }
+  if (assetResult.error) {
+    // Ordering is a convenience, not a reason to make the owned-asset ledger
+    // disappear if a schema cache or transient PostgREST issue rejects it.
+    assetResult = await supabase.from("business_assets").select("*").order("acquired_on", { ascending: false });
+    if (assetResult.error) assetResult = await supabase.from("business_assets").select("*");
+  }
   if (projectResult.error || contentResult.error) return;
   projectSteps = stepResult.error ? [] : stepResult.data || [];
   const storedProjects = (projectResult.data || []).map((project) => {
@@ -189,10 +218,33 @@ async function load() {
   content = contentResult.data || [];
   financialFoundation = foundationResult.error ? null : foundationResult.data || null;
   capitalEntries = capitalResult.error ? [] : capitalResult.data || [];
-  businessAssets = assetResult.error ? [] : assetResult.data || [];
+  if (assetResult.error) {
+    // A failed table read must never masquerade as a zero-dollar ledger.
+    // Preserve the last successful local snapshot until Supabase responds.
+    console.warn("Enterprise asset read failed; retaining the last saved snapshot.", assetResult.error.message);
+    businessAssets = priorAssets.length ? priorAssets : businessAssets;
+  } else if (Array.isArray(assetResult.data) && assetResult.data.length) {
+    businessAssets = assetResult.data;
+    saveAssetSnapshot(userId, businessAssets);
+  } else if (priorAssets.length) {
+    // An unexpected empty response after a populated ledger is treated as a
+    // transient visibility problem, not evidence that the director deleted
+    // every asset. Explicit removal updates the snapshot below.
+    console.warn("Enterprise asset read returned empty; retaining the last saved snapshot.");
+    businessAssets = priorAssets;
+  } else {
+    businessAssets = [];
+  }
   accountBalances = accountResult.error ? [] : accountResult.data || [];
   render();
   void repairMissingProjectOperations();
+  } finally {
+    enterpriseLoadInFlight = false;
+    if (enterpriseLoadQueued) {
+      enterpriseLoadQueued = false;
+      void load();
+    }
+  }
 }
 
 const projectStepsFromInput = (value) => String(value || "").split(/\n+/).map((step) => step.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim()).filter(Boolean);
@@ -665,12 +717,24 @@ async function updateAssetValues() {
       return { asset, currentValue: Math.round(price * Number(asset.quantity) * 100) / 100 };
     }).filter(Boolean);
     if (!updates.length) throw new Error("No current quote was returned for your tracked crypto.");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData.session?.user?.id;
+    if (!userId) throw new Error("Sign in before updating asset values.");
     const results = await Promise.all(updates.map(({ asset, currentValue }) => supabase
       .from("business_assets")
       .update({ current_value_usd: currentValue })
-      .eq("id", asset.id)));
+      .eq("id", asset.id)
+      .eq("user_id", userId)
+      .select("id")
+      .maybeSingle()));
     const failed = results.find((result) => result.error);
     if (failed?.error) throw failed.error;
+    if (results.some((result) => !result.data?.id)) throw new Error("An asset record was not found. No values were changed.");
+    businessAssets = businessAssets.map((asset) => {
+      const update = updates.find((candidate) => String(candidate.asset.id) === String(asset.id));
+      return update ? { ...asset, current_value_usd: update.currentValue } : asset;
+    });
+    saveAssetSnapshot(userId, businessAssets);
     await load();
     window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "business-asset-values" } }));
   } catch (error) {
@@ -913,6 +977,10 @@ if (supabase) {
       if (!asset || !confirm(`Remove asset “${asset.title}”?`)) return;
       void supabase.from("business_assets").delete().eq("id", assetRemoveId).then(async ({ error }) => {
         if (error) return alert(`Asset could not be removed: ${error.message}`);
+        const { data: sessionData } = await supabase.auth.getSession();
+        const remaining = businessAssets.filter((item) => String(item.id) !== String(assetRemoveId));
+        businessAssets = remaining;
+        saveAssetSnapshot(sessionData.session?.user?.id, remaining);
         await load();
         window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "business-asset-remove" } }));
       });
