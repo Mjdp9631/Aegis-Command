@@ -37,6 +37,7 @@ where lower(regexp_replace(coalesce(title, ''), '[^a-z0-9]+', '', 'g')) = 'prema
   and coalesce(scheduled_date, operation_date) is not null;
 
 drop index if exists public.operations_daily_pre_market_once_per_day;
+drop index if exists public.operations_pre_market_once_per_user_day;
 
 create unique index if not exists operations_pre_market_once_per_user_day
   on public.operations (user_id, (coalesce(scheduled_date, operation_date)))
