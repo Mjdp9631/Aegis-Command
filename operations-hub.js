@@ -2020,6 +2020,17 @@ function missionIdsForCompletedOperation(operation) {
   return metricMatches.length === 1 ? [metricMatches[0].id] : [];
 }
 
+// A mission count can be applied by the database trigger before the browser's
+// local fallback runs. In that healthy case there is no local `updated` row
+// to announce, which previously left Mission Control showing an old milestone
+// after editing a historical calendar day. Status changes always refresh the
+// mission ledger from the canonical database record.
+function publishMissionProgressRefresh() {
+  window.dispatchEvent(new CustomEvent("aegis:missions-refresh", {
+    detail: { source: "operations-hub" },
+  }));
+}
+
 // Reconcile every measured mission from completed operation instances. This
 // shared path covers PT sessions, chapters, workouts, reviews, and future
 // unit-based missions while deduplicating recurring occurrence rows.
@@ -2303,6 +2314,7 @@ async function setOperationStatus(key, requestedStatus, selectedDay = operatingD
     subscribeToOperationSync();
     saveCachedOperations();
   }
+  if ((next === "Complete" && !wasComplete) || (next !== "Complete" && wasComplete)) publishMissionProgressRefresh();
   renderQueue();
   renderCalendar();
   window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "operations-hub", operations } }));
@@ -2393,6 +2405,7 @@ async function cycleStatus(key, forcedStatus = null) {
     subscribeToOperationSync();
     saveCachedOperations();
   }
+  if ((next === "Complete" && !wasComplete) || (next !== "Complete" && wasComplete)) publishMissionProgressRefresh();
   renderQueue();
   renderCalendar();
   window.dispatchEvent(new CustomEvent("aegis:operations-changed", { detail: { source: "operations-hub", operations } }));
