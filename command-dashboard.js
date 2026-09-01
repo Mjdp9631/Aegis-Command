@@ -289,9 +289,24 @@ async function load() {
     supabase.from("account_group_withdrawals").select("*").order("withdrawn_at", { ascending: false }),
     supabase.from("account_group_withdrawal_allocations").select("*").order("created_at", { ascending: true })
   ]);
-  const [tradesResult, operationsResult, occurrenceResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, challengeResult, capabilityLogsResult, foundationResult, campaignResult, accountsResult, groupsResult, membershipsResult, tradeLinksResult, tradeAllocationsResult, withdrawalsResult, allocationsResult] = window.AEGIS_DATA_GUARD
+  let [tradesResult, operationsResult, occurrenceResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, challengeResult, capabilityLogsResult, foundationResult, campaignResult, accountsResult, groupsResult, membershipsResult, tradeLinksResult, tradeAllocationsResult, withdrawalsResult, allocationsResult] = window.AEGIS_DATA_GUARD
     ? await window.AEGIS_DATA_GUARD.run("dashboard:snapshot", loadSnapshot)
     : await loadSnapshot();
+  if (tradesResult.error) {
+    // PostgREST can briefly reject the ordered read while reconnecting or
+    // refreshing its schema cache. That is not an empty trading journal.
+    // Retry the essential chart dataset without the optional order clause
+    // before allowing the dashboard to paint an empty-state chart.
+    console.warn("Dashboard trade read failed; retrying without order.", tradesResult.error.message);
+    const retry = await supabase.from("trade_debriefs").select("*");
+    if (!retry.error) tradesResult = retry;
+    else {
+      console.warn("Dashboard trade retry failed; retaining the last chart.", retry.error.message);
+      window.AEGIS_DATA_GUARD?.invalidate("dashboard:snapshot");
+      if (dashboardData?.trades?.length) tradesResult = { data: dashboardData.trades, error: null };
+      else scheduleDashboardLoad(30000);
+    }
+  }
   dashboardData = { trades: tradesResult.data || [], operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], capabilityLogs: capabilityLogsResult.data || [], financialFoundation: foundationResult.data || null, mastery: masteryResult.data || [], xpCampaign: campaignResult.data || null, accounts: accountsResult.data || [] };
   accountLedger = { groups: groupsResult.data || [], memberships: membershipsResult.data || [], tradeLinks: tradeLinksResult.data || [], tradeAllocations: tradeAllocationsResult.data || [], withdrawals: withdrawalsResult.data || [], allocations: allocationsResult.data || [] };
   render();
