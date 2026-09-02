@@ -590,6 +590,23 @@ function gymSetRow() {
   return `<div class="exercise-row" data-set-number="1"><label class="set-number-label">Set <b data-set-number-label>1</b></label><label>Exercise<input name="exercise_name" list="gym-exercise-history" autocomplete="off" required placeholder="Select a prior exercise or add one" /><small class="exercise-name-status" data-exercise-name-status>Select a prior exercise or enter a new one.</small></label><label>Resistance<select name="resistance_type" data-resistance-type><option value="Weights">Weights</option><option value="Bands">Bands</option><option value="Bodyweight">Bodyweight</option></select></label><label data-weight-field>Weight (lb)<input name="weight_lbs" type="number" min="0" step="0.5" required /></label><label data-band-field hidden>Band resistance<select name="band_resistance" disabled><option value="">Select band</option><option>Light</option><option>Medium</option><option>Heavy</option><option>Extra heavy</option><option>Other</option></select></label><label>Reps<input name="reps" type="number" min="1" required /></label><button class="ghost compact" type="button" data-add-set>+ Set</button><button class="ghost compact" type="button" data-remove-exercise>Remove</button></div>`;
 }
 
+// `set_number` restarts at 1 for every exercise. Sorting an edited session by
+// that field alone laid it out as every Set 1, then every Set 2, which split a
+// workout apart. Keep the exercise groups in their original entry order, then
+// order only the sets inside each workout.
+function gymSetsGroupedForEdit(sessionId) {
+  const groups = new Map();
+  trainingSets.filter((set) => String(set.session_id) === String(sessionId)).forEach((set, index) => {
+    const key = `${normalizedExerciseName(set.exercise_name)}|${String(set.resistance_type || "Weights")}`;
+    const group = groups.get(key) || { firstIndex: index, rows: [] };
+    group.rows.push(set);
+    groups.set(key, group);
+  });
+  return [...groups.values()]
+    .sort((left, right) => left.firstIndex - right.firstIndex)
+    .flatMap((group) => group.rows.sort((left, right) => Number(left.set_number || 1) - Number(right.set_number || 1)));
+}
+
 function syncResistanceFields(row) {
   const type = row.querySelector("[data-resistance-type]")?.value || "Weights";
   const weightField = row.querySelector("[data-weight-field]");
@@ -725,7 +742,7 @@ function openFitnessDialog(type, existing = null, editKind = "") {
     if (type === "Gym") {
       form.elements.workout_split.value = existing.workout_split || existing.session_type || "Legs";
       form.elements.notes.value = existing.notes || "";
-      const rows = trainingSets.filter(set => set.session_id === existing.id).sort((a, b) => Number(a.set_number || 1) - Number(b.set_number || 1));
+      const rows = gymSetsGroupedForEdit(existing.id);
       const list = form.querySelector(".exercise-list");
       list.innerHTML = (rows.length ? rows : [{}]).map(() => gymSetRow()).join("");
       [...list.querySelectorAll(".exercise-row")].forEach((row, index) => {
