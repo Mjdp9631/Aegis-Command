@@ -123,6 +123,10 @@ const formatKey = (key, options = { month: "short", day: "numeric" }) => {
   const date = dateForKey(key);
   return date ? new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", ...options }).format(date) : "";
 };
+// Display-only availability context. These days are never treated as missed
+// operations or synthesized activity records.
+const calendarBlackouts = [{ start: "2026-09-02", end: "2026-09-22", label: "Supabase availability blackout" }];
+const calendarBlackoutForDay = (key) => calendarBlackouts.find((blackout) => key >= blackout.start && key <= blackout.end) || null;
 const newYorkTodayDate = () => dateForKey(todayKey());
 const syncSystemDate = () => {
   const label = $("#system-date");
@@ -3080,9 +3084,15 @@ function renderCalendar() {
     }
     const date = new Date(Date.UTC(year, month, day, 17));
     const key = dayKey(date);
+    const blackout = calendarBlackoutForDay(key);
     const scheduled = displayOperations.filter((operation) => isScheduledOn(operation, key));
     const complete = scheduled.filter((operation) => displayStatus(operation, key) === "Complete").length;
-    const classes = ["calendar-day", key === todayKey() ? "today" : "", key === selectedDay ? "selected" : ""].filter(Boolean).join(" ");
+    const classes = ["calendar-day", blackout ? "blackout" : "", key === todayKey() ? "today" : "", key === selectedDay ? "selected" : ""].filter(Boolean).join(" ");
+    if (blackout) {
+      const ariaLabel = `${formatKey(key, { month: "long", day: "numeric" })}: ${blackout.label}`;
+      cells.push(`<button type="button" class="${classes}" data-calendar-day="${key}" aria-label="${esc(ariaLabel)}"><b>${day}</b><small class="calendar-blackout-label">BLACKOUT</small></button>`);
+      continue;
+    }
     cells.push(`<button type="button" class="${classes}" data-calendar-day="${key}"><b>${day}</b>${scheduled.length ? `<small>${complete}/${scheduled.length} OPS</small>` : '<small>—</small>'}</button>`);
   }
   grid.innerHTML = cells.join("");
@@ -3091,9 +3101,14 @@ function renderCalendar() {
     renderCalendar();
   }));
   const selected = displayOperations.filter((operation) => isScheduledOn(operation, selectedDay));
-  if (agendaLabel) agendaLabel.textContent = selectedDay ? formatKey(selectedDay, { weekday: "long", month: "long", day: "numeric" }) : "Select a day";
+  const selectedBlackout = calendarBlackoutForDay(selectedDay);
+  if (agendaLabel) agendaLabel.textContent = selectedDay ? `${formatKey(selectedDay, { weekday: "long", month: "long", day: "numeric" })}${selectedBlackout ? " · Availability blackout" : ""}` : "Select a day";
   if (agenda) {
+    if (selectedBlackout) {
+      agenda.innerHTML = `<article class="calendar-blackout-notice"><p class="eyebrow amber">ARCHIVED SERVICE INCIDENT</p><strong>${esc(selectedBlackout.label)}</strong><p>Cloud data was unavailable. This date is excluded from activity and missed-operation interpretation.</p></article><p class="calendar-empty">No operational result is recorded for this availability blackout.</p>`;
+    } else {
     agenda.innerHTML = selected.length ? `<div class="calendar-agenda-list">${selected.map((operation) => `<article class="calendar-agenda-item">${calendarStatusMarkup(operation, selectedDay)}<div class="calendar-agenda-operation"><strong>${esc(operation.title)}</strong>${gymRolloverControlMarkup(operation)}</div><small>${esc(operation.category || "Mission")} · choose status</small></article>`).join("")}</div>` : '<p class="calendar-empty">No operations scheduled. Select another day or schedule an operation in Mission Control.</p>';
+    }
     agenda.querySelectorAll("[data-hub-set-status]").forEach((select) => select.addEventListener("change", () => setOperationStatus(select.dataset.hubSetStatus, select.value, select.dataset.hubStatusDay)));
     agenda.querySelectorAll("[data-hub-gym-rest]").forEach((button) => button.addEventListener("click", () => void takeGymRestDay(findOperation(button.dataset.hubGymRest))));
     agenda.querySelectorAll("[data-hub-gym-train]").forEach((button) => button.addEventListener("click", () => void takeGymTrainingDay(findOperation(button.dataset.hubGymTrain))));

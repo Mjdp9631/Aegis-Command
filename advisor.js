@@ -65,12 +65,15 @@ async function loadAdvisory() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
-  const [operationsResult, missionsResult, tradesResult] = await Promise.all([
+  const loadSnapshot = () => Promise.all([
     supabase.from("operations").select("*").eq("scheduled_date", today).order("created_at"),
     supabase.from("missions").select("*").order("created_at", { ascending: false }),
     // Use the complete journal so the debrief agrees with Detective and Command Center.
     supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false })
   ]);
+  const [operationsResult, missionsResult, tradesResult] = window.AEGIS_DATA_GUARD
+    ? await window.AEGIS_DATA_GUARD.run("advisor:daily-snapshot", loadSnapshot)
+    : await loadSnapshot();
   if (operationsResult.error || missionsResult.error || tradesResult.error) return;
   render({ operations: operationsResult.data || [], missions: missionsResult.data || [], trades: tradesResult.data || [] });
   window.dispatchEvent(new Event("aegis:adviser-ready"));

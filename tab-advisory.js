@@ -58,7 +58,10 @@ async function loadSectionAdvice() {
   if (!supabase) return;
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return;
-  const { data } = await supabase.from("ai_advisories").select("payload").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const loadSnapshot = () => supabase.from("ai_advisories").select("payload").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const { data } = window.AEGIS_DATA_GUARD
+    ? await window.AEGIS_DATA_GUARD.run("tab-advisory:latest", loadSnapshot)
+    : await loadSnapshot();
   if (data?.payload?.sections) renderFooters(data.payload.sections);
 }
 

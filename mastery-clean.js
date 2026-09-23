@@ -121,7 +121,28 @@ const recoverySafeChallenges = [
 let lane = localStorage.getItem("aegis-mastery-lane") === "body" ? "body" : "mind";
 let activeType = localStorage.getItem("aegis-mastery-type") || (lane === "body" ? "Health" : "Book");
 let entries = [], deepWork = [], challenges = [], trainingSessions = [], trainingSets = [], weightLogs = [], foodLogs = [], capabilities = [], capabilityLogs = [], capabilityBenchmarks = [], capabilityRecommendations = [];
-let recoveryReady = false, cleanRendering = false;
+let recoveryReady = false, cleanRendering = false, masteryLoadIssue = "";
+
+// This is a display-only incident marker, not a generated activity record.
+// September 1 contains the last known real activity. The outage began the
+// following day and lasted through the restoration of access on September 23.
+const serviceBlackouts = [{ start: "2026-09-02", end: "2026-09-22", label: "Supabase availability blackout" }];
+
+function blackoutNotice() {
+  return serviceBlackouts.map(({ start, end, label }) => `<aside class="mastery-blackout" role="status"><p class="eyebrow amber">ARCHIVED SERVICE INCIDENT</p><h3>${escapeHtml(label)}</h3><p><time datetime="${start}">Sep 2</time>–<time datetime="${end}">Sep 22, 2026</time> — cloud records could not be reached during this window. These dates are intentionally not counted as zero-activity days.</p></aside>`).join("");
+}
+
+function dataUnavailableNotice() {
+  return masteryLoadIssue ? `<aside class="mastery-data-warning" role="alert"><p class="eyebrow amber">CLOUD DATA UNAVAILABLE</p><h3>Your saved history is being preserved</h3><p>${escapeHtml(masteryLoadIssue)} The app will keep the last verified entries on screen and will not present this as an empty log.</p></aside>` : "";
+}
+
+function describeLoadFailure(results) {
+  const errors = results.map(result => result?.error).filter(Boolean);
+  const authFailure = errors.some(error => /permission denied|not authenticated|jwt|session/i.test(String(error?.message || "")));
+  return authFailure
+    ? "Your secure session is unavailable. Sign in to load your saved history."
+    : "A cloud request failed while refreshing this view.";
+}
 
 const capabilityDefaults = [
   ["Practical", "First aid & CPR", "Learn and refresh basic first aid, CPR, and emergency response knowledge."],
@@ -304,7 +325,7 @@ function render() {
   const specialContent = activeType === "Gym" ? `${trainingProgressOverview()}${trainingSessions.slice(0, 12).map(trainingCard).join("")}` : activeType === "Health" ? healthCard() : "";
   const content = isCurrentLocked ? `<div class="mastery-lock"><h3>${activeType} locked</h3><p>Unlocks after Recovery is completed and you confirm archiving the Recovery section.</p></div>` : (specialContent || visible.map(entryCard).join("") || `<div class="mastery-empty">Nothing logged here yet. Capture the first useful item.</div>`);
   // Render critical content first, defer heavy panels
-  root.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Capture knowledge worth using, produce focused work, and train only what your foundation supports.</p></div><div class="mastery-tabs"><button class="mastery-tab ${lane === "mind" ? "active" : ""}" data-mastery-clean-lane="mind">Mind</button><button class="mastery-tab ${lane === "body" ? "active" : ""}" data-mastery-clean-lane="body">Body</button></div>${laneInputDock()}${categoryCards}${lane === "mind" ? "" : ""}<div class="mastery-deferred-panels"></div><div class="mastery-toolbar"><h3>${typeLabel(activeType)}</h3></div><div class="mastery-list">${content}</div>`;
+  root.innerHTML = `<div class="section-intro"><p class="eyebrow blue-text">THE CRAFT OF MASTERY</p><h2>Build the mind. Restore the body.</h2><p>Capture knowledge worth using, produce focused work, and train only what your foundation supports.</p></div>${dataUnavailableNotice()}${blackoutNotice()}<div class="mastery-tabs"><button class="mastery-tab ${lane === "mind" ? "active" : ""}" data-mastery-clean-lane="mind">Mind</button><button class="mastery-tab ${lane === "body" ? "active" : ""}" data-mastery-clean-lane="body">Body</button></div>${laneInputDock()}${categoryCards}${lane === "mind" ? "" : ""}<div class="mastery-deferred-panels"></div><div class="mastery-toolbar"><h3>${typeLabel(activeType)}</h3></div><div class="mastery-list">${content}</div>`;
   // Render heavy panels after critical content via requestAnimationFrame
   requestAnimationFrame(() => {
     const deferredPanel = root.querySelector(".mastery-deferred-panels");
@@ -488,21 +509,19 @@ async function saveCapability(event) {
 
 async function loadCapabilities() {
   if (!db) return;
-  const skillResult = await db.from("capability_skills").select("*").order("skill_type").order("created_at");
-  if (skillResult.error) { capabilities = []; capabilityLogs = []; capabilityBenchmarks = []; return; }
+  const loadSnapshot = () => Promise.all([
+    db.from("capability_skills").select("*").order("skill_type").order("created_at"),
+    db.from("capability_skill_logs").select("*").order("practiced_on", { ascending: false }).limit(120),
+    db.from("capability_benchmarks").select("*").order("sort_order"),
+    db.from("capability_recommendations").select("*").eq("status", "Pending").order("created_at", { ascending: false }),
+  ]);
+  let [skillResult, logs, benchmarkResult, recommendationResult] = window.AEGIS_DATA_GUARD
+    ? await window.AEGIS_DATA_GUARD.run("mastery:capabilities", loadSnapshot)
+    : await loadSnapshot();
+  if (skillResult.error) return;
   capabilities = skillResult.data || [];
-  if (!capabilities.length) {
-    const { error } = await db.from("capability_skills").upsert(capabilityDefaults.map(([skill_type, title, description]) => ({ user_id: undefined, skill_type, title, description })), { onConflict: "user_id,skill_type,title", ignoreDuplicates: true });
-    if (!error) {
-      const refreshed = await db.from("capability_skills").select("*").order("skill_type").order("created_at");
-      capabilities = refreshed.data || [];
-    }
-  }
-  const logs = await db.from("capability_skill_logs").select("*").order("practiced_on", { ascending: false }).limit(120);
   capabilityLogs = logs.error ? [] : logs.data || [];
-  const benchmarkResult = await db.from("capability_benchmarks").select("*").order("sort_order");
   capabilityBenchmarks = benchmarkResult.error ? [] : benchmarkResult.data || [];
-  const recommendationResult = await db.from("capability_recommendations").select("*").eq("status", "Pending").order("created_at", { ascending: false });
   capabilityRecommendations = recommendationResult.error ? [] : recommendationResult.data || [];
 }
 
@@ -1064,19 +1083,29 @@ async function saveSystem(event) {
 
 async function load() {
   if (db) {
-    const loadSnapshot = () => Promise.all([
-      db.from("mastery_entries").select("*").order("created_at", { ascending: false }), db.from("missions").select("*"), db.from("deep_work_logs").select("*").order("created_at", { ascending: false }).limit(30), db.from("mastery_challenges").select("*").order("created_at", { ascending: false }).limit(30),
-      db.from("training_sessions").select("*").order("logged_on", { ascending: false }).limit(1000), db.from("training_sets").select("*").order("logged_on", { ascending: false }).limit(1000),
-      db.from("health_weight_logs").select("*").order("logged_on", { ascending: false }).limit(60), db.from("health_food_logs").select("*").order("logged_on", { ascending: false }).limit(240)
-    ]);
-    const [entryResult, missionResult, workResult, challengeResult, sessionResult, setResult, weightResult, foodResult] = window.AEGIS_DATA_GUARD
-      ? await window.AEGIS_DATA_GUARD.run("mastery:main-snapshot", loadSnapshot)
-      : await loadSnapshot();
-    entries = entryResult.data || []; deepWork = workResult.data || []; challenges = challengeResult.data || [];
-    trainingSessions = sessionResult.data || []; trainingSets = setResult.data || []; weightLogs = weightResult.data || []; foodLogs = foodResult.data || [];
-    await loadCapabilities();
-    const recovery = (missionResult.data || []).find(mission => mission.category === "Recovery"); const recoveryComplete = recovery && (recovery.completed || (recovery.completion_type === "units" && Number(recovery.completed_count) >= Number(recovery.target_count)));
-    recoveryReady = Boolean(recoveryComplete && localStorage.getItem("aegis-recovery-archived") === "yes");
+    try {
+      const loadSnapshot = () => Promise.all([
+        db.from("mastery_entries").select("*").order("created_at", { ascending: false }), db.from("missions").select("*"), db.from("deep_work_logs").select("*").order("created_at", { ascending: false }).limit(30), db.from("mastery_challenges").select("*").order("created_at", { ascending: false }).limit(30),
+        db.from("training_sessions").select("*").order("logged_on", { ascending: false }).limit(1000), db.from("training_sets").select("*").order("logged_on", { ascending: false }).limit(1000),
+        db.from("health_weight_logs").select("*").order("logged_on", { ascending: false }).limit(60), db.from("health_food_logs").select("*").order("logged_on", { ascending: false }).limit(240)
+      ]);
+      const results = window.AEGIS_DATA_GUARD
+        ? await window.AEGIS_DATA_GUARD.run("mastery:main-snapshot", loadSnapshot)
+        : await loadSnapshot();
+      const [entryResult, missionResult, workResult, challengeResult, sessionResult, setResult, weightResult, foodResult] = results;
+      if (results.some(result => result?.error)) {
+        masteryLoadIssue = describeLoadFailure(results);
+      } else {
+        masteryLoadIssue = "";
+        entries = entryResult.data || []; deepWork = workResult.data || []; challenges = challengeResult.data || [];
+        trainingSessions = sessionResult.data || []; trainingSets = setResult.data || []; weightLogs = weightResult.data || []; foodLogs = foodResult.data || [];
+        try { await loadCapabilities(); } catch { masteryLoadIssue = "Capability history could not be refreshed."; }
+        const recovery = (missionResult.data || []).find(mission => mission.category === "Recovery"); const recoveryComplete = recovery && (recovery.completed || (recovery.completion_type === "units" && Number(recovery.completed_count) >= Number(recovery.target_count)));
+        recoveryReady = Boolean(recoveryComplete && localStorage.getItem("aegis-recovery-archived") === "yes");
+      }
+    } catch {
+      masteryLoadIssue = "The cloud connection is temporarily unavailable.";
+    }
   } debounceRender(render, 50);
 }
 
@@ -1116,6 +1145,8 @@ document.addEventListener("click", async event => {
 
 function startMastery() { if (window.__aegisMasteryCleanStarted) return; window.__aegisMasteryCleanStarted = true; buildDialogs(); load(); }
 if (document.readyState === "complete") startMastery(); else window.addEventListener("load", startMastery, { once: true });
+window.addEventListener("aegis:auth-ready", (event) => { if (event.detail?.session) load(); });
+if (db) db.auth.onAuthStateChange((_event, session) => { if (session) load(); });
 window.addEventListener("aegis:mastery-changed", (event) => {
   if (event.detail?.remote) setTimeout(load, 120);
 });

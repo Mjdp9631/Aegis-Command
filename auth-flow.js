@@ -55,8 +55,13 @@ function renderAccessForm(session) {
 
 async function getSession() {
   if (!supabase) return null;
-  const { data: { session } } = await supabase.auth.getSession();
-  return session;
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session) return null;
+  // A cached browser session is not evidence that its token can still read
+  // the database. Verify it once before lifting the gate so a failed refresh
+  // cannot leave the dashboard open with every protected dataset shown as 0.
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  return userError || !user ? null : session;
 }
 
 async function openAccountAccess() {

@@ -177,7 +177,7 @@ async function load() {
   const userId = sessionData.session?.user?.id;
   if (!userId) return;
   const priorAssets = cachedAssetSnapshot(userId);
-  let [projectResult, stepResult, contentResult, foundationResult, missionResult, capitalResult, assetResult, accountResult] = await Promise.all([
+  const loadSnapshot = () => Promise.all([
     supabase.from("business_projects").select("*").order("logged_on", { ascending: false }),
     supabase.from("business_project_steps").select("*").order("project_id").order("position"),
     supabase.from("content_items").select("*").order("logged_on", { ascending: false }),
@@ -187,6 +187,9 @@ async function load() {
     supabase.from("business_assets").select("*").order("acquired_on", { ascending: false }).order("created_at", { ascending: false }),
     supabase.from("account_balances").select("id, account_name, account_type").order("account_name"),
   ]);
+  let [projectResult, stepResult, contentResult, foundationResult, missionResult, capitalResult, assetResult, accountResult] = window.AEGIS_DATA_GUARD
+    ? await window.AEGIS_DATA_GUARD.run("enterprise:snapshot", loadSnapshot)
+    : await loadSnapshot();
   if (projectResult.error) {
     projectResult = await supabase.from("business_projects").select("*").order("created_at", { ascending: false });
     if (projectResult.error) projectResult = await supabase.from("business_projects").select("*");

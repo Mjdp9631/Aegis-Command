@@ -160,7 +160,10 @@ function renderHistory() {
 async function loadReviewerData() {
   if (!supabase) return;
   const { data: sessionData } = await supabase.auth.getSession(); if (!sessionData.session) return;
-  const [tradeResult, reviewResult, scenarioResult, correctionResult] = await Promise.all([supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }), supabase.from("trade_reviews").select("*, trade_debriefs(*)").order("created_at", { ascending: false }).limit(24), supabase.from("ai_trade_scenarios").select("*").order("created_at", { ascending: false }).limit(100), supabase.from("trade_review_corrections").select("*").order("created_at", { ascending: false }).limit(100)]);
+  const loadSnapshot = () => Promise.all([supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }), supabase.from("trade_reviews").select("*, trade_debriefs(*)").order("created_at", { ascending: false }).limit(24), supabase.from("ai_trade_scenarios").select("*").order("created_at", { ascending: false }).limit(100), supabase.from("trade_review_corrections").select("*").order("created_at", { ascending: false }).limit(100)]);
+  const [tradeResult, reviewResult, scenarioResult, correctionResult] = window.AEGIS_DATA_GUARD
+    ? await window.AEGIS_DATA_GUARD.run("brain-review:snapshot", loadSnapshot)
+    : await loadSnapshot();
   trades = tradeResult.data || []; reviews = reviewResult.data || []; corrections = correctionResult.error ? [] : (correctionResult.data || []);
   renderScenarioSummary(scenarioResult.error ? [] : (scenarioResult.data || []));
   const control = $("#brain-review-trade");
@@ -317,6 +320,7 @@ async function undoDeleteReview() {
   lastDeletedReview = null;
   clearTimeout(deleteUndoTimer);
   $("#brain-delete-undo")?.setAttribute("hidden", "");
+  window.AEGIS_DATA_GUARD?.invalidate("brain-review:snapshot");
   await loadReviewerData();
 }
 
@@ -332,7 +336,7 @@ function openCorrectionDialog(entry) {
     const { data: sessionData } = await supabase.auth.getSession();
     const { error } = await supabase.from("trade_review_corrections").insert({ user_id: sessionData.session.user.id, trade_review_id: entry.id, trade_id: entry.trade_id || trade?.id || null, correction_area: String(form.get("correction_area")), correction: String(form.get("correction")).trim(), chart_evidence: String(form.get("chart_evidence") || "").trim() || null });
     if (error) return alert(`Correction could not be saved: ${error.message}`);
-    dialog.close(); dialog.remove(); await loadReviewerData(); $("#brain-review-history-list").innerHTML = renderReview(entry.review_payload, entry);
+    dialog.close(); dialog.remove(); window.AEGIS_DATA_GUARD?.invalidate("brain-review:snapshot"); await loadReviewerData(); $("#brain-review-history-list").innerHTML = renderReview(entry.review_payload, entry);
   };
   dialog.showModal();
 }
@@ -375,7 +379,7 @@ async function runReview(event) {
     if (insert.error) throw new Error(`The audit was completed but could not be saved: ${insert.error.message}`);
     const scenarioInsert = await supabase.from("ai_trade_scenarios").insert({ user_id: sessionData.session.user.id, trade_id: trade.id, scenario_payload: scenario, scenario_action: scenario.scenario_action || "Insufficient evidence", simulated_r_multiple: simulatedR, simulated_pnl_percent: simulatedPnl, actual_r_multiple: actualR, actual_pnl_percent: actualPnl, scenario_result: scenarioResult, screenshot_count: Object.keys(screenshots).length });
     if (scenarioInsert.error) console.warn("AI scenario ledger is unavailable until migration 051 is applied.", scenarioInsert.error.message);
-    status.textContent = "Blind scenario recorded. Full post-trade review saved."; $("#brain-review-form").reset(); await loadReviewerData(); $("#brain-review-dialog").close(); $("#brain-review-history-list")?.scrollIntoView({ behavior:"smooth", block:"center" });
+    status.textContent = "Blind scenario recorded. Full post-trade review saved."; $("#brain-review-form").reset(); window.AEGIS_DATA_GUARD?.invalidate("brain-review:snapshot"); await loadReviewerData(); $("#brain-review-dialog").close(); $("#brain-review-history-list")?.scrollIntoView({ behavior:"smooth", block:"center" });
   } catch (error) { status.textContent = error.message || "The audit could not be completed."; } finally { submit.disabled = false; }
 }
 

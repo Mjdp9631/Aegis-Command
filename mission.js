@@ -11,6 +11,7 @@ let missionEditor = null;
 let missionDetails = null;
 let missionLoadTimer = null;
 let missionLoadInFlight = null;
+let missionRetryAfter = 0;
 let missionLedgerView = "active";
 
 // A stalled optional query must never leave Mission Control on its static
@@ -1036,6 +1037,7 @@ function openEditor(dialog, mission, options = {}) {
 async function loadData() {
   if (!session || !client) return;
   if (missionLoadInFlight) return missionLoadInFlight;
+  if (Date.now() < missionRetryAfter) return;
   missionLoadInFlight = (async () => {
     try {
       let { data, error } = await withMissionTimeout(
@@ -1183,7 +1185,12 @@ async function loadData() {
       } catch (recoveryError) {
         console.warn("Recovery query unavailable", recoveryError.message);
       }
+      missionRetryAfter = 0;
     } catch (error) {
+      // Auth and Realtime can emit several refresh signals while a network
+      // request is timing out. Pause automatic retries instead of repeatedly
+      // re-downloading the mission graph during an outage.
+      missionRetryAfter = Date.now() + 120000;
       renderMissionLoadFailure(error);
     } finally {
       missionLoadInFlight = null;

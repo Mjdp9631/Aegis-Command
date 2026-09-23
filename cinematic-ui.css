@@ -1752,3 +1752,6 @@ dialog::backdrop { background: rgba(0, 6, 13, .70); backdrop-filter: blur(7px); 
   .command-side-rail .market-tickers { grid-column: 1 / -1 !important; }
   #command > .command-stage .command-summary { margin: 0 !important; }
 }
+
+/* Availability incidents belong on the calendar, but are never activity. */
+.calendar-day.blackout{border-color:rgba(232,181,92,.78);background:repeating-linear-gradient(135deg,rgba(104,67,17,.68) 0 8px,rgba(27,24,17,.9) 8px 16px);box-shadow:inset 0 0 0 1px rgba(255,225,160,.1)}.calendar-day.blackout:hover,.calendar-day.blackout.selected{border-color:#ffd179;background:repeating-linear-gradient(135deg,rgba(128,83,20,.8) 0 8px,rgba(37,30,16,.94) 8px 16px)}.calendar-day.blackout:not(.blank)::after{background:#e8b55c;box-shadow:0 0 10px rgba(232,181,92,.82)}.calendar-day .calendar-blackout-label{color:#ffe0a1;font-size:8px;letter-spacing:.08em}.calendar-blackout-notice{margin-bottom:10px;padding:13px 14px;border:1px solid rgba(232,181,92,.48);border-left:4px solid #e8b55c;border-radius:5px;background:linear-gradient(100deg,rgba(79,52,15,.5),rgba(6,16,28,.78))}.calendar-blackout-notice .eyebrow{margin:0 0 5px;color:#f0bd66}.calendar-blackout-notice strong{color:#ffe2a5;font-size:13px}.calendar-blackout-notice p:last-child{margin:6px 0 0;color:#d4c4a7;font-size:12px;line-height:1.45}
