@@ -177,9 +177,62 @@ function bindCharacterEvolution() {
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
+const quartersTier = (level) => {
+  const normalized = Number(level || 0);
+  if (normalized >= 7) return 3;
+  if (normalized >= 4) return 2;
+  if (normalized >= 1) return 1;
+  return 0;
+};
+
+const quartersTierLabel = (tier) => ["BASELINE", "FOUNDATION", "DEVELOPING", "OPERATOR"][tier] || "BASELINE";
+
+// Each track owns a discrete part of the quarters.  This state remains
+// intentionally independent: a good trading level never gives the character
+// a stronger body, and a good body level never creates a better work setup.
+function livingQuartersState(levels) {
+  const tiers = Object.fromEntries(Object.entries(levels).map(([axis, level]) => [axis, quartersTier(level)]));
+  const mindMode = ["phone", "reading", "research", "synthesis"][tiers.mind];
+  const mindRoutine = {
+    phone: { label: "Breaking the phone-scroll loop", detail: "PHONE RESET" },
+    reading: { label: "Reading in the lounge", detail: "BOOK IN HAND" },
+    research: { label: "Reviewing research notes", detail: "RESEARCH NOTES" },
+    synthesis: { label: "Synthesizing a research brief", detail: "KNOWLEDGE SYSTEM" },
+  }[mindMode];
+  const tracks = [
+    { axis: "discipline", label: "DISCIPLINE", layer: "ROOM ORDER", detail: ["unstructured", "reset ritual", "ordered space", "operator cadence"][tiers.discipline] },
+    { axis: "mind", label: "MIND", layer: "LIBRARY", detail: mindRoutine.detail.toLowerCase() },
+    { axis: "body", label: "BODY", layer: "PHYSIQUE", detail: ["base frame", "training corner", "athletic frame", "conditioned frame"][tiers.body] },
+    { axis: "trading", label: "TRADING", layer: "EXECUTION DESK", detail: ["single screen", "chart station", "multi-screen desk", "execution suite"][tiers.trading] },
+    { axis: "ccfx", label: "CCFX", layer: "VENTURE SYSTEMS", detail: ["seed board", "project board", "operating board", "venture console"][tiers.ccfx] },
+  ].map((track) => ({ ...track, level: Number(levels[track.axis] || 0), tier: tiers[track.axis], tierLabel: quartersTierLabel(tiers[track.axis]) }));
+
+  return {
+    tiers,
+    mindMode,
+    tracks,
+    actions: [
+      { id: "couch", label: mindRoutine.label, target: tiers.mind ? "the library lounge" : "the lounge", x: .22, dwell: 14000, mindMode },
+      { id: "fridge", label: "Refueling for the next block", target: "the recovery station", x: .505, dwell: 10000 },
+      { id: "desk", label: tiers.trading >= 2 ? "Executing from the upgraded desk" : "Reviewing charts at the desk", target: "the execution desk", x: .77, dwell: 18000 },
+    ],
+    // These named media slots are deliberately not URLs yet. Higgsfield shots
+    // will populate them one axis at a time, keeping visual evolution honest.
+    mediaSlots: {
+      body: `physique-tier-${tiers.body}`,
+      mind: `mind-${mindMode}`,
+      trading: `trading-desk-tier-${tiers.trading}`,
+      ccfx: `ccfx-board-tier-${tiers.ccfx}`,
+      discipline: `room-order-tier-${tiers.discipline}`,
+    },
+  };
+}
+
 function characterLifePanel(levels) {
+  const quarters = livingQuartersState(levels);
   const averageLevel = Math.round(Object.values(levels).reduce((sum, level) => sum + Number(level || 0), 0) / Math.max(1, Object.keys(levels).length));
-  return `<section class="character-life panel" data-character-life><div class="character-life-heading"><div><p class="eyebrow amber">LIVING QUARTERS / PASSIVE VISUAL</p><h3>Watch the work change the room.</h3><p>One real-time scene: Mat walks to the couch, refuels at the fridge, then sits down to trade. Every level changes only the part of life it earned.</p></div><div class="character-life-readout"><span>LIVE ROUTINE</span><strong>LV ${averageLevel}</strong><small data-life-activity>Resetting in the lounge</small></div></div><div class="character-life-stage"><canvas data-character-life-canvas aria-label="Animated character routine: couch, fridge, and trading desk"></canvas><div class="character-life-key" aria-hidden="true"><span>DISCIPLINE <b>ROOM</b></span><span>MIND <b>LIBRARY</b></span><span>BODY <b>PHYSIQUE</b></span><span>TRADING + CCFX <b>TECH</b></span></div></div></section>`;
+  const loadout = quarters.tracks.map((track) => `<li class="life-loadout-track" data-life-axis="${track.axis}"><span>${track.label}</span><b>LV ${track.level}</b><em>${track.tierLabel}</em><small>${track.layer} / ${track.detail}</small></li>`).join("");
+  return `<section class="character-life panel" data-character-life><div class="character-life-heading"><div><p class="eyebrow amber">LIVING QUARTERS / PASSIVE VISUAL</p><h3>Watch the work change the room.</h3><p>Every system has a separate visual claim: Mind changes the idle habit, Body changes the physique asset, Trading builds the execution desk, CCFX builds the venture layer, and Discipline controls the order of the space.</p></div><div class="character-life-readout"><span>LIVE ROUTINE</span><strong>LV ${averageLevel}</strong><small data-life-activity>${quarters.actions[0].label}</small></div></div><ul class="character-life-loadout" aria-label="Living quarters progression loadout">${loadout}</ul><div class="character-life-stage"><canvas data-character-life-canvas aria-label="Animated character routine: living quarters responds independently to discipline, mind, body, trading, and CCFX progression"></canvas><div class="character-life-key" aria-hidden="true"><span>DISCIPLINE <b>ROOM ORDER</b></span><span>MIND <b>${quarters.mindMode.toUpperCase()}</b></span><span>BODY <b>PHYSIQUE</b></span><span>TRADING <b>DESK</b></span><span>CCFX <b>VENTURE</b></span></div></div></section>`;
 }
 
 class CharacterLifeScene {
@@ -192,12 +245,9 @@ class CharacterLifeScene {
     this.ctx = this.buffer.getContext("2d");
     this.ctx.imageSmoothingEnabled = false;
     this.levels = levels;
+    this.quarters = livingQuartersState(levels);
     this.activityLabel = canvas.closest("[data-character-life]")?.querySelector("[data-life-activity]");
-    this.actions = [
-      { id: "couch", label: "Resetting in the lounge", target: "the couch", x: .22, dwell: 14000 },
-      { id: "fridge", label: "Refueling at the fridge", target: "the fridge", x: .505, dwell: 10000 },
-      { id: "desk", label: "Reviewing charts at the desk", target: "the trading desk", x: .77, dwell: 18000 },
-    ];
+    this.actions = this.quarters.actions;
     this.index = 0;
     this.previousIndex = 0;
     this.mode = "acting";
@@ -626,6 +676,90 @@ class CharacterLifeScene {
     });
   }
 
+  drawQuartersLayers(time) {
+    const { ctx, width: w, height: h } = this;
+    const { tiers, mindMode } = this.quarters;
+    const currentAction = this.actions[this.index]?.id;
+    const pulse = .72 + Math.sin(time / 720) * .16;
+    ctx.save();
+
+    // Discipline changes the room itself: the low tiers remain atmospheric,
+    // while higher tiers reveal an ordered cadence across the floor and wall.
+    if (tiers.discipline) {
+      ctx.globalAlpha = .055 + tiers.discipline * .026;
+      ctx.strokeStyle = tiers.discipline >= 3 ? "#86d7ff" : "#718fa7";
+      ctx.lineWidth = 1;
+      for (let line = 0; line < tiers.discipline + 1; line += 1) {
+        const x = w * (.30 + line * .115);
+        ctx.beginPath(); ctx.moveTo(x, h * .09); ctx.lineTo(x, h * .72); ctx.stroke();
+      }
+      ctx.globalAlpha = .13 + tiers.discipline * .03;
+      ctx.fillStyle = "#08131d";
+      ctx.fillRect(w * .34, h * .16, w * .105, h * .12);
+      ctx.strokeStyle = "rgba(140, 211, 246, .65)";
+      ctx.strokeRect(w * .34, h * .16, w * .105, h * .12);
+      for (let task = 0; task < 2 + tiers.discipline; task += 1) {
+        ctx.fillStyle = task === 0 ? "#e2ae58" : "#82c7ec";
+        ctx.fillRect(w * .352, h * (.182 + task * .019), w * (.058 + (task % 2) * .018), 1.4);
+      }
+    }
+
+    // Mind changes the passive couch beat before it changes any other room
+    // asset: phone -> book -> research notes -> a synthesis brief.
+    if (currentAction === "couch" && this.mode === "acting") {
+      const item = { phone: { width: .017, height: .052, color: "#74d9ff" }, reading: { width: .047, height: .030, color: "#c58d4b" }, research: { width: .061, height: .038, color: "#d4e7ed" }, synthesis: { width: .068, height: .044, color: "#dba958" } }[mindMode];
+      const x = w * .236; const y = h * .675;
+      ctx.globalAlpha = .9;
+      ctx.fillStyle = "rgba(4, 9, 14, .7)";
+      ctx.fillRect(x - 2, y - 2, w * item.width + 4, h * item.height + 4);
+      ctx.fillStyle = item.color;
+      ctx.fillRect(x, y, w * item.width, h * item.height);
+      if (mindMode !== "phone") {
+        ctx.strokeStyle = "rgba(37, 48, 57, .9)"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x + w * item.width * .5, y); ctx.lineTo(x + w * item.width * .5, y + h * item.height); ctx.stroke();
+      }
+    }
+
+    // Body is kept as a distinct training/recovery layer. The actual physique
+    // is a named media slot in livingQuartersState, ready for matching
+    // Higgsfield character variants rather than a misleading CSS scale-up.
+    if (tiers.body) {
+      const x = w * .900; const y = h * .795;
+      ctx.globalAlpha = .58 + tiers.body * .09;
+      ctx.strokeStyle = tiers.body >= 3 ? "#e1b15e" : "#9cb9c9";
+      ctx.lineWidth = 3 + tiers.body;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w * .055, y); ctx.stroke();
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x + w * .007, y - h * .025); ctx.lineTo(x + w * .007, y + h * .025); ctx.moveTo(x + w * .048, y - h * .025); ctx.lineTo(x + w * .048, y + h * .025); ctx.stroke();
+      if (tiers.body >= 2) { ctx.fillStyle = "rgba(90, 193, 232, .32)"; ctx.fillRect(w * .865, h * .83, w * .115, h * .026); }
+    }
+
+    // Trading owns the desk and charts. CCFX owns a separate venture board,
+    // so a rise in one never auto-upgrades the other.
+    if (tiers.trading) {
+      const monitors = Math.min(3, tiers.trading + 1);
+      for (let monitor = 0; monitor < monitors; monitor += 1) {
+        const x = w * (.695 + monitor * .061); const y = h * .275;
+        ctx.globalAlpha = .24 + tiers.trading * .07;
+        ctx.fillStyle = "#07121d"; ctx.fillRect(x, y, w * .052, h * .103);
+        ctx.strokeStyle = "rgba(100, 209, 255, .85)"; ctx.lineWidth = 1; ctx.strokeRect(x, y, w * .052, h * .103);
+        ctx.strokeStyle = monitor % 2 ? "#d9a754" : "#72d6ff";
+        ctx.beginPath(); ctx.moveTo(x + w * .006, y + h * .076); ctx.lineTo(x + w * .022, y + h * (.050 + Math.sin((time / 450) + monitor) * .012)); ctx.lineTo(x + w * .044, y + h * .035); ctx.stroke();
+      }
+    }
+    if (tiers.ccfx) {
+      const x = w * .535; const y = h * .18;
+      ctx.globalAlpha = (.14 + tiers.ccfx * .055) * pulse;
+      ctx.fillStyle = "#07101a"; ctx.fillRect(x, y, w * .105, h * .145);
+      ctx.strokeStyle = "rgba(222, 171, 90, .88)"; ctx.lineWidth = 1; ctx.strokeRect(x, y, w * .105, h * .145);
+      for (let card = 0; card < tiers.ccfx + 1; card += 1) {
+        ctx.fillStyle = card === tiers.ccfx ? "#e1ae59" : "#77c9ef";
+        ctx.fillRect(x + w * .012, y + h * (.022 + card * .026), w * (.040 + (card % 2) * .025), h * .010);
+      }
+    }
+    ctx.restore();
+  }
+
   drawAvatar(time) {
     const { ctx, width: w, height: h } = this;
     const action = this.mode === "walking" ? "walking" : this.actions[this.index].id;
@@ -690,6 +824,7 @@ class CharacterLifeScene {
     this.drawRoom(time);
     this.drawAvatar(time);
     this.drawRoomForeground(this.mode === "walking" ? "walking" : this.actions[this.index].id);
+    this.drawQuartersLayers(time);
     this.outputCtx.clearRect(0, 0, this.displayWidth, this.displayHeight);
     this.outputCtx.drawImage(this.buffer, 0, 0, this.width, this.height, 0, 0, this.displayWidth, this.displayHeight);
   }
