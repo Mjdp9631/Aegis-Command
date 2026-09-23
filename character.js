@@ -232,7 +232,7 @@ function characterLifePanel(levels) {
   const quarters = livingQuartersState(levels);
   const averageLevel = Math.round(Object.values(levels).reduce((sum, level) => sum + Number(level || 0), 0) / Math.max(1, Object.keys(levels).length));
   const loadout = quarters.tracks.map((track) => `<li class="life-loadout-track" data-life-axis="${track.axis}"><span>${track.label}</span><b>LV ${track.level}</b><em>${track.tierLabel}</em><small>${track.layer} / ${track.detail}</small></li>`).join("");
-  return `<section class="character-life panel" data-character-life><div class="character-life-heading"><div><p class="eyebrow amber">LIVING QUARTERS / PASSIVE VISUAL</p><h3>Watch the work change the room.</h3><p>Every system has a separate visual claim: Mind changes the idle habit, Body changes the physique asset, Trading builds the execution desk, CCFX builds the venture layer, and Discipline controls the order of the space.</p></div><div class="character-life-readout"><span>LIVE ROUTINE</span><strong>LV ${averageLevel}</strong><small data-life-activity>${quarters.actions[0].label}</small></div></div><ul class="character-life-loadout" aria-label="Living quarters progression loadout">${loadout}</ul><div class="character-life-stage"><canvas data-character-life-canvas aria-label="Animated character routine: living quarters responds independently to discipline, mind, body, trading, and CCFX progression"></canvas><div class="character-life-key" aria-hidden="true"><span>DISCIPLINE <b>ROOM ORDER</b></span><span>MIND <b>${quarters.mindMode.toUpperCase()}</b></span><span>BODY <b>PHYSIQUE</b></span><span>TRADING <b>DESK</b></span><span>CCFX <b>VENTURE</b></span></div></div></section>`;
+  return `<section class="character-life panel" data-character-life><div class="character-life-heading"><div><p class="eyebrow amber">LIVING QUARTERS / PASSIVE VISUAL</p><h3>Watch the work change the room.</h3><p>The loadout records the independent states now. Each state will replace its matching scene or character frame only when its dedicated cinematic asset is ready—no fake upgrades drawn over the room.</p></div><div class="character-life-readout"><span>LIVE ROUTINE</span><strong>LV ${averageLevel}</strong><small data-life-activity>${quarters.actions[0].label}</small></div></div><ul class="character-life-loadout" aria-label="Living quarters progression loadout">${loadout}</ul><div class="character-life-stage"><canvas data-character-life-canvas aria-label="Animated character routine: living quarters responds independently to discipline, mind, body, trading, and CCFX progression"></canvas><div class="character-life-key" aria-hidden="true"><span>DISCIPLINE <b>ROOM ORDER</b></span><span>MIND <b>${quarters.mindMode.toUpperCase()}</b></span><span>BODY <b>PHYSIQUE</b></span><span>TRADING <b>DESK</b></span><span>CCFX <b>VENTURE</b></span></div></div></section>`;
 }
 
 class CharacterLifeScene {
@@ -824,7 +824,6 @@ class CharacterLifeScene {
     this.drawRoom(time);
     this.drawAvatar(time);
     this.drawRoomForeground(this.mode === "walking" ? "walking" : this.actions[this.index].id);
-    this.drawQuartersLayers(time);
     this.outputCtx.clearRect(0, 0, this.displayWidth, this.displayHeight);
     this.outputCtx.drawImage(this.buffer, 0, 0, this.width, this.height, 0, 0, this.displayWidth, this.displayHeight);
   }
