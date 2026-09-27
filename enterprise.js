@@ -145,8 +145,10 @@ function render() {
   const published = content.filter((item) => item.status === "Published").length + projects.filter((project) => project.status === "Complete").length;
   const emergencyTarget = Number(financialFoundation?.emergency_fund_target || 0);
   const debtBalance = Number(financialFoundation?.debt_balance || 0);
+  const monthlyExpenses = Number(financialFoundation?.monthly_expenses || 0);
+  const liquidReserves = Number(financialFoundation?.liquid_reserves || 0);
   const finance = financialFoundation
-    ? `<div class="enterprise-finance-grid"><span><b>${money(emergencyTarget)}</b><small>Emergency fund target</small></span><span><b>${money(debtBalance)}</b><small>Debt balance</small></span></div><p class="enterprise-xp-note">Capital tracks deployable money. This baseline tracks the reserve you are protecting.</p>`
+    ? `<div class="enterprise-finance-grid"><span><b>${money(monthlyExpenses)}</b><small>Monthly essential expenses</small></span><span><b>${money(liquidReserves)}</b><small>Liquid reserves</small></span><span><b>${money(emergencyTarget)}</b><small>Emergency fund target</small></span><span><b>${money(debtBalance)}</b><small>Debt balance</small></span></div><p class="enterprise-xp-note">Manual baseline snapshot. Capital tracks deployable money; this tracks the reserve and monthly obligations you are protecting.</p>`
     : '<p class="enterprise-empty">Set the emergency-fund target and debt baseline you want the enterprise to protect.</p>';
   const projectsById = new Map(projects.map((project) => [String(project.id), project]));
   const rootProjects = projects.filter((project) => !project.parent_project_id || !projectsById.has(String(project.parent_project_id)));
@@ -755,8 +757,7 @@ function buildDialogs() {
   ledgerDialogs.innerHTML = `<dialog id="capital-dialog"><form class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">CAPITAL MOVEMENT</p><h2>Record the money flow.</h2><label>Date <input id="capital-date" type="date" required /></label><div class="two-col"><label>Movement <select id="capital-type"><option>Account earning</option><option>Capital added</option><option>Expense</option><option>Capital withdrawal</option></select></label><label>Amount (USD) <input id="capital-amount" type="number" min="0.01" step="0.01" required /></label></div><label>Purpose <input id="capital-title" required placeholder="e.g. Apex Trader Funding 50K challenge" /></label><label>Source account <select id="capital-account"><option value="">No linked account</option></select></label><p class="body-copy">Use a linked account only when this is an account earning. Expenses and capital withdrawals subtract from net Capital.</p><label>Notes <textarea id="capital-notes" placeholder="Optional context"></textarea></label><button class="primary" type="submit">Record movement</button></form></dialog><dialog id="asset-dialog"><form class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">OWNED ASSET</p><h2>Register what you own.</h2><label>Acquired on <input id="asset-date" type="date" required /></label><div class="two-col"><label>Asset type <select id="asset-type"><option>Crypto</option><option>Business asset</option><option>Equity</option><option>Cash</option><option>Other</option></select></label><label>Symbol (optional) <input id="asset-symbol" maxlength="24" placeholder="BTC" /></label></div><label>Asset <input id="asset-title" required placeholder="e.g. Bitcoin" /></label><div class="two-col"><label>Quantity (optional) <input id="asset-quantity" type="number" min="0" step="any" /></label><label>Cost basis (USD) <input id="asset-cost" type="number" min="0" step="0.01" /></label><label>Current value (USD) <input id="asset-value" type="number" min="0" step="0.01" /></label></div><label>Notes <textarea id="asset-notes" placeholder="Wallet, broker, or ownership details"></textarea></label><button class="primary" type="submit">Add asset</button></form></dialog>`;
   document.body.append(...Array.from(ledgerDialogs.children));
   // Capital is the variable ledger for trading and business. The foundation
-  // only holds the stable personal safeguards, not assumed monthly income.
-  ["finance-income", "finance-expenses", "finance-reserves", "finance-revenue"].forEach((id) => $(`#${id}`)?.closest("label")?.remove());
+  // is a manually updated snapshot of the personal safeguards behind it.
   Array.from($("#asset-type")?.options || []).find((option) => option.value === "Cash")?.remove();
   const cryptoOptions = document.createElement("datalist");
   cryptoOptions.id = "enterprise-crypto-symbols";
@@ -898,8 +899,12 @@ function buildDialogs() {
     const userId = sessionData.session?.user?.id;
     if (!userId) return alert("Sign in before saving your financial foundation.");
     const payload = {
+      monthly_income: Number($("#finance-income").value || 0),
+      monthly_expenses: Number($("#finance-expenses").value || 0),
+      liquid_reserves: Number($("#finance-reserves").value || 0),
       emergency_fund_target: Number($("#finance-emergency").value || 0),
       debt_balance: Number($("#finance-debt").value || 0),
+      business_revenue: Number($("#finance-revenue").value || 0),
     };
     const { error } = await supabase.from("financial_foundations").upsert({ user_id: userId, logged_on: $("#finance-logged-on").value || easternDateKey(), ...payload, notes: $("#finance-notes").value.trim() || null, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
     if (error) return alert(error.message);
@@ -1010,7 +1015,7 @@ if (supabase) {
     if (action === "finance") {
       $("#finance-logged-on").value = financialFoundation?.logged_on || easternDateKey();
       if (financialFoundation) {
-        const fields = { emergency: "emergency_fund_target", debt: "debt_balance" };
+        const fields = { income: "monthly_income", expenses: "monthly_expenses", reserves: "liquid_reserves", emergency: "emergency_fund_target", debt: "debt_balance", revenue: "business_revenue" };
         Object.entries(fields).forEach(([input, column]) => { $(`#finance-${input}`).value = financialFoundation[column] ?? ""; });
         $("#finance-notes").value = financialFoundation.notes || "";
       }
