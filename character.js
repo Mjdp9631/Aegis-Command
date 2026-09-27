@@ -4,6 +4,7 @@ import { characterMetrics, levelFromXp } from "./activity-metrics.js?v=body-xp-c
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const $ = (selector) => document.querySelector(selector);
+const characterViewIsActive = () => document.querySelector(".view.active")?.id === "character";
 const today = new Date().toLocaleDateString("en-CA");
 const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 let xpCampaign = null;
@@ -920,19 +921,19 @@ async function load() {
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return;
   const loadSnapshot = () => Promise.all([
-    supabase.from("operations").select("id, title, scheduled_date, operation_date, completed_on, completed, status, schedule_mode, scheduled_time, mission_id"),
-    supabase.from("operation_occurrences").select("id, operation_id, occurrence_date, completed_on, completed, status, scheduled_time"),
-    supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }),
-    supabase.from("missions").select("*").order("created_at", { ascending: false }),
-    supabase.from("business_projects").select("*"),
-    supabase.from("content_items").select("*"),
-    supabase.from("mastery_entries").select("*").order("created_at", { ascending: false }),
-    supabase.from("training_sessions").select("*").order("logged_on", { ascending: false }),
+    supabase.from("operations").select("id, title, scheduled_date, operation_date, completed_on, completed, status, schedule_mode, scheduled_time, mission_id").limit(500),
+    supabase.from("operation_occurrences").select("id, operation_id, occurrence_date, completed_on, completed, status, scheduled_time").limit(750),
+    supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: false }).limit(500),
+    supabase.from("missions").select("*").order("created_at", { ascending: false }).limit(250),
+    supabase.from("business_projects").select("*").limit(250),
+    supabase.from("content_items").select("*").limit(250),
+    supabase.from("mastery_entries").select("*").order("created_at", { ascending: false }).limit(300),
+    supabase.from("training_sessions").select("*").order("logged_on", { ascending: false }).limit(240),
     supabase.from("xp_campaigns").select("started_at").maybeSingle(),
     supabase.from("director_reviews").select("*").order("updated_at", { ascending: false }).limit(4),
     supabase.from("mastery_challenges").select("*").order("completed_at", { ascending: false }).limit(100),
-    supabase.from("capability_skill_logs").select("*, capability_skills(skill_type, title)").order("practiced_on", { ascending: false }),
-    supabase.from("capability_benchmark_completion_ledger").select("*, capability_benchmarks(level, xp_reward, capability_skills(skill_type, title))").order("created_at", { ascending: false }),
+    supabase.from("capability_skill_logs").select("*, capability_skills(skill_type, title)").order("practiced_on", { ascending: false }).limit(300),
+    supabase.from("capability_benchmark_completion_ledger").select("*, capability_benchmarks(level, xp_reward, capability_skills(skill_type, title))").order("created_at", { ascending: false }).limit(300),
     supabase.from("financial_foundations").select("*").maybeSingle(),
   ]);
   const [operationsResult, occurrenceResult, tradesResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, campaignResult, reviewResult, challengeResult, capabilityLogsResult, capabilityBenchmarkRewardsResult, financialFoundationResult] = window.AEGIS_DATA_GUARD
@@ -953,6 +954,7 @@ async function load() {
 }
 
 function scheduleCharacterLoad(delay = 120) {
+  if (!characterViewIsActive()) return;
   clearTimeout(characterLoadTimer);
   characterLoadTimer = setTimeout(() => { void load(); }, delay);
 }
@@ -979,9 +981,10 @@ document.addEventListener("click", async (event) => {
 }, true);
 
 if (supabase) {
-  void load();
+  if (characterViewIsActive()) void load();
   supabase.auth.onAuthStateChange((event) => { if (event !== "SIGNED_IN") return; scheduleCharacterLoad(80); });
   document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) scheduleCharacterLoad(700); });
   window.addEventListener("aegis:mastery-changed", () => scheduleCharacterLoad(120));
   window.addEventListener("aegis:data-changed", (event) => { if (["mastery", "operation-status"].includes(event.detail?.source)) return; scheduleCharacterLoad(120); });
+  window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "character") scheduleCharacterLoad(0); });
 }

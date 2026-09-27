@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const config = window.AEGIS_CONFIG || {};
 const db = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const root = document.querySelector("#mastery");
+const masteryViewIsActive = () => document.querySelector(".view.active")?.id === "mastery";
 window.addEventListener("aegis:mastery-changed", () => window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "mastery" } })));
 
 // Performance: Debounce render to prevent multiple rapid renders
@@ -1085,8 +1086,8 @@ async function load() {
   if (db) {
     try {
       const loadSnapshot = () => Promise.all([
-        db.from("mastery_entries").select("*").order("created_at", { ascending: false }), db.from("missions").select("*"), db.from("deep_work_logs").select("*").order("created_at", { ascending: false }).limit(30), db.from("mastery_challenges").select("*").order("created_at", { ascending: false }).limit(30),
-        db.from("training_sessions").select("*").order("logged_on", { ascending: false }).limit(1000), db.from("training_sets").select("*").order("logged_on", { ascending: false }).limit(1000),
+        db.from("mastery_entries").select("*").order("created_at", { ascending: false }).limit(300), db.from("missions").select("*").order("created_at", { ascending: false }).limit(250), db.from("deep_work_logs").select("*").order("created_at", { ascending: false }).limit(30), db.from("mastery_challenges").select("*").order("created_at", { ascending: false }).limit(30),
+        db.from("training_sessions").select("*").order("logged_on", { ascending: false }).limit(240), db.from("training_sets").select("*").order("logged_on", { ascending: false }).limit(1500),
         db.from("health_weight_logs").select("*").order("logged_on", { ascending: false }).limit(60), db.from("health_food_logs").select("*").order("logged_on", { ascending: false }).limit(240)
       ]);
       const results = window.AEGIS_DATA_GUARD
@@ -1143,10 +1144,11 @@ document.addEventListener("click", async event => {
   const complete = event.target.closest("[data-mastery-complete-challenge]"); if (complete) { const challenge = challenges.find(item => item.id === complete.dataset.masteryCompleteChallenge); if (challenge) openSystemDialog("complete", challenge); }
 });
 
-function startMastery() { if (window.__aegisMasteryCleanStarted) return; window.__aegisMasteryCleanStarted = true; buildDialogs(); load(); }
+function startMastery() { if (window.__aegisMasteryCleanStarted) return; window.__aegisMasteryCleanStarted = true; buildDialogs(); if (masteryViewIsActive()) void load(); }
 if (document.readyState === "complete") startMastery(); else window.addEventListener("load", startMastery, { once: true });
-window.addEventListener("aegis:auth-ready", (event) => { if (event.detail?.session) load(); });
-if (db) db.auth.onAuthStateChange((_event, session) => { if (session) load(); });
+window.addEventListener("aegis:auth-ready", (event) => { if (event.detail?.session && masteryViewIsActive()) void load(); });
+if (db) db.auth.onAuthStateChange((event, session) => { if (event === "SIGNED_IN" && session && masteryViewIsActive()) void load(); });
 window.addEventListener("aegis:mastery-changed", (event) => {
-  if (event.detail?.remote) setTimeout(load, 120);
+  if (event.detail?.remote && masteryViewIsActive()) setTimeout(() => void load(), 120);
 });
+window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "mastery") void load(); });

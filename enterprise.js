@@ -3,6 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const $ = (selector) => document.querySelector(selector);
+const enterpriseViewIsActive = () => document.querySelector(".view.active")?.id === "enterprise";
+const isSchemaCompatibilityError = (error) => /column|schema cache|does not exist/i.test(String(error?.message || ""));
 const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 const PROJECT_XP = Object.freeze({ Minor: 10, Standard: 25, Major: 50, Flagship: 100 });
@@ -194,32 +196,32 @@ async function load() {
   if (!userId) return;
   const priorAssets = cachedAssetSnapshot(userId);
   const loadSnapshot = () => Promise.all([
-    supabase.from("business_projects").select("*").order("logged_on", { ascending: false }),
-    supabase.from("business_project_steps").select("*").order("project_id").order("position"),
-    supabase.from("content_items").select("*").order("logged_on", { ascending: false }),
+    supabase.from("business_projects").select("*").order("logged_on", { ascending: false }).limit(250),
+    supabase.from("business_project_steps").select("*").order("project_id").order("position").limit(750),
+    supabase.from("content_items").select("*").order("logged_on", { ascending: false }).limit(250),
     supabase.from("financial_foundations").select("*").maybeSingle(),
     supabase.from("financial_monthly_snapshots").select("*").order("month_start", { ascending: false }).limit(24),
-    supabase.from("missions").select("*").order("created_at", { ascending: false }),
-    supabase.from("business_capital_entries").select("*").order("entry_date", { ascending: false }).order("created_at", { ascending: false }),
-    supabase.from("business_assets").select("*").order("acquired_on", { ascending: false }).order("created_at", { ascending: false }),
-    supabase.from("account_balances").select("id, account_name, account_type").order("account_name"),
+    supabase.from("missions").select("*").order("created_at", { ascending: false }).limit(250),
+    supabase.from("business_capital_entries").select("*").order("entry_date", { ascending: false }).order("created_at", { ascending: false }).limit(500),
+    supabase.from("business_assets").select("*").order("acquired_on", { ascending: false }).order("created_at", { ascending: false }).limit(250),
+    supabase.from("account_balances").select("id, account_name, account_type").order("account_name").limit(100),
   ]);
   let [projectResult, stepResult, contentResult, foundationResult, snapshotResult, missionResult, capitalResult, assetResult, accountResult] = window.AEGIS_DATA_GUARD
     ? await window.AEGIS_DATA_GUARD.run("enterprise:snapshot", loadSnapshot)
     : await loadSnapshot();
-  if (projectResult.error) {
-    projectResult = await supabase.from("business_projects").select("*").order("created_at", { ascending: false });
-    if (projectResult.error) projectResult = await supabase.from("business_projects").select("*");
+  if (projectResult.error && isSchemaCompatibilityError(projectResult.error)) {
+    projectResult = await supabase.from("business_projects").select("*").order("created_at", { ascending: false }).limit(250);
+    if (projectResult.error) projectResult = await supabase.from("business_projects").select("*").limit(250);
   }
-  if (contentResult.error) {
-    contentResult = await supabase.from("content_items").select("*").order("created_at", { ascending: false });
-    if (contentResult.error) contentResult = await supabase.from("content_items").select("*");
+  if (contentResult.error && isSchemaCompatibilityError(contentResult.error)) {
+    contentResult = await supabase.from("content_items").select("*").order("created_at", { ascending: false }).limit(250);
+    if (contentResult.error) contentResult = await supabase.from("content_items").select("*").limit(250);
   }
-  if (assetResult.error) {
+  if (assetResult.error && isSchemaCompatibilityError(assetResult.error)) {
     // Ordering is a convenience, not a reason to make the owned-asset ledger
     // disappear if a schema cache or transient PostgREST issue rejects it.
-    assetResult = await supabase.from("business_assets").select("*").order("acquired_on", { ascending: false });
-    if (assetResult.error) assetResult = await supabase.from("business_assets").select("*");
+    assetResult = await supabase.from("business_assets").select("*").order("acquired_on", { ascending: false }).limit(250);
+    if (assetResult.error) assetResult = await supabase.from("business_assets").select("*").limit(250);
   }
   if (projectResult.error || contentResult.error) return;
   projectSteps = stepResult.error ? [] : stepResult.data || [];
@@ -976,7 +978,7 @@ if (supabase) {
   } catch (error) {
     console.error("Enterprise HQ controls could not initialize", error);
   }
-  void load().catch((error) => console.error("Enterprise HQ data load failed", error));
+  if (enterpriseViewIsActive()) void load().catch((error) => console.error("Enterprise HQ data load failed", error));
   // If optional dialog setup is interrupted, delegated handlers still keep the
   // two financial ledgers usable instead of leaving a visible Save button inert.
   document.addEventListener("submit", (event) => {
@@ -1064,10 +1066,13 @@ if (supabase) {
     }
     (action === "finance" ? $("#finance-dialog") : $("#content-dialog")).showModal();
   });
-  supabase.auth.onAuthStateChange((event) => { if (event === "SIGNED_IN") setTimeout(load, 50); });
+  supabase.auth.onAuthStateChange((event) => { if (event === "SIGNED_IN" && enterpriseViewIsActive()) setTimeout(() => void load(), 50); });
 }
 
 window.addEventListener("aegis:data-changed", (event) => {
-  if (["remote-enterprise"].includes(event.detail?.source)) setTimeout(load, 120);
+  if (["remote-enterprise"].includes(event.detail?.source) && enterpriseViewIsActive()) setTimeout(() => void load(), 120);
   if (event.detail?.source === "operation-status" && event.detail.operation) void synchronizeProjectStep(event.detail.operation).catch((error) => console.warn("Project step sync failed", error));
+});
+window.addEventListener("aegis:navigation", (event) => {
+  if (event.detail?.view === "enterprise") void load().catch((error) => console.error("Enterprise HQ data load failed", error));
 });

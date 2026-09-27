@@ -5,6 +5,7 @@ import { effectiveOperations } from "./operation-state.js?v=shared-operation-sta
 const config = window.AEGIS_CONFIG || {};
 const supabase = config.supabaseUrl && config.supabaseAnonKey ? createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
 const $ = (selector) => document.querySelector(selector);
+const commandViewIsActive = () => document.querySelector(".view.active")?.id === "command";
 let dashboardData = null;
 let activeRange = "all";
 let activeChart = null;
@@ -254,6 +255,7 @@ let dashboardLoadInFlight = false;
 let dashboardLoadQueued = false;
 
 function scheduleDashboardLoad(delay = 120) {
+  if (!commandViewIsActive()) return;
   clearTimeout(dashboardLoadTimer);
   dashboardLoadTimer = setTimeout(() => { void load(); }, delay);
 }
@@ -269,44 +271,30 @@ async function load() {
   const { data: session } = await supabase.auth.getSession();
   if (!session.session) return;
   const loadSnapshot = () => Promise.all([
-    supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }),
-    supabase.from("operations").select("id, title, scheduled_date, operation_date, completed_on, completed, schedule_mode"),
-    supabase.from("operation_occurrences").select("id, operation_id, occurrence_date, completed_on, completed"),
-    supabase.from("missions").select("*"),
-    supabase.from("business_projects").select("title, status, created_at"),
-    supabase.from("content_items").select("title, platform, status, created_at"),
-    supabase.from("mastery_entries").select("category, title, created_at"),
-    supabase.from("training_sessions").select("session_type, title, logged_on, created_at"),
-    supabase.from("mastery_challenges").select("lane, category, title, status, completed_at, xp_reward"),
-    supabase.from("capability_skill_logs").select("*, capability_skills(skill_type, title)"),
+    supabase.from("trade_debriefs").select("*").order("traded_at", { ascending: true }).limit(500),
+    supabase.from("operations").select("id, title, scheduled_date, operation_date, completed_on, completed, schedule_mode").limit(500),
+    supabase.from("operation_occurrences").select("id, operation_id, occurrence_date, completed_on, completed").limit(750),
+    supabase.from("missions").select("*").limit(250),
+    supabase.from("business_projects").select("title, status, created_at").limit(250),
+    supabase.from("content_items").select("title, platform, status, created_at").limit(250),
+    supabase.from("mastery_entries").select("category, title, created_at").limit(300),
+    supabase.from("training_sessions").select("session_type, title, logged_on, created_at").limit(240),
+    supabase.from("mastery_challenges").select("lane, category, title, status, completed_at, xp_reward").limit(250),
+    supabase.from("capability_skill_logs").select("*, capability_skills(skill_type, title)").limit(300),
     supabase.from("financial_foundations").select("*").maybeSingle(),
     supabase.from("xp_campaigns").select("started_at").maybeSingle(),
-    supabase.from("account_balances").select("*").order("is_primary", { ascending: false }).order("created_at", { ascending: true }),
-    supabase.from("account_groups").select("*").order("created_at", { ascending: true }),
-    supabase.from("account_group_memberships").select("*").order("joined_at", { ascending: true }),
-    supabase.from("account_group_trade_links").select("*").order("created_at", { ascending: true }),
-    supabase.from("account_group_trade_allocations").select("*").order("created_at", { ascending: true }),
-    supabase.from("account_group_withdrawals").select("*").order("withdrawn_at", { ascending: false }),
-    supabase.from("account_group_withdrawal_allocations").select("*").order("created_at", { ascending: true })
+    supabase.from("account_balances").select("*").order("is_primary", { ascending: false }).order("created_at", { ascending: true }).limit(100),
+    supabase.from("account_groups").select("*").order("created_at", { ascending: true }).limit(100),
+    supabase.from("account_group_memberships").select("*").order("joined_at", { ascending: true }).limit(300),
+    supabase.from("account_group_trade_links").select("*").order("created_at", { ascending: true }).limit(500),
+    supabase.from("account_group_trade_allocations").select("*").order("created_at", { ascending: true }).limit(500),
+    supabase.from("account_group_withdrawals").select("*").order("withdrawn_at", { ascending: false }).limit(500),
+    supabase.from("account_group_withdrawal_allocations").select("*").order("created_at", { ascending: true }).limit(500)
   ]);
   let [tradesResult, operationsResult, occurrenceResult, missionsResult, projectsResult, contentResult, masteryResult, trainingResult, challengeResult, capabilityLogsResult, foundationResult, campaignResult, accountsResult, groupsResult, membershipsResult, tradeLinksResult, tradeAllocationsResult, withdrawalsResult, allocationsResult] = window.AEGIS_DATA_GUARD
     ? await window.AEGIS_DATA_GUARD.run("dashboard:snapshot", loadSnapshot)
     : await loadSnapshot();
-  if (tradesResult.error) {
-    // PostgREST can briefly reject the ordered read while reconnecting or
-    // refreshing its schema cache. That is not an empty trading journal.
-    // Retry the essential chart dataset without the optional order clause
-    // before allowing the dashboard to paint an empty-state chart.
-    console.warn("Dashboard trade read failed; retrying without order.", tradesResult.error.message);
-    const retry = await supabase.from("trade_debriefs").select("*");
-    if (!retry.error) tradesResult = retry;
-    else {
-      console.warn("Dashboard trade retry failed; retaining the last chart.", retry.error.message);
-      window.AEGIS_DATA_GUARD?.invalidate("dashboard:snapshot");
-      if (dashboardData?.trades?.length) tradesResult = { data: dashboardData.trades, error: null };
-      else scheduleDashboardLoad(30000);
-    }
-  }
+  if (tradesResult.error && dashboardData?.trades?.length) tradesResult = { data: dashboardData.trades, error: null };
   dashboardData = { trades: tradesResult.data || [], operations: operationsResult.data || [], occurrences: occurrenceResult.data || [], missions: missionsResult.data || [], projects: projectsResult.data || [], contentItems: contentResult.data || [], masteryEntries: masteryResult.data || [], trainingSessions: trainingResult.data || [], masteryChallenges: challengeResult.data || [], capabilityLogs: capabilityLogsResult.data || [], financialFoundation: foundationResult.data || null, mastery: masteryResult.data || [], xpCampaign: campaignResult.data || null, accounts: accountsResult.data || [] };
   accountLedger = { groups: groupsResult.data || [], memberships: membershipsResult.data || [], tradeLinks: tradeLinksResult.data || [], tradeAllocations: tradeAllocationsResult.data || [], withdrawals: withdrawalsResult.data || [], allocations: allocationsResult.data || [] };
   render();
@@ -330,7 +318,7 @@ document.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => { if ((event.key === "Enter" || event.key === " ") && event.target.matches("[data-dashboard-view]")) { event.preventDefault(); event.target.click(); } });
 
 if (supabase) {
-  void load();
+  if (commandViewIsActive()) void load();
   supabase.auth.onAuthStateChange((event) => { if (event !== "SIGNED_IN") return; scheduleDashboardLoad(120); });
   window.addEventListener("aegis:missions-changed", () => scheduleDashboardLoad(140));
   window.addEventListener("aegis:operations-changed", () => scheduleDashboardLoad(140));
@@ -338,6 +326,7 @@ if (supabase) {
   window.addEventListener("aegis:accounts-changed", () => scheduleDashboardLoad(140));
   window.addEventListener("aegis:data-changed", (event) => { if (["mastery", "missions", "operation-status", "remote-missions", "remote-operations", "remote-mastery", "remote-accounts"].includes(event.detail?.source)) return; scheduleDashboardLoad(140); });
   document.addEventListener("change", (event) => { if (event.target.matches("[data-operation]")) scheduleDashboardLoad(700); });
+  window.addEventListener("aegis:navigation", (event) => { if (event.detail?.view === "command") scheduleDashboardLoad(0); });
 }
 
 loadMarkets();

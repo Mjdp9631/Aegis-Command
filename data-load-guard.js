@@ -10,6 +10,14 @@
   const MIN_REFETCH_INTERVAL_MS = 60000;
   const FAILURE_COOLDOWN_MS = 120000;
 
+  // Supabase client reads resolve to { data, error } rather than rejecting.
+  // Treat those responses as failures too; otherwise a timeout can silently
+  // bypass the circuit breaker and be retried by every listening module.
+  function containsFailedResponse(value) {
+    if (Array.isArray(value)) return value.some(containsFailedResponse);
+    return Boolean(value && typeof value === "object" && value.error);
+  }
+
   function run(key, loader, { ttl = DEFAULT_TTL_MS } = {}) {
     const existing = snapshots.get(key);
     const now = Date.now();
@@ -20,7 +28,7 @@
     // possible; otherwise fail fast until this short cooldown expires.
     if (existing?.retryAfter && now < existing.retryAfter) {
       if (hasValue) return Promise.resolve(existing.value);
-      return Promise.reject(new Error("Cloud refresh is cooling down after a failed request. Please try again shortly."));
+      return Promise.resolve(existing.failureValue);
     }
     const fresh = hasValue && now - existing.loadedAt < ttl;
     const recentlyFetched = hasValue && now - existing.loadedAt < MIN_REFETCH_INTERVAL_MS;
@@ -32,6 +40,17 @@
     const promise = Promise.resolve()
       .then(loader)
       .then((value) => {
+        if (containsFailedResponse(value)) {
+          snapshots.set(key, {
+            ...(hasValue ? { value: staleValue, loadedAt: existing.loadedAt, invalidatedAt: existing.invalidatedAt || now } : {}),
+            failureValue: value,
+            retryAfter: Date.now() + FAILURE_COOLDOWN_MS,
+          });
+          // A loaded view is safer than repeatedly requesting the same data
+          // during a database timeout. First-load callers still receive the
+          // original Supabase error so they can show an honest unavailable UI.
+          return hasValue ? staleValue : value;
+        }
         snapshots.set(key, { value, loadedAt: Date.now(), invalidatedAt: 0 });
         return value;
       })
