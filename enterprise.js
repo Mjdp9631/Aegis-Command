@@ -6,7 +6,8 @@ const $ = (selector) => document.querySelector(selector);
 const escape = (value = "") => String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 const easternDateKey = (value = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 const PROJECT_XP = Object.freeze({ Minor: 10, Standard: 25, Major: 50, Flagship: 100 });
-let projects = [], projectSteps = [], content = [], financialFoundation = null, capitalEntries = [], businessAssets = [], accountBalances = [];
+let projects = [], projectSteps = [], content = [], financialFoundation = null, financialSnapshots = [], capitalEntries = [], businessAssets = [], accountBalances = [];
+let financialSnapshotLoadError = null;
 let assetValueUpdateInFlight = false;
 let enterpriseLoadInFlight = false;
 let enterpriseLoadQueued = false;
@@ -67,6 +68,13 @@ const projectMeta = (project) => {
 };
 
 const money = (value, digits = 2) => `$${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+const currentMonthKey = () => easternDateKey().slice(0, 7);
+const snapshotMonthKey = (snapshot) => String(snapshot?.month_start || "").slice(0, 7);
+const monthLabel = (monthKey) => {
+  if (!/^\d{4}-\d{2}$/.test(String(monthKey || ""))) return "this month";
+  return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "America/New_York" }).format(new Date(`${monthKey}-01T12:00:00`));
+};
+const snapshotForMonth = (monthKey) => financialSnapshots.find((snapshot) => snapshotMonthKey(snapshot) === monthKey) || null;
 const CRYPTO_ASSETS = Object.freeze({
   XRP: { name: "XRP", coinId: "ripple" },
   BTC: { name: "Bitcoin", coinId: "bitcoin" },
@@ -143,13 +151,17 @@ function render() {
   const activeProjects = projects.filter((project) => project.status === "Active").length;
   const readyContent = content.filter((item) => item.status === "Ready").length;
   const published = content.filter((item) => item.status === "Published").length + projects.filter((project) => project.status === "Complete").length;
-  const emergencyTarget = Number(financialFoundation?.emergency_fund_target || 0);
-  const debtBalance = Number(financialFoundation?.debt_balance || 0);
-  const monthlyExpenses = Number(financialFoundation?.monthly_expenses || 0);
-  const liquidReserves = Number(financialFoundation?.liquid_reserves || 0);
-  const finance = financialFoundation
-    ? `<div class="enterprise-finance-grid"><span><b>${money(monthlyExpenses)}</b><small>Monthly essential expenses</small></span><span><b>${money(liquidReserves)}</b><small>Liquid reserves</small></span><span><b>${money(emergencyTarget)}</b><small>Emergency fund target</small></span><span><b>${money(debtBalance)}</b><small>Debt balance</small></span></div><p class="enterprise-xp-note">Manual baseline snapshot. Capital tracks deployable money; this tracks the reserve and monthly obligations you are protecting.</p>`
-    : '<p class="enterprise-empty">Set the emergency-fund target and debt baseline you want the enterprise to protect.</p>';
+  const latestSnapshot = financialSnapshots[0] || null;
+  const emergencyTarget = Number(latestSnapshot?.emergency_fund_target ?? financialFoundation?.emergency_fund_target ?? 0);
+  const debtBalance = Number(latestSnapshot?.debt_balance ?? financialFoundation?.debt_balance ?? 0);
+  const monthlyExpenses = Number(latestSnapshot?.monthly_expenses ?? 0);
+  const liquidReserves = Number(latestSnapshot?.liquid_reserves ?? 0);
+  const financeHistory = financialSnapshots.slice(1, 6).map((snapshot) => `<article><div><strong>${escape(monthLabel(snapshotMonthKey(snapshot)))}</strong><small>Income ${money(snapshot.monthly_income)} · Expenses ${money(snapshot.monthly_expenses)}</small></div><button class="enterprise-edit" type="button" data-finance-month="${escape(snapshotMonthKey(snapshot))}">Edit</button></article>`).join("");
+  const finance = financialSnapshotLoadError
+    ? '<p class="enterprise-empty">Monthly cash-flow history is ready in the app, but its database table has not been applied yet.</p>'
+    : latestSnapshot
+      ? `<div class="enterprise-finance-grid"><span><b>${money(monthlyExpenses)}</b><small>Expenses · ${escape(monthLabel(snapshotMonthKey(latestSnapshot)))}</small></span><span><b>${money(liquidReserves)}</b><small>Liquid reserves at month-end</small></span><span><b>${money(emergencyTarget)}</b><small>Emergency fund target</small></span><span><b>${money(debtBalance)}</b><small>Debt balance</small></span></div><p class="enterprise-xp-note">A dated snapshot, not a fixed baseline. Each month stays in the record exactly as entered.</p>${financeHistory ? `<div class="enterprise-list enterprise-finance-history">${financeHistory}</div>` : ""}`
+      : '<p class="enterprise-empty">No monthly snapshot yet. Record the real numbers for a month; next month starts a separate entry.</p>';
   const projectsById = new Map(projects.map((project) => [String(project.id), project]));
   const rootProjects = projects.filter((project) => !project.parent_project_id || !projectsById.has(String(project.parent_project_id)));
   const projectList = rootProjects.length
@@ -157,7 +169,8 @@ function render() {
     : '<p class="enterprise-empty">Open a finite project that creates a useful asset, capability, or service.</p>';
   const contentAssets = content.length ? content.map((item) => `<article class="enterprise-ledger-row enterprise-content-asset"><div><strong>${escape(item.title)}</strong><small>${escape(item.platform)} · ${escape(item.status)}</small></div><span class="enterprise-status ${String(item.status || "").toLowerCase()}">${escape(item.status)}</span></article>`).join("") : '<p class="enterprise-empty">No content assets captured yet.</p>';
   const contentPipeline = `<section class="panel enterprise-ledger enterprise-content-ledger"><div class="panel-head"><div><p class="eyebrow">CONTENT ASSETS</p><h3>Published signal and works in progress.</h3></div><button class="ghost compact" type="button" data-enterprise-action="content">+ New content</button></div>${contentAssets}</section>`;
-  const projectsPanel = `<div class="enterprise-tab-panel"><div class="content-grid enterprise-grid"><section class="panel"><div class="panel-head"><div><p class="eyebrow">PROJECTS</p><h3>Finish useful milestones.</h3></div><button class="primary compact" data-enterprise-action="project">+ New project</button></div><div class="enterprise-list">${projectList}</div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">FINANCIAL FOUNDATION</p><h3>Protect the mission.</h3></div><button class="primary compact" data-enterprise-action="finance">${financialFoundation ? "Edit foundation" : "Set foundation"}</button></div>${finance}</section></div>${contentPipeline}</div>`;
+  const currentSnapshot = snapshotForMonth(currentMonthKey());
+  const projectsPanel = `<div class="enterprise-tab-panel"><div class="content-grid enterprise-grid"><section class="panel"><div class="panel-head"><div><p class="eyebrow">PROJECTS</p><h3>Finish useful milestones.</h3></div><button class="primary compact" data-enterprise-action="project">+ New project</button></div><div class="enterprise-list">${projectList}</div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">MONTHLY CASH FLOW</p><h3>Record the month as it happened.</h3></div><button class="primary compact" data-enterprise-action="finance">${currentSnapshot ? `Edit ${escape(monthLabel(currentMonthKey()))}` : "Log this month"}</button></div>${finance}</section></div>${contentPipeline}</div>`;
   const panel = activeEnterpriseTab === "capital" ? capitalPanel() : activeEnterpriseTab === "assets" ? assetsPanel() : projectsPanel;
   $("#enterprise").innerHTML = `<div class="section-intro"><p class="eyebrow amber">ENTERPRISE HQ / CCFX</p><h2>Build what you own.</h2><p>Projects create assets. Capital funds the next move. The ledger keeps both honest.</p></div><div class="metric-grid enterprise-metrics"><article class="metric"><p>ACTIVE PROJECTS</p><strong>${activeProjects}</strong><small>Few priorities. Clean execution.</small></article><article class="metric"><p>NET CAPITAL</p><strong>${money(capitalTotal())}</strong><small>Recorded inflows − outflows</small></article><article class="metric"><p>OWNED ASSETS</p><strong>${businessAssets.length}</strong><small>Crypto and durable holdings</small></article><article class="metric"><p>EMERGENCY TARGET</p><strong>${emergencyTarget ? money(emergencyTarget) : "—"}</strong><small>Personal reserve to protect</small></article></div>${enterpriseTabs()}${panel}`;
   return;
@@ -184,12 +197,13 @@ async function load() {
     supabase.from("business_project_steps").select("*").order("project_id").order("position"),
     supabase.from("content_items").select("*").order("logged_on", { ascending: false }),
     supabase.from("financial_foundations").select("*").maybeSingle(),
+    supabase.from("financial_monthly_snapshots").select("*").order("month_start", { ascending: false }).limit(24),
     supabase.from("missions").select("*").order("created_at", { ascending: false }),
     supabase.from("business_capital_entries").select("*").order("entry_date", { ascending: false }).order("created_at", { ascending: false }),
     supabase.from("business_assets").select("*").order("acquired_on", { ascending: false }).order("created_at", { ascending: false }),
     supabase.from("account_balances").select("id, account_name, account_type").order("account_name"),
   ]);
-  let [projectResult, stepResult, contentResult, foundationResult, missionResult, capitalResult, assetResult, accountResult] = window.AEGIS_DATA_GUARD
+  let [projectResult, stepResult, contentResult, foundationResult, snapshotResult, missionResult, capitalResult, assetResult, accountResult] = window.AEGIS_DATA_GUARD
     ? await window.AEGIS_DATA_GUARD.run("enterprise:snapshot", loadSnapshot)
     : await loadSnapshot();
   if (projectResult.error) {
@@ -222,6 +236,8 @@ async function load() {
   projects = [...storedProjects, ...missionOnlyProjects];
   content = contentResult.data || [];
   financialFoundation = foundationResult.error ? null : foundationResult.data || null;
+  financialSnapshotLoadError = snapshotResult.error || null;
+  financialSnapshots = snapshotResult.error ? [] : snapshotResult.data || [];
   capitalEntries = capitalResult.error ? [] : capitalResult.data || [];
   if (assetResult.error) {
     // A failed table read must never masquerade as a zero-dollar ledger.
@@ -749,6 +765,14 @@ async function updateAssetValues() {
   }
 }
 
+function fillMonthlyFinanceForm(monthKey = currentMonthKey()) {
+  const snapshot = snapshotForMonth(monthKey);
+  const fields = { income: "monthly_income", expenses: "monthly_expenses", reserves: "liquid_reserves", emergency: "emergency_fund_target", debt: "debt_balance", revenue: "business_revenue" };
+  $("#finance-month").value = monthKey;
+  Object.entries(fields).forEach(([input, column]) => { $(`#finance-${input}`).value = snapshot?.[column] ?? ""; });
+  $("#finance-notes").value = snapshot?.notes || "";
+}
+
 function buildDialogs() {
   const dialogs = document.createElement("div");
   dialogs.innerHTML = `<dialog id="project-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">NEW SPECIAL PROJECT</p><h2>Finish a useful milestone.</h2><input id="project-edit-id" type="hidden" /><input id="project-parent-id" type="hidden" /><p class="enterprise-parent-context" id="project-parent-context" aria-live="polite"></p><label>Log date <input id="project-logged-on" type="date" required /></label><label>Project <input id="project-title" required placeholder="e.g. Aegis Command v2" /></label><div class="two-col"><label>Type <select id="project-type"><option>Real-world project</option><option>Aegis system</option><option>CCFX system</option><option>Business asset</option><option>Learning build</option></select></label><label>Mode <select id="project-mode"><option value="Milestone">Finite milestone</option><option value="Ongoing system">Ongoing system</option></select></label></div><div class="two-col"><label>Weight <select id="project-effort-band"><option value="Minor">Minor — 2–8 hr / 10 XP</option><option value="Standard" selected>Standard — 8–24 hr / 25 XP</option><option value="Major">Major — 24–80 hr / 50 XP</option><option value="Flagship">Flagship — 80+ hr / 100 XP</option></select></label><label>Estimated effort (hours) <input id="project-estimated-hours" type="number" min="1" max="10000" placeholder="e.g. 120" /></label></div><p class="enterprise-xp-note" id="project-xp-reward"></p><label>Priority <select id="project-priority"><option>Do now</option><option selected>Schedule</option><option>Delegate</option><option>Eliminate</option></select></label><label>Definition of done <textarea id="project-outcome" required placeholder="What must exist, work, or be delivered for this milestone to be complete?"></textarea></label><label>Project steps — one per line <textarea id="project-steps" required placeholder="Deploy the first usable version&#10;Verify login and saved data&#10;Run a production walkthrough"></textarea></label><p class="body-copy">Only the next incomplete step enters Operations. Project progress is completed steps ÷ total steps, and the project closes automatically when every step is complete.</p><label>Due date <input id="project-due" type="date" /></label><button class="primary" id="project-submit" value="default">Open project and first operation</button></form></dialog><dialog id="content-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">NEW CONTENT ITEM</p><h2>Ship a useful signal.</h2><label>Log date <input id="content-logged-on" type="date" required /></label><label>Working title <input id="content-title" required placeholder="e.g. The risk rule that protects a funded account" /></label><div class="two-col"><label>Platform <select id="content-platform"><option>YouTube</option><option>Instagram</option><option>X</option><option>Newsletter</option></select></label><label>Status <select id="content-status"><option>Idea</option><option>Drafting</option><option>Ready</option><option>Published</option></select></label></div><button class="primary" value="default">Add to pipeline</button></form></dialog><dialog id="finance-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">FINANCIAL FOUNDATION</p><h2>Protect the mission.</h2><label>Log date <input id="finance-logged-on" type="date" required /></label><div class="two-col"><label>Monthly income <input id="finance-income" type="number" min="0" step="0.01" /></label><label>Monthly expenses <input id="finance-expenses" type="number" min="0" step="0.01" /></label><label>Liquid reserves <input id="finance-reserves" type="number" min="0" step="0.01" /></label><label>Emergency fund target <input id="finance-emergency" type="number" min="0" step="0.01" /></label><label>Debt balance <input id="finance-debt" type="number" min="0" step="0.01" /></label><label>Business revenue / month <input id="finance-revenue" type="number" min="0" step="0.01" /></label></div><label>Notes <textarea id="finance-notes" placeholder="Rules, obligations, or the next financial priority."></textarea></label><button class="primary" value="default">Save foundation</button></form></dialog>`;
@@ -756,8 +780,8 @@ function buildDialogs() {
   const ledgerDialogs = document.createElement("div");
   ledgerDialogs.innerHTML = `<dialog id="capital-dialog"><form class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">CAPITAL MOVEMENT</p><h2>Record the money flow.</h2><label>Date <input id="capital-date" type="date" required /></label><div class="two-col"><label>Movement <select id="capital-type"><option>Account earning</option><option>Capital added</option><option>Expense</option><option>Capital withdrawal</option></select></label><label>Amount (USD) <input id="capital-amount" type="number" min="0.01" step="0.01" required /></label></div><label>Purpose <input id="capital-title" required placeholder="e.g. Apex Trader Funding 50K challenge" /></label><label>Source account <select id="capital-account"><option value="">No linked account</option></select></label><p class="body-copy">Use a linked account only when this is an account earning. Expenses and capital withdrawals subtract from net Capital.</p><label>Notes <textarea id="capital-notes" placeholder="Optional context"></textarea></label><button class="primary" type="submit">Record movement</button></form></dialog><dialog id="asset-dialog"><form class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">OWNED ASSET</p><h2>Register what you own.</h2><label>Acquired on <input id="asset-date" type="date" required /></label><div class="two-col"><label>Asset type <select id="asset-type"><option>Crypto</option><option>Business asset</option><option>Equity</option><option>Cash</option><option>Other</option></select></label><label>Symbol (optional) <input id="asset-symbol" maxlength="24" placeholder="BTC" /></label></div><label>Asset <input id="asset-title" required placeholder="e.g. Bitcoin" /></label><div class="two-col"><label>Quantity (optional) <input id="asset-quantity" type="number" min="0" step="any" /></label><label>Cost basis (USD) <input id="asset-cost" type="number" min="0" step="0.01" /></label><label>Current value (USD) <input id="asset-value" type="number" min="0" step="0.01" /></label></div><label>Notes <textarea id="asset-notes" placeholder="Wallet, broker, or ownership details"></textarea></label><button class="primary" type="submit">Add asset</button></form></dialog>`;
   document.body.append(...Array.from(ledgerDialogs.children));
-  // Capital is the variable ledger for trading and business. The foundation
-  // is a manually updated snapshot of the personal safeguards behind it.
+  // Capital is the variable ledger for trading and business. Monthly cash
+  // flow is a separate history, so the numbers never become a fixed baseline.
   Array.from($("#asset-type")?.options || []).find((option) => option.value === "Cash")?.remove();
   const cryptoOptions = document.createElement("datalist");
   cryptoOptions.id = "enterprise-crypto-symbols";
@@ -770,14 +794,28 @@ function buildDialogs() {
   $("#asset-value")?.closest("label")?.insertAdjacentElement("afterend", quoteNote);
   ["#asset-type", "#asset-symbol", "#asset-quantity"].forEach((selector) => $(selector)?.addEventListener("input", syncAssetQuote));
   $("#asset-type")?.addEventListener("change", syncAssetQuote);
-  $("#finance-dialog .eyebrow").textContent = "FINANCIAL BASELINE";
-  $("#finance-dialog h2").textContent = "Protect the reserve.";
-  $("#finance-dialog button[type=submit]").textContent = "Save baseline";
+  const financeMonth = $("#finance-logged-on");
+  financeMonth.id = "finance-month";
+  financeMonth.type = "month";
+  financeMonth.required = true;
+  financeMonth.closest("label").childNodes[0].textContent = "Month ";
+  $("#finance-dialog .eyebrow").textContent = "MONTHLY CASH FLOW";
+  $("#finance-dialog h2").textContent = "Record what this month actually was.";
+  $("#finance-dialog button[type=submit]").textContent = "Save month";
+  const financeLabels = {
+    income: "Income received this month ", expenses: "Expenses paid this month ", reserves: "Liquid reserves at month-end ",
+    emergency: "Emergency fund target at month-end ", debt: "Debt balance at month-end ", revenue: "Business revenue this month ",
+  };
+  Object.entries(financeLabels).forEach(([field, label]) => { $(`#finance-${field}`).closest("label").childNodes[0].textContent = label; });
+  $("#finance-notes").closest("label").childNodes[0].textContent = "Notes for this month ";
+  $("#finance-notes").placeholder = "What changed, what was irregular, or what needs attention next month.";
   const projectOperationDialog = document.createElement("dialog");
   projectOperationDialog.id = "project-operation-dialog";
   projectOperationDialog.innerHTML = `<form class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow amber">PROJECT OPERATION</p><h2>Add a concrete next action.</h2><label>Project <input id="project-operation-project" disabled /></label><label>Operation <input id="project-operation-title" required placeholder="What needs to happen?" /></label><label>Schedule date <input id="project-operation-date" type="date" required /></label><p class="body-copy">This is added to the project’s step ledger and the Operations Queue.</p><button class="primary" type="submit">Add operation</button></form>`;
   document.body.append(projectOperationDialog);
-  ["project", "content", "finance"].forEach((name) => { const input = $(`#${name}-logged-on`); if (input) input.value = easternDateKey(); });
+  ["project", "content"].forEach((name) => { const input = $(`#${name}-logged-on`); if (input) input.value = easternDateKey(); });
+  fillMonthlyFinanceForm();
+  $("#finance-month")?.addEventListener("change", () => fillMonthlyFinanceForm($("#finance-month").value || currentMonthKey()));
   ["capital-date", "asset-date"].forEach((id) => { const input = $(`#${id}`); if (input) input.value = easternDateKey(); });
   $("#project-mode")?.addEventListener("change", syncProjectReward);
   $("#project-effort-band")?.addEventListener("change", syncProjectReward);
@@ -897,7 +935,9 @@ function buildDialogs() {
     event.preventDefault();
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user?.id;
-    if (!userId) return alert("Sign in before saving your financial foundation.");
+    if (!userId) return alert("Sign in before saving a monthly cash-flow snapshot.");
+    const month = $("#finance-month").value;
+    if (!/^\d{4}-\d{2}$/.test(month)) return alert("Choose the month this snapshot belongs to.");
     const payload = {
       monthly_income: Number($("#finance-income").value || 0),
       monthly_expenses: Number($("#finance-expenses").value || 0),
@@ -906,11 +946,11 @@ function buildDialogs() {
       debt_balance: Number($("#finance-debt").value || 0),
       business_revenue: Number($("#finance-revenue").value || 0),
     };
-    const { error } = await supabase.from("financial_foundations").upsert({ user_id: userId, logged_on: $("#finance-logged-on").value || easternDateKey(), ...payload, notes: $("#finance-notes").value.trim() || null, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+    const { error } = await supabase.from("financial_monthly_snapshots").upsert({ user_id: userId, month_start: `${month}-01`, ...payload, notes: $("#finance-notes").value.trim() || null, updated_at: new Date().toISOString() }, { onConflict: "user_id,month_start" });
     if (error) return alert(error.message);
     $("#finance-dialog").close();
     await load();
-    window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "financial-foundation" } }));
+    window.dispatchEvent(new CustomEvent("aegis:data-changed", { detail: { source: "financial-monthly-snapshot" } }));
   });
   const capitalForm = $("#capital-dialog form");
   if (capitalForm) {
@@ -994,6 +1034,12 @@ if (supabase) {
       });
       return;
     }
+    const financeMonth = event.target.closest("[data-finance-month]")?.dataset.financeMonth;
+    if (financeMonth) {
+      fillMonthlyFinanceForm(financeMonth);
+      $("#finance-dialog").showModal();
+      return;
+    }
     const editId = event.target.closest("[data-enterprise-edit]")?.dataset.enterpriseEdit;
     if (editId) {
       const project = projects.find((item) => String(item.id) === String(editId));
@@ -1013,12 +1059,7 @@ if (supabase) {
     if (action === "asset-values") return void updateAssetValues();
     if (action === "content") $("#content-logged-on").value = easternDateKey();
     if (action === "finance") {
-      $("#finance-logged-on").value = financialFoundation?.logged_on || easternDateKey();
-      if (financialFoundation) {
-        const fields = { income: "monthly_income", expenses: "monthly_expenses", reserves: "liquid_reserves", emergency: "emergency_fund_target", debt: "debt_balance", revenue: "business_revenue" };
-        Object.entries(fields).forEach(([input, column]) => { $(`#finance-${input}`).value = financialFoundation[column] ?? ""; });
-        $("#finance-notes").value = financialFoundation.notes || "";
-      }
+      fillMonthlyFinanceForm(currentMonthKey());
     }
     (action === "finance" ? $("#finance-dialog") : $("#content-dialog")).showModal();
   });
