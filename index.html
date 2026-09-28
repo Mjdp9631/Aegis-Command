@@ -369,6 +369,9 @@
           window.addEventListener("aegis:missions-loaded", event => setTimeout(() => paintCommandFallback(event.detail?.missions), 250));
           window.addEventListener("load", () => setTimeout(() => paintCommandFallback(window.AEGIS_MISSIONS), 500), { once: true });
           document.addEventListener("click", event => {
+            // mission.js owns the live ledger. This boot-only fallback must
+            // never intercept its card clicks once the canonical renderer is ready.
+            if (window.AEGIS_MISSION_RENDERER_READY) return;
             const tab = event.target.closest?.("#mission-cards [data-mission-view]");
             if (tab && !window.AEGIS_MISSION_RENDERER_READY) {
               event.preventDefault();
@@ -421,7 +424,7 @@
     <script type="module" src="auth-flow.js?v=verify-session-v1"></script>
     <script type="module" src="cross-browser-sync.js?v=auth-refresh-source-fix-v1"></script>
     <script type="module" src="recovery-logger.js?v=standalone-v1"></script>
-    <script type="module" src="mission.js?v=egress-circuit-breaker-v2"></script>
+    <script type="module" src="mission.js?v=mission-card-click-v1"></script>
     <script type="module" src="phase-protocol.js?v=auth-refresh-source-fix-v1"></script>
     <script type="module" src="detective.js?v=optional-account-executions-v1"></script>
     <script type="module" src="brain-review.js?v=egress-circuit-breaker-v2"></script>

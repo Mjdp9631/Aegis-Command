@@ -266,15 +266,36 @@ function renderCommandMissionBoard(nextMissions = missions, operations = []) {
   }));
 }
 
+function missionLedgerRenderKey() {
+  // The mission and operations modules both announce their initial snapshot.
+  // Keep an identical second announcement from replacing live card nodes while
+  // the user is trying to select one.
+  return JSON.stringify({
+    view: missionLedgerView,
+    missions: missions.map((mission) => [
+      mission.id,
+      mission.title,
+      mission.category,
+      mission.priority,
+      mission.progress,
+      mission.completion_definition,
+      missionLabel(mission),
+      operationsForMission(mission).map((operation) => [operation.id, operation.title]),
+    ]),
+  });
+}
+
 function renderMissions() {
   const target = $("#mission-cards");
   if (!target) return;
-  target.dataset.missionRenderer = "mission";
   const active = sortMissions(missions.filter((mission) => mission.progress < 100));
   const complete = sortMissions(missions.filter((mission) => mission.progress >= 100));
   if (!["active", "complete"].includes(missionLedgerView)) missionLedgerView = "active";
+  const renderKey = missionLedgerRenderKey();
+  if (target.dataset.missionRenderer === "mission" && target.dataset.missionRenderKey === renderKey) return;
   target.innerHTML = `<div class="mission-view-tabs"><button type="button" class="mission-view-tab ${missionLedgerView === "active" ? "active" : ""}" data-mission-view="active">ACTIVE · ${active.length}</button><button type="button" class="mission-view-tab ${missionLedgerView === "complete" ? "active" : ""}" data-mission-view="complete">COMPLETED · ${complete.length}</button></div><div class="mission-card-list" data-mission-list></div>`;
   target.dataset.missionRenderer = "mission";
+  target.dataset.missionRenderKey = renderKey;
   const list = target.querySelector("[data-mission-list]");
   const draw = (items) => { list.innerHTML = items.length ? items.map((mission) => {
     const linked = operationsForMission(mission);
@@ -283,13 +304,6 @@ function renderMissions() {
   }).join("") : '<article class="mission-card"><h3>No missions in this view.</h3></article>'; };
   const drawCurrentView = () => draw(missionLedgerView === "complete" ? complete : active);
   drawCurrentView();
-  list.querySelectorAll("[data-mission-ledger-card]").forEach((card) => card.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-    const mission = missionRowsForLookup().find((item) => String(item.id) === String(card.dataset.missionId));
-    openMissionDetails(mission);
-  }, true));
   target.querySelectorAll("[data-mission-view]").forEach((button) => button.addEventListener("click", () => {
     missionLedgerView = button.dataset.missionView === "complete" ? "complete" : "active";
     target.querySelectorAll("[data-mission-view]").forEach((item) => item.classList.toggle("active", item === button));
@@ -1232,8 +1246,8 @@ function bindDialogs() {
     const card = event.target.closest(".mission-open");
     if (!card) return;
     const mission = missionForId(card.dataset.missionId);
-    if (card.dataset.missionLedgerCard === "true") openMissionDetails(mission);
-    else openMission(card.dataset.missionId);
+    if (card.dataset.missionLedgerCard === "true") return;
+    openMission(card.dataset.missionId);
   });
   document.addEventListener("click", (event) => {
     const button = event.target.closest('[data-action="add-mission"]');
