@@ -432,6 +432,15 @@ function accountWithdrawalTotal(accountId) {
     .reduce((total, allocation) => total + Number(allocation.gross_deduction_usd || 0), 0);
 }
 
+function accountDeniedPayoutTotal(accountId) {
+  return withdrawalAllocations
+    .filter((allocation) => {
+      const withdrawal = groupWithdrawals.find((item) => String(item.id) === String(allocation.withdrawal_id));
+      return allocation.account_id === accountId && withdrawalStatus(withdrawal) === "denied";
+    })
+    .reduce((total, allocation) => total + Number(allocation.gross_deduction_usd || 0), 0);
+}
+
 function groupForAccountAt(accountId, timestamp) {
   const membership = membershipAt(accountId, timestamp);
   return membership ? accountGroups.find((group) => group.id === membership.group_id) || null : null;
@@ -466,6 +475,7 @@ function calculatedBalance(account) {
   balance += groupTradePnlForAccount(account.id);
   balance += accountDepositTotal(account.id);
   balance -= accountWithdrawalTotal(account.id);
+  balance -= accountDeniedPayoutTotal(account.id);
   return cents(balance);
 }
 
