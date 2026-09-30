@@ -482,7 +482,6 @@ function calculatedBalance(account) {
   balance += groupTradePnlForAccount(account.id);
   balance += accountDepositTotal(account.id);
   balance -= accountWithdrawalTotal(account.id);
-  balance -= accountDeniedPayoutTotal(account.id);
   return cents(balance);
 }
 
