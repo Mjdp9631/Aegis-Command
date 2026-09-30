@@ -674,13 +674,16 @@ function renderBalanceSummary() {
   // A denied account remains visible in its group as history, but it is not
   // part of the active funded portfolio totals.
   const fundedAccounts = accountBalances.filter((account) => isActiveFundedPropAccount(account) && accountDeniedPayoutTotal(account.id) <= 0);
+  // The P&L was still earned, even though a denied account's balance is not
+  // available capital. Preserve that performance in the lifetime profit view.
+  const fundedProfitAccounts = accountBalances.filter(isActiveFundedPropAccount);
   const liveTotal = liveAccounts
     .reduce((total, account) => total + calculatedBalance(account), 0);
   const fundedTotal = fundedAccounts
     .reduce((total, account) => total + calculatedBalance(account), 0);
   const liveProfit = liveAccounts
     .reduce((total, account) => total + accountProfit(account), 0);
-  const fundedProfit = fundedAccounts
+  const fundedProfit = fundedProfitAccounts
     .reduce((total, account) => total + fundedAccountTotalProfit(account), 0);
   const liveAvailableProfit = liveAccounts
     .reduce((total, account) => total + accountAvailableProfit(account), 0);
