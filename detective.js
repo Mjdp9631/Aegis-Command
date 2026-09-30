@@ -585,7 +585,9 @@ function closedTradesAvailableForGroup(groupId) {
 function groupTradePnlForAccount(accountId) {
   return groupLinksForAccount(accountId).reduce((total, link) => {
     const allocations = groupTradeAllocations.filter((allocation) => String(allocation.group_trade_link_id) === String(link.id));
-    if (!allocations.length) return total + Number(link.actual_pnl_usd || 0);
+    // A group link records the trade once; it is not evidence that every
+    // account took it. Only the per-account allocation may move a balance.
+    if (!allocations.length) return total;
     const allocation = allocations.find((item) => String(item.account_id) === String(accountId));
     return total + Number(allocation?.pnl_usd || 0);
   }, 0);

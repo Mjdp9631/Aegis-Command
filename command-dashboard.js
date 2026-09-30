@@ -66,11 +66,6 @@ function rangeCutoff(trades) {
   return cutoff;
 }
 
-function ledgerMembershipAt(accountId, timestamp) {
-  const time = new Date(timestamp || 0).getTime();
-  return accountLedger.memberships.filter((membership) => membership.account_id === accountId && new Date(membership.joined_at).getTime() <= time && (!membership.left_at || new Date(membership.left_at).getTime() > time)).sort((a, b) => new Date(b.joined_at) - new Date(a.joined_at))[0] || null;
-}
-
 function valueSeries(trades, accounts) {
   const completed = trades.filter(isClosed).sort((a, b) => new Date(a.traded_at || a.created_at) - new Date(b.traded_at || b.created_at));
   const cutoff = rangeCutoff(completed);
@@ -80,11 +75,6 @@ function valueSeries(trades, accounts) {
     let total = Number(account.starting_balance);
     const events = [];
     completed.filter((trade) => String(trade.account || "").trim() === account.account_name).forEach((trade) => events.push({ type: "journal", time: new Date(trade.traded_at || trade.created_at), trade }));
-    const allocatedLinkIds = new Set(accountLedger.tradeAllocations.map((allocation) => String(allocation.group_trade_link_id)));
-    accountLedger.tradeLinks.forEach((link) => {
-      const trade = completed.find((item) => item.id === link.trade_id);
-      if (trade && !allocatedLinkIds.has(String(link.id)) && ledgerMembershipAt(account.id, link.created_at || trade.traded_at || trade.created_at)?.group_id === link.group_id) events.push({ type: "group-trade", time: new Date(trade.traded_at || trade.created_at), link });
-    });
     accountLedger.tradeAllocations.filter((allocation) => String(allocation.account_id) === String(account.id)).forEach((allocation) => {
       const link = accountLedger.tradeLinks.find((item) => String(item.id) === String(allocation.group_trade_link_id));
       const trade = link && completed.find((item) => String(item.id) === String(link.trade_id));
@@ -97,7 +87,6 @@ function valueSeries(trades, accounts) {
     const allEntries = events.sort((a, b) => a.time - b.time).map((event) => {
       const prior = total;
       if (event.type === "journal") total *= 1 + (Number(event.trade.pnl_percent) || 0) / 100;
-      if (event.type === "group-trade") total += Number(event.link.actual_pnl_usd) || 0;
       if (event.type === "group-trade-allocation") total += Number(event.allocation.pnl_usd) || 0;
       if (event.type === "withdrawal") total -= Number(event.allocation.gross_deduction_usd) || 0;
       return { total, delta: total - prior, date: event.time };
