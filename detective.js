@@ -441,6 +441,13 @@ function accountDeniedPayoutTotal(accountId) {
     .reduce((total, allocation) => total + Number(allocation.gross_deduction_usd || 0), 0);
 }
 
+function decorateDeniedPayoutAccounts() {
+  document.querySelectorAll(".group-account-row [data-account-move]").forEach((control) => {
+    const row = control.closest(".group-account-row");
+    row?.classList.toggle("is-denied-account", accountDeniedPayoutTotal(control.dataset.accountMove) > 0);
+  });
+}
+
 function groupForAccountAt(accountId, timestamp) {
   const membership = membershipAt(accountId, timestamp);
   return membership ? accountGroups.find((group) => group.id === membership.group_id) || null : null;
@@ -963,6 +970,7 @@ function renderGroupedAccountBalances() {
   setTimeout(decorateTheoreticalWithdrawalForms, 0);
   setTimeout(decoratePropStatusControls, 0);
   setTimeout(decorateGroupAdminControls, 0);
+  setTimeout(decorateDeniedPayoutAccounts, 0);
   const groups = accountGroups.map((group) => {
     const members = accountGroupAccounts(group.id);
     const total = members.reduce((sum, account) => sum + calculatedBalance(account), 0);
