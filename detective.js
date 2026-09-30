@@ -671,7 +671,9 @@ function renderBalanceSummary() {
   const summary = $("#account-balance-summary");
   if (!summary) return;
   const liveAccounts = accountBalances.filter((account) => (account.account_type || "Live") === "Live");
-  const fundedAccounts = accountBalances.filter(isActiveFundedPropAccount);
+  // A denied account remains visible in its group as history, but it is not
+  // part of the active funded portfolio totals.
+  const fundedAccounts = accountBalances.filter((account) => isActiveFundedPropAccount(account) && accountDeniedPayoutTotal(account.id) <= 0);
   const liveTotal = liveAccounts
     .reduce((total, account) => total + calculatedBalance(account), 0);
   const fundedTotal = fundedAccounts
