@@ -82,7 +82,7 @@ function isTheoretical(trade) {
 }
 
 function isPracticeTrade(trade) {
-  return ["theoretical", "backtest", "backtesting", "hindsight"].includes(String(trade.account || "").trim().toLowerCase());
+  return ["theoretical", "forwardtest", "backtest", "backtesting", "hindsight"].includes(String(trade.account || "").trim().toLowerCase());
 }
 
 function tradeTime(trade) {
@@ -1841,7 +1841,7 @@ function buildFilters() {
   journalWindow?.before(filterBar);
   const theoreticalToggle = document.createElement("label");
   theoreticalToggle.className = "theoretical-analysis-toggle";
-  theoreticalToggle.innerHTML = '<input type="checkbox" id="filter-include-theoretical" /> Include practice trades <small>Theoretical, Backtest, and Hindsight · Detective calculations only</small>';
+  theoreticalToggle.innerHTML = '<input type="checkbox" id="filter-include-theoretical" /> Include practice trades <small>Theoretical, Forwardtest, Backtest, and Hindsight · Detective calculations only</small>';
   filterBar.querySelector(".clear-filters").insertAdjacentElement("beforebegin", theoreticalToggle);
   filterBar.addEventListener("change", (event) => {
     if (event.target.id === "filter-include-theoretical") {
