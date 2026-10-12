@@ -282,6 +282,44 @@ function rawTradeExecutionRows() {
   }));
 }
 
+function activeExecutionAccounts() {
+  return accountBalances.filter((account) => !isPastAccount(account));
+}
+
+function executionGroupAccounts(groupId) {
+  return accountGroupAccounts(groupId).filter((account) => !isPastAccount(account));
+}
+
+function accountExecutionClassification(rows = executionRowsFromForm().rows) {
+  const classifications = [...new Set(rows
+    .map((row) => accountBalances.find((account) => String(account.id) === String(row.account_id)))
+    .filter(Boolean)
+    .map((account) => {
+      if (account.account_type === "Prop Firm") return "Prop";
+      if (account.account_type === "Live") return "Master";
+      return account.account_type || "Master";
+    }))];
+  return classifications.length ? classifications.join(" + ") : "";
+}
+
+function syncTradeAccountClassification() {
+  const control = $("#detective-account");
+  if (!control) return;
+  const classification = accountExecutionClassification();
+  control.disabled = Boolean(classification);
+  control.closest("label")?.classList.toggle("is-derived-classification", Boolean(classification));
+  if (!classification) return;
+  if (!Array.from(control.options).some((option) => option.value === classification)) control.add(new Option(classification, classification));
+  control.value = classification;
+}
+
+function ensureTradeAccountClassificationLabel() {
+  const field = $("#detective-account")?.closest("label");
+  if (!field) return;
+  const labelText = Array.from(field.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
+  if (labelText) labelText.nodeValue = "Journal classification ";
+}
+
 function executionRowsFromForm({ validate = false } = {}) {
   const rawRows = rawTradeExecutionRows();
   const startedRows = rawRows.filter((row) => row.account_id || row.lot_size !== "");
@@ -298,10 +336,25 @@ function executionRowsFromForm({ validate = false } = {}) {
 
 function executionRowMarkup(execution = {}) {
   const selected = String(execution.account_id || "");
-  const options = accountBalances.length
-    ? `<option value="">Choose account</option>${accountBalances.map((account) => `<option value="${escapeHtml(account.id)}" ${String(account.id) === selected ? "selected" : ""}>${escapeHtml(account.account_name)}</option>`).join("")}`
+  const selectableAccounts = accountBalances.filter((account) => !isPastAccount(account) || String(account.id) === selected);
+  const options = selectableAccounts.length
+    ? `<option value="">Choose account</option>${selectableAccounts.map((account) => `<option value="${escapeHtml(account.id)}" ${String(account.id) === selected ? "selected" : ""}>${escapeHtml(account.account_name)}${isPastAccount(account) ? " · Past" : ""}</option>`).join("")}`
     : '<option value="">Create an account in Accounts first</option>';
-  return `<div class="trade-execution-row" data-trade-execution-row><label>Account<select data-trade-execution-account ${accountBalances.length ? "" : "disabled"}>${options}</select></label><label>Lot size<input data-trade-execution-lot type="number" min="0" step="any" inputmode="decimal" value="${execution.lot_size ?? ""}" placeholder="e.g. 0.50" /></label><small data-trade-execution-estimate>Enter levels to estimate this account.</small><button class="trade-execution-remove" type="button" data-trade-execution-remove aria-label="Remove account execution">Remove</button></div>`;
+  return `<div class="trade-execution-row" data-trade-execution-row><label>Account<select data-trade-execution-account ${selectableAccounts.length ? "" : "disabled"}>${options}</select></label><label>Lot size<input data-trade-execution-lot type="number" min="0" step="any" inputmode="decimal" value="${execution.lot_size ?? ""}" placeholder="e.g. 0.50" /></label><small data-trade-execution-estimate>Enter levels to estimate this account.</small><button class="trade-execution-remove" type="button" data-trade-execution-remove aria-label="Remove account execution">Remove</button></div>`;
+}
+
+function executionPickerMarkup() {
+  const accounts = activeExecutionAccounts();
+  const groups = accountGroups
+    .map((group) => ({ group, accounts: executionGroupAccounts(group.id) }))
+    .filter(({ accounts: members }) => members.length);
+  const groupOptions = groups.length
+    ? `<div class="execution-picker-section"><p>Entire group</p>${groups.map(({ group, accounts: members }) => `<label><input type="checkbox" data-trade-execution-group="${escapeHtml(group.id)}" /> ${escapeHtml(group.name)} <small>${members.length} active account${members.length === 1 ? "" : "s"}</small></label>`).join("")}</div>`
+    : "";
+  const accountOptions = accounts.length
+    ? `<div class="execution-picker-section"><p>Individual accounts</p>${accounts.map((account) => `<label><input type="checkbox" data-trade-execution-picker-account="${escapeHtml(account.id)}" /> ${escapeHtml(account.account_name)} <small>${escapeHtml(account.account_type === "Prop Firm" ? "Prop" : account.account_type || "Master")}</small></label>`).join("")}</div>`
+    : '<p class="execution-picker-empty">Create an active account first.</p>';
+  return `<details class="execution-multi-picker" id="detective-execution-picker"><summary>Select accounts or group</summary><div class="execution-picker-options">${groupOptions}${accountOptions}<button class="secondary compact" type="button" data-trade-execution-picker-add>Add selected</button></div></details>`;
 }
 
 function renderTradeExecutionRows(rows = []) {
@@ -313,7 +366,10 @@ function renderTradeExecutionRows(rows = []) {
 
 function refreshTradeExecutionAccountOptions() {
   if (!$("#detective-account-execution-rows")) return;
-  renderTradeExecutionRows(rawTradeExecutionRows());
+  const rows = rawTradeExecutionRows();
+  const picker = $("#detective-execution-picker");
+  if (picker) picker.outerHTML = executionPickerMarkup();
+  renderTradeExecutionRows(rows);
 }
 
 function ensureTradeExecutionFields() {
@@ -326,7 +382,7 @@ function ensureTradeExecutionFields() {
     lotSizeField.remove();
   }
   if (!$("#detective-account-executions")) {
-    estimate.insertAdjacentHTML("beforebegin", `<section class="trade-account-executions" id="detective-account-executions"><div class="trade-execution-heading"><div><p>ACCOUNT EXECUTIONS</p><small>Use one row per account. Estimates are calculated per account and combined below.</small></div><button class="secondary compact" type="button" data-trade-execution-add>+ Add account</button></div><div id="detective-account-execution-rows"></div></section>`);
+    estimate.insertAdjacentHTML("beforebegin", `<section class="trade-account-executions" id="detective-account-executions"><div class="trade-execution-heading"><div><p>ACCOUNT EXECUTIONS</p><small>Select any combination of individual accounts or a whole group. Each account keeps its own lot size and estimate.</small></div></div>${executionPickerMarkup()}<div id="detective-account-execution-rows"></div></section>`);
   }
   renderTradeExecutionRows();
 }
@@ -349,6 +405,7 @@ function estimatedPnlLabel(value, sign) {
 function syncExecutionEstimate() {
   const preview = $("#detective-execution-estimate");
   if (!preview) return;
+  syncTradeAccountClassification();
   const riskReward = syncRiskRewardInput();
   syncTheoreticalPnl();
   const riskRewardLabel = riskReward ? `Planned R:R 1:${riskReward.ratio.toFixed(2)}.` : "";
@@ -2218,6 +2275,7 @@ async function saveTrade(event) {
 function init() {
   ensurePlanAdherenceFields();
   ensureTradeExecutionFields();
+  ensureTradeAccountClassificationLabel();
   const dialog = $("#detective-trade-dialog");
   const tradeTime = $("#detective-time");
   if (tradeTime) {
@@ -2265,15 +2323,29 @@ function init() {
     if (event.target.closest("[data-trade-execution-account], [data-trade-execution-lot]")) syncExecutionEstimate();
   });
   dialog?.addEventListener("click", (event) => {
-    if (event.target.closest("[data-trade-execution-add]")) {
-      const rows = rawTradeExecutionRows();
-      renderTradeExecutionRows([...rows, {}]);
+    if (event.target.closest("[data-trade-execution-picker-add]")) {
+      const picker = $("#detective-execution-picker");
+      const existingAccountIds = new Set(rawTradeExecutionRows().map((row) => row.account_id).filter(Boolean));
+      const selectedGroupIds = Array.from(picker?.querySelectorAll("[data-trade-execution-group]:checked") || []).map((input) => input.dataset.tradeExecutionGroup);
+      const selectedAccountIds = [
+        ...selectedGroupIds.flatMap((groupId) => executionGroupAccounts(groupId).map((account) => String(account.id))),
+        ...Array.from(picker?.querySelectorAll("[data-trade-execution-picker-account]:checked") || []).map((input) => input.dataset.tradeExecutionPickerAccount),
+      ];
+      const addedAccountIds = [...new Set(selectedAccountIds)].filter((accountId) => !existingAccountIds.has(String(accountId)));
+      if (!addedAccountIds.length) {
+        alert("Select at least one active account or group that is not already listed.");
+        return;
+      }
+      const startedRows = rawTradeExecutionRows().filter((row) => row.account_id || row.lot_size !== "");
+      renderTradeExecutionRows([...startedRows, ...addedAccountIds.map((account_id) => ({ account_id, lot_size: "" }))]);
+      if (picker) picker.open = false;
       return;
     }
     const remove = event.target.closest("[data-trade-execution-remove]");
     if (!remove) return;
     remove.closest("[data-trade-execution-row]")?.remove();
     if (!document.querySelector("[data-trade-execution-row]")) renderTradeExecutionRows();
+    syncTradeAccountClassification();
     syncExecutionEstimate();
   });
   syncExecutionEstimate();
