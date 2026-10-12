@@ -320,6 +320,13 @@ function ensureTradeAccountClassificationLabel() {
   if (labelText) labelText.nodeValue = "Journal classification ";
 }
 
+function ensureTradePriceFieldOrder() {
+  const takeProfitField = $("#detective-take-profit")?.closest("label");
+  const stopLossField = $("#detective-stop-loss")?.closest("label");
+  if (!takeProfitField || !stopLossField || takeProfitField.parentElement !== stopLossField.parentElement) return;
+  takeProfitField.before(stopLossField);
+}
+
 function executionRowsFromForm({ validate = false } = {}) {
   const rawRows = rawTradeExecutionRows();
   const startedRows = rawRows.filter((row) => row.account_id || row.lot_size !== "");
@@ -2276,6 +2283,7 @@ function init() {
   ensurePlanAdherenceFields();
   ensureTradeExecutionFields();
   ensureTradeAccountClassificationLabel();
+  ensureTradePriceFieldOrder();
   const dialog = $("#detective-trade-dialog");
   const tradeTime = $("#detective-time");
   if (tradeTime) {
