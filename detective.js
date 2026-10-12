@@ -441,11 +441,19 @@ function accountDeniedPayoutTotal(accountId) {
     .reduce((total, allocation) => total + Number(allocation.gross_deduction_usd || 0), 0);
 }
 
-function decorateDeniedPayoutAccounts() {
-  document.querySelectorAll(".group-account-row [data-account-move]").forEach((control) => {
-    const row = control.closest(".group-account-row");
-    row?.classList.toggle("is-denied-account", accountDeniedPayoutTotal(control.dataset.accountMove) > 0);
-  });
+function accountStatus(account) {
+  return account?.account_status === "failed" ? "failed" : "active";
+}
+
+function isPastAccount(account) {
+  return accountStatus(account) === "failed" || accountDeniedPayoutTotal(account.id) > 0;
+}
+
+function pastAccountLabel(account) {
+  const reasons = [];
+  if (accountStatus(account) === "failed") reasons.push("ACCOUNT FAILED");
+  if (accountDeniedPayoutTotal(account.id) > 0) reasons.push("PAYOUT DENIED");
+  return reasons.join(" · ");
 }
 
 function groupForAccountAt(accountId, timestamp) {
@@ -455,6 +463,44 @@ function groupForAccountAt(accountId, timestamp) {
 
 function accountGroupAccounts(groupId) {
   return accountBalances.filter((account) => currentMembership(account.id)?.group_id === groupId);
+}
+
+function renderPastAccounts() {
+  document.querySelectorAll(".account-group-card[data-group-id]").forEach((card) => {
+    const groupId = card.dataset.groupId;
+    const members = accountGroupAccounts(groupId);
+    const pastAccounts = members.filter(isPastAccount);
+    const activeAccounts = members.filter((account) => !isPastAccount(account));
+    const total = activeAccounts.reduce((sum, account) => sum + calculatedBalance(account), 0);
+    const totalLabel = card.querySelector(".account-group-total span");
+    const totalValue = card.querySelector(".account-group-total strong");
+    if (totalLabel) totalLabel.textContent = "ACTIVE GROUP BALANCE";
+    if (totalValue) totalValue.textContent = money(total);
+    if (!pastAccounts.length) return;
+
+    let details = card.querySelector(".group-past-account-details");
+    if (!details) {
+      details = document.createElement("details");
+      details.className = "group-past-account-details";
+      details.innerHTML = '<summary>Past accounts <span></span></summary><div class="past-account-ledger"></div>';
+      card.querySelector(".group-trade-form")?.before(details);
+    }
+    details.querySelector("summary span").textContent = `${pastAccounts.length} account${pastAccounts.length === 1 ? "" : "s"}`;
+    const ledger = details.querySelector(".past-account-ledger");
+    pastAccounts.forEach((account) => {
+      const row = [...card.querySelectorAll("[data-account-move]")]
+        .find((control) => String(control.dataset.accountMove) === String(account.id))
+        ?.closest(".group-account-row");
+      if (!row) return;
+      row.classList.add("is-past-account");
+      row.dataset.pastReason = pastAccountLabel(account);
+      ledger.append(row);
+    });
+    if (!activeAccounts.length) {
+      card.querySelector(".group-trade-form")?.setAttribute("hidden", "");
+      card.querySelector(".group-withdrawal-details form")?.setAttribute("hidden", "");
+    }
+  });
 }
 
 function groupLinksForAccount(accountId) {
@@ -536,6 +582,12 @@ function renderAccountAdminControls() {
     groupField.innerHTML = 'Group <select id="account-balance-group"><option value="">No group</option></select>';
     accountForm.insertBefore(groupField, accountForm.querySelector(".account-primary") || accountForm.querySelector("button"));
   }
+  if (!$("#account-status-wrap")) {
+    const statusField = document.createElement("label");
+    statusField.id = "account-status-wrap";
+    statusField.innerHTML = 'Account status <select id="account-status"><option value="active">Active</option><option value="failed">Account failed</option></select>';
+    accountForm.insertBefore(statusField, accountForm.querySelector(".account-primary") || accountForm.querySelector("button"));
+  }
   if (!$("#account-deposit-wrap")) {
     const depositField = document.createElement("label");
     depositField.id = "account-deposit-wrap";
@@ -545,6 +597,7 @@ function renderAccountAdminControls() {
   $("#account-balance-type").onchange = syncGroupOptionsForAccountType;
   host.querySelector("#account-group-type").onchange = syncGroupSplitVisibility;
   syncGroupOptionsForAccountType();
+  syncAccountStatusVisibility();
   syncGroupSplitVisibility();
 }
 
@@ -576,11 +629,12 @@ function syncGroupSplitVisibility() {
 function syncGroupOptionsForAccountType() {
   const select = $("#account-balance-group");
   const type = $("#account-balance-type")?.value;
-  if (!select) { syncDepositVisibility(); return; }
+  if (!select) { syncDepositVisibility(); syncAccountStatusVisibility(); return; }
   const selected = select.value;
   select.innerHTML = '<option value="">No group</option>' + accountGroups.filter((group) => group.account_type === type).map((group) => `<option value="${group.id}">${escapeHtml(group.name)} · ${escapeHtml(group.account_type)}</option>`).join("");
   if ([...select.options].some((option) => option.value === selected)) select.value = selected;
   syncDepositVisibility();
+  syncAccountStatusVisibility();
 }
 
 function tradeNumberFor(tradeId) {
@@ -596,6 +650,18 @@ function closedTradesAvailableForGroup(groupId) {
   return loadedTrades.filter((trade) => !isPracticeTrade(trade)
     && resolvedOutcome(trade) !== "Open"
     && !linkedToThisGroup.has(String(trade.id)));
+}
+
+function syncAccountStatusVisibility() {
+  const wrap = $("#account-status-wrap");
+  const control = $("#account-status");
+  const account = editingAccountId ? accountBalances.find((item) => item.id === editingAccountId) : null;
+  const visible = Boolean(account && $("#account-balance-type")?.value === "Prop Firm");
+  if (wrap) wrap.hidden = !visible;
+  if (control) {
+    control.disabled = !visible;
+    control.value = accountStatus(account);
+  }
 }
 
 function groupTradePnlForAccount(accountId) {
@@ -670,12 +736,11 @@ function renderEarnedSummary() {
 function renderBalanceSummary() {
   const summary = $("#account-balance-summary");
   if (!summary) return;
-  const liveAccounts = accountBalances.filter((account) => (account.account_type || "Live") === "Live");
-  // A denied account remains visible in its group as history, but it is not
-  // part of the active funded portfolio totals.
-  const fundedAccounts = accountBalances.filter((account) => isActiveFundedPropAccount(account) && accountDeniedPayoutTotal(account.id) <= 0);
-  // The P&L was still earned, even though a denied account's balance is not
-  // available capital. Preserve that performance in the lifetime profit view.
+  const liveAccounts = accountBalances.filter((account) => (account.account_type || "Live") === "Live" && !isPastAccount(account));
+  // Failed and denied accounts stay in history, but are no longer available
+  // capital. Historical profit is preserved below.
+  const fundedAccounts = accountBalances.filter((account) => isActiveFundedPropAccount(account) && !isPastAccount(account));
+  // The P&L was still earned even when an account is no longer available.
   const fundedProfitAccounts = accountBalances.filter(isActiveFundedPropAccount);
   const liveTotal = liveAccounts
     .reduce((total, account) => total + calculatedBalance(account), 0);
@@ -869,7 +934,7 @@ function decorateGroupAdminControls() {
 }
 
 function groupAllocationInputs(groupId, type) {
-  const members = accountGroupAccounts(groupId);
+  const members = accountGroupAccounts(groupId).filter((account) => !isPastAccount(account));
   const attribute = type === "trade" ? "data-group-trade-allocation" : "data-withdrawal-allocation";
   const label = type === "trade" ? "Exact PnL" : "Gross withdrawal";
   const placeholder = type === "trade" ? "e.g. 1000 or -500" : "e.g. 1000";
@@ -974,7 +1039,7 @@ function renderGroupedAccountBalances() {
   setTimeout(decorateTheoreticalWithdrawalForms, 0);
   setTimeout(decoratePropStatusControls, 0);
   setTimeout(decorateGroupAdminControls, 0);
-  setTimeout(decorateDeniedPayoutAccounts, 0);
+  setTimeout(renderPastAccounts, 0);
   const groups = accountGroups.map((group) => {
     const members = accountGroupAccounts(group.id);
     const total = members.reduce((sum, account) => sum + calculatedBalance(account), 0);
@@ -1075,7 +1140,8 @@ async function saveAccountWithGroup(event) {
   const startingBalance = numberOrNull($("#account-starting-balance").value);
   const accountType = $("#account-balance-type")?.value || "Live";
   const groupId = $("#account-balance-group")?.value || "";
-  const primary = $("#account-primary").checked;
+  const selectedAccountStatus = editingAccountId && accountType === "Prop Firm" ? $("#account-status")?.value || "active" : "active";
+  const primary = selectedAccountStatus !== "failed" && $("#account-primary").checked;
   const depositAmount = editingAccountId && accountType === "Live" ? numberOrNull($("#account-deposit-amount")?.value) : null;
   if (!accountName || !startingBalance || startingBalance <= 0) return;
   if (depositAmount != null && (!Number.isFinite(depositAmount) || depositAmount <= 0)) return alert("Enter a positive deposit amount or leave it blank.");
@@ -1089,6 +1155,10 @@ async function saveAccountWithGroup(event) {
   }
   if (primary) await supabase.from("account_balances").update({ is_primary: false }).eq("user_id", userId);
   const accountPayload = { user_id: userId, account_name: accountName, starting_balance: startingBalance, account_type: accountType, is_primary: primary };
+  if (editingAccountId && accountType === "Prop Firm") {
+    accountPayload.account_status = selectedAccountStatus;
+    if (selectedAccountStatus !== accountStatus(existingAccount)) accountPayload.account_status_changed_at = new Date().toISOString();
+  }
   const accountQuery = editingAccountId
     ? supabase.from("account_balances").update(accountPayload).eq("id", editingAccountId).select().single()
     : supabase.from("account_balances").upsert(accountPayload, { onConflict: "user_id,account_name" }).select().single();
@@ -1110,6 +1180,7 @@ async function saveAccountWithGroup(event) {
   $("#account-balance-type").value = "Live";
   syncGroupOptionsForAccountType();
   $("#account-balance-group").value = "";
+  syncAccountStatusVisibility();
   await loadAccountLedger();
   window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
 }
@@ -1198,6 +1269,7 @@ function editAccount(accountId) {
   $("#account-primary").checked = Boolean(account.is_primary);
   $("#account-deposit-amount").value = "";
   syncDepositVisibility();
+  syncAccountStatusVisibility();
   $("#account-balance-form button[type=submit]").textContent = "Update account";
   $("#account-balance-name").focus();
 }
