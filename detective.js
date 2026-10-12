@@ -743,6 +743,62 @@ function tradeAllocationsForLink(linkId) {
   return groupTradeAllocations.filter((allocation) => String(allocation.group_trade_link_id) === String(linkId));
 }
 
+function linkedTradeAllocationsForAccount(accountId) {
+  return groupTradeAllocations
+    .filter((allocation) => String(allocation.account_id) === String(accountId))
+    .map((allocation) => ({
+      allocation,
+      link: groupTradeLinks.find((item) => String(item.id) === String(allocation.group_trade_link_id)),
+    }))
+    .filter((item) => item.link)
+    .sort((left, right) => {
+      const leftTrade = loadedTrades.find((trade) => String(trade.id) === String(left.link.trade_id));
+      const rightTrade = loadedTrades.find((trade) => String(trade.id) === String(right.link.trade_id));
+      return tradeTime(rightTrade || right.link) - tradeTime(leftTrade || left.link);
+    });
+}
+
+function decorateAccountTradeLinkControls() {
+  document.querySelectorAll(".group-account-row [data-account-move], .account-balance-card [data-account-edit]").forEach((control) => {
+    const accountId = control.dataset.accountMove || control.dataset.accountEdit;
+    const actions = control.closest(".group-account-row, .account-balance-card")?.querySelector(".account-actions");
+    if (!actions || actions.querySelector("[data-account-trade-links]")) return;
+    const linkedCount = linkedTradeAllocationsForAccount(accountId).length;
+    actions.insertAdjacentHTML("afterbegin", `<button type="button" class="account-action" data-account-trade-links="${escapeHtml(accountId)}">Links ${linkedCount}</button>`);
+  });
+}
+
+function openAccountTradeLinks(accountId) {
+  const account = accountBalances.find((item) => String(item.id) === String(accountId));
+  if (!account) return;
+  const allocations = linkedTradeAllocationsForAccount(account.id);
+  const directTrades = accountTrades(account.account_name)
+    .filter((trade) => !groupTradeLinks.some((link) => String(link.trade_id) === String(trade.id)))
+    .sort((left, right) => tradeTime(right) - tradeTime(left));
+  const allocationTotal = cents(allocations.reduce((total, item) => total + Number(item.allocation.pnl_usd || 0), 0));
+  const allocationRows = allocations.length ? allocations.map(({ allocation, link }) => {
+    const trade = loadedTrades.find((item) => String(item.id) === String(link.trade_id));
+    const group = accountGroups.find((item) => String(item.id) === String(link.group_id));
+    const pnl = Number(allocation.pnl_usd || 0);
+    const occurredAt = trade?.traded_at || trade?.created_at || link.created_at;
+    return `<div class="account-link-row"><div><strong>#${String(tradeNumberFor(link.trade_id)).padStart(3, "0")} · ${escapeHtml(trade?.pair || "Journal trade")} · ${escapeHtml(resolvedOutcome(trade || {}))}</strong><small>${escapeHtml(group?.name || "Account group")} · ${occurredAt ? new Date(occurredAt).toLocaleDateString() : "Date unavailable"}</small></div><b class="${pnl >= 0 ? "result-positive" : "result-negative"}">${pnl >= 0 ? "+" : ""}${money(pnl)}</b><button type="button" class="account-action" data-account-link-edit="${link.id}">Edit P&amp;L</button></div>`;
+  }).join("") : '<p class="ledger-empty">No group-trade allocation is linked to this account.</p>';
+  const directRows = directTrades.length ? directTrades.map((trade) => `<div class="account-link-row"><div><strong>#${String(tradeNumberFor(trade.id)).padStart(3, "0")} · ${escapeHtml(trade.pair || "Journal trade")} · ${escapeHtml(resolvedOutcome(trade))}</strong><small>Direct journal row · ${trade.traded_at ? new Date(trade.traded_at).toLocaleDateString() : "Date unavailable"}</small></div><b class="${Number(trade.pnl_percent) >= 0 ? "result-positive" : "result-negative"}">${Number(trade.pnl_percent) >= 0 ? "+" : ""}${displayNumber(trade.pnl_percent, "%")}</b></div>`).join("") : '<p class="ledger-empty">No direct journal rows use this account name.</p>';
+  const dialog = document.createElement("dialog");
+  dialog.className = "detective-dialog";
+  dialog.innerHTML = `<form method="dialog" class="dialog-card account-links-dialog"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow blue-text">ACCOUNT TRADE LINKS</p><h2>${escapeHtml(account.account_name)}</h2><div class="account-link-summary"><span>Starts ${money(account.starting_balance)}</span><span>Linked P&amp;L ${allocationTotal >= 0 ? "+" : ""}${money(allocationTotal)}</span><strong>Current ${money(calculatedBalance(account))}</strong></div><h3>Group allocations</h3><p class="mission-details-definition">Only these exact allocations change this account from its group-linked journal trades.</p><div class="account-link-ledger">${allocationRows}</div><h3>Direct journal rows</h3><p class="mission-details-definition">These are legacy entries whose journal account field exactly matches this account name.</p><div class="account-link-ledger">${directRows}</div></form>`;
+  document.body.append(dialog);
+  dialog.querySelector(".dialog-close")?.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.addEventListener("click", (event) => {
+    const edit = event.target.closest("[data-account-link-edit]");
+    if (!edit) return;
+    dialog.close();
+    openLinkedTradePnlEditor(edit.dataset.accountLinkEdit);
+  });
+  dialog.showModal();
+}
+
 function groupWithdrawalLedger(group) {
   return groupWithdrawals.filter((withdrawal) => withdrawal.group_id === group.id).sort((a, b) => new Date(b.withdrawn_at) - new Date(a.withdrawn_at));
 }
@@ -1103,6 +1159,7 @@ function renderGroupedAccountBalances() {
   setTimeout(decorateTheoreticalWithdrawalForms, 0);
   setTimeout(decoratePropStatusControls, 0);
   setTimeout(decorateGroupAdminControls, 0);
+  setTimeout(decorateAccountTradeLinkControls, 0);
   setTimeout(renderPastAccounts, 0);
   const groups = accountGroups.map((group) => {
     const members = accountGroupAccounts(group.id);
@@ -2474,6 +2531,8 @@ function init() {
     if (deleteButton) deleteTrade(deleteButton.dataset.tradeId);
     const accountEditButton = event.target.closest("[data-account-edit]");
     if (accountEditButton) editAccount(accountEditButton.dataset.accountEdit);
+    const accountTradeLinksButton = event.target.closest("[data-account-trade-links]");
+    if (accountTradeLinksButton) openAccountTradeLinks(accountTradeLinksButton.dataset.accountTradeLinks);
     const accountDeleteButton = event.target.closest("[data-account-delete]");
     if (accountDeleteButton) deleteAccount(accountDeleteButton.dataset.accountDelete);
     const groupEditButton = event.target.closest("[data-group-edit]");
