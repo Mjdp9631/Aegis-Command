@@ -23,6 +23,7 @@ let accountTestTrades = [];
 let editingAccountId = null;
 let editingGroupId = null;
 let activeDetectiveTab = localStorage.getItem("aegis.detective-tab") || "journal";
+let syncAccountSelectionUi = () => {};
 const PROP_STATUSES = ["pending", "funded"];
 
 function normalizedPropStatus(value) {
@@ -290,34 +291,58 @@ function executionGroupAccounts(groupId) {
   return accountGroupAccounts(groupId).filter((account) => !isPastAccount(account));
 }
 
-function accountExecutionClassification(rows = executionRowsFromForm().rows) {
-  const classifications = [...new Set(rows
-    .map((row) => accountBalances.find((account) => String(account.id) === String(row.account_id)))
-    .filter(Boolean)
-    .map((account) => {
-      if (account.account_type === "Prop Firm") return "Prop";
-      if (account.account_type === "Live") return "Master";
-      return account.account_type || "Master";
-    }))];
-  return classifications.length ? classifications.join(" + ") : "";
-}
-
 function syncTradeAccountClassification() {
   const control = $("#detective-account");
   if (!control) return;
-  const classification = accountExecutionClassification();
-  control.disabled = Boolean(classification);
-  control.closest("label")?.classList.toggle("is-derived-classification", Boolean(classification));
-  if (!classification) return;
-  if (!Array.from(control.options).some((option) => option.value === classification)) control.add(new Option(classification, classification));
-  control.value = classification;
+  control.disabled = false;
+  control.closest("label")?.classList.remove("is-derived-classification");
+  syncAccountSelectionUi();
 }
 
 function ensureTradeAccountClassificationLabel() {
   const field = $("#detective-account")?.closest("label");
   if (!field) return;
   const labelText = Array.from(field.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
-  if (labelText) labelText.nodeValue = "Journal classification ";
+  if (labelText) labelText.nodeValue = "Accounts ";
+}
+
+function selectedAccountCategories(value) {
+  return String(value || "").split(" + ").map((item) => item.trim()).filter(Boolean);
+}
+
+function ensureTradeAccountMultiSelect() {
+  const control = $("#detective-account");
+  if (!control || $("#detective-account-multi-select")) return;
+  control.style.display = "none";
+  const menu = document.createElement("details");
+  menu.id = "detective-account-multi-select";
+  menu.className = "setup-multi-select";
+  const selectable = Array.from(control.options).map((option) => option.value).filter((value) => !value.includes(" + "));
+  menu.innerHTML = `<summary>Choose account(s)</summary><div class="setup-options">${selectable.map((value, index) => `<label><input type="checkbox" data-account-category-index="${index}" /> ${escapeHtml(value)}</label>`).join("")}</div>`;
+  control.insertAdjacentElement("afterend", menu);
+  const summary = menu.querySelector("summary");
+  const updateSummary = () => {
+    const selected = selectedAccountCategories(control.value);
+    summary.textContent = selected.length ? selected.join(" + ") : "Choose account(s)";
+  };
+  syncAccountSelectionUi = () => {
+    const selected = new Set(selectedAccountCategories(control.value));
+    menu.querySelectorAll("input[data-account-category-index]").forEach((checkbox) => {
+      checkbox.checked = selected.has(selectable[Number(checkbox.dataset.accountCategoryIndex)]);
+    });
+    updateSummary();
+  };
+  menu.addEventListener("change", (event) => {
+    if (!event.target.matches("input[data-account-category-index]")) return;
+    const selected = Array.from(menu.querySelectorAll("input[data-account-category-index]:checked"))
+      .map((checkbox) => selectable[Number(checkbox.dataset.accountCategoryIndex)]);
+    const value = selected.join(" + ");
+    if (value && !Array.from(control.options).some((option) => option.value === value)) control.add(new Option(value, value));
+    control.value = value || "";
+    updateSummary();
+    syncExecutionEstimate();
+  });
+  syncAccountSelectionUi();
 }
 
 function ensureTradePriceFieldOrder() {
@@ -2092,6 +2117,7 @@ document.addEventListener("click", (event) => {
 
 function clearForm() {
   $("#detective-trade-dialog form").reset();
+  syncAccountSelectionUi();
   delete $("#detective-r")?.dataset.autoRiskReward;
   renderTradeExecutionRows();
   $("#detective-outcome").value = "Open";
@@ -2204,6 +2230,7 @@ function editTrade(trade) {
   setSelectValue("#detective-outcome", trade.trade_status === "Open" ? "Open" : resolvedOutcome(trade));
   setSelectValue("#detective-position", trade.position);
   setSelectValue("#detective-account", trade.account);
+  syncAccountSelectionUi();
   setSelectValue("#detective-day", trade.trade_day);
   setSelectValue("#detective-month", trade.trade_month);
   setSelectValue("#detective-session-time", trade.session_time);
@@ -2340,6 +2367,7 @@ function init() {
   ensurePlanAdherenceFields();
   ensureTradeExecutionFields();
   ensureTradeAccountClassificationLabel();
+  ensureTradeAccountMultiSelect();
   ensureTradePriceFieldOrder();
   const dialog = $("#detective-trade-dialog");
   const tradeTime = $("#detective-time");
