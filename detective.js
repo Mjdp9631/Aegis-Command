@@ -2473,6 +2473,23 @@ function init() {
   const outcomeHeader = Array.from(header.cells).find((cell) => cell.textContent.trim() === "WIN / B/E / LOSS");
   if (outcomeHeader) outcomeHeader.textContent = "WIN / LOSS";
   header.insertAdjacentHTML("afterbegin", "<th>#</th>");
+  const compactHeaders = {
+    "MARKET CONDITION": "MKT",
+    "CB HOUR": "CB",
+    "WIN / LOSS": "W/L",
+    "POSITION": "POS",
+    "ACCOUNT": "ACCT",
+    "SESSION TIME": "SESSION",
+    "ENTRY TF": "TF",
+  };
+  Array.from(header.cells).forEach((cell) => {
+    const fullLabel = cell.textContent.trim();
+    const compactLabel = compactHeaders[fullLabel];
+    if (!compactLabel) return;
+    cell.textContent = compactLabel;
+    cell.title = fullLabel;
+    cell.setAttribute("aria-label", fullLabel);
+  });
   wireTradeHoverFocus();
   wireTradeRowClick();
   buildFilters();
