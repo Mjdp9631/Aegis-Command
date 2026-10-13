@@ -2479,6 +2479,7 @@ function init() {
     "WIN / LOSS": "W/L",
     "POSITION": "POS",
     "ACCOUNT": "ACCT",
+    "MONTH": "MO",
     "SESSION TIME": "SESSION",
     "ENTRY TF": "TF",
   };
