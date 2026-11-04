@@ -811,17 +811,89 @@ function openAccountTradeLinks(accountId) {
   const directRows = directTrades.length ? directTrades.map((trade) => `<div class="account-link-row"><div><strong>#${String(tradeNumberFor(trade.id)).padStart(3, "0")} · ${escapeHtml(trade.pair || "Journal trade")} · ${escapeHtml(resolvedOutcome(trade))}</strong><small>Direct journal row · ${trade.traded_at ? new Date(trade.traded_at).toLocaleDateString() : "Date unavailable"}</small></div><b class="${Number(trade.pnl_percent) >= 0 ? "result-positive" : "result-negative"}">${Number(trade.pnl_percent) >= 0 ? "+" : ""}${displayNumber(trade.pnl_percent, "%")}</b></div>`).join("") : '<p class="ledger-empty">No direct journal rows use this account name.</p>';
   const dialog = document.createElement("dialog");
   dialog.className = "detective-dialog";
-  dialog.innerHTML = `<form method="dialog" class="dialog-card account-links-dialog"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow blue-text">ACCOUNT TRADE LINKS</p><h2>${escapeHtml(account.account_name)}</h2><div class="account-link-summary"><span>Starts ${money(account.starting_balance)}</span><span>Linked P&amp;L ${allocationTotal >= 0 ? "+" : ""}${money(allocationTotal)}</span><strong>Current ${money(calculatedBalance(account))}</strong></div><h3>Group allocations</h3><p class="mission-details-definition">Only these exact allocations change this account from its group-linked journal trades.</p><div class="account-link-ledger">${allocationRows}</div><h3>Direct journal rows</h3><p class="mission-details-definition">These are legacy entries whose journal account field exactly matches this account name.</p><div class="account-link-ledger">${directRows}</div></form>`;
+  const unlinkAllButton = allocations.length
+    ? `<button type="button" class="account-action danger" data-account-links-unlink-all="${escapeHtml(account.id)}">Unlink all ${allocations.length}</button>`
+    : "";
+  dialog.innerHTML = `<form method="dialog" class="dialog-card account-links-dialog"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow blue-text">ACCOUNT TRADE LINKS</p><h2>${escapeHtml(account.account_name)}</h2><div class="account-link-summary"><span>Starts ${money(account.starting_balance)}</span><span>Linked P&amp;L ${allocationTotal >= 0 ? "+" : ""}${money(allocationTotal)}</span><strong>Current ${money(calculatedBalance(account))}</strong></div><div class="account-link-section-heading"><h3>Group allocations</h3>${unlinkAllButton}</div><p class="mission-details-definition">Only these exact allocations change this account from its group-linked journal trades.</p><div class="account-link-ledger">${allocationRows}</div><h3>Direct journal rows</h3><p class="mission-details-definition">These are legacy entries whose journal account field exactly matches this account name.</p><div class="account-link-ledger">${directRows}</div></form>`;
   document.body.append(dialog);
   dialog.querySelector(".dialog-close")?.addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove(), { once: true });
   dialog.addEventListener("click", (event) => {
+    const unlinkAll = event.target.closest("[data-account-links-unlink-all]");
+    if (unlinkAll) {
+      void unlinkAllAccountTradeLinks(unlinkAll.dataset.accountLinksUnlinkAll, unlinkAll, dialog);
+      return;
+    }
     const edit = event.target.closest("[data-account-link-edit]");
     if (!edit) return;
     dialog.close();
     openLinkedTradePnlEditor(edit.dataset.accountLinkEdit);
   });
   dialog.showModal();
+}
+
+async function unlinkAllAccountTradeLinks(accountId, button, dialog) {
+  const account = accountBalances.find((item) => String(item.id) === String(accountId));
+  const allocations = linkedTradeAllocationsForAccount(accountId);
+  if (!account || !allocations.length || !supabase) return;
+
+  const count = allocations.length;
+  if (!window.confirm(`Unlink all ${count} linked trade${count === 1 ? "" : "s"} from ${account.account_name}? The journal trades will remain saved, and allocations for other accounts will stay linked.`)) return;
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) return alert("Please sign in before changing account trade links.");
+
+  button.disabled = true;
+  button.textContent = "Unlinking…";
+  const userId = sessionData.session.user.id;
+  const allocationIds = allocations.map(({ allocation }) => allocation.id);
+  const affectedLinkIds = [...new Set(allocations.map(({ link }) => link.id))];
+  const { error: deleteError } = await supabase
+    .from("account_group_trade_allocations")
+    .delete()
+    .eq("user_id", userId)
+    .eq("account_id", account.id)
+    .in("id", allocationIds);
+  if (deleteError) {
+    button.disabled = false;
+    button.textContent = `Unlink all ${count}`;
+    return alert(`The linked trades could not be unlinked: ${deleteError.message}`);
+  }
+
+  const totals = await Promise.all(affectedLinkIds.map(async (linkId) => {
+    const { data: remainingAllocations, error: loadError } = await supabase
+      .from("account_group_trade_allocations")
+      .select("pnl_usd")
+      .eq("user_id", userId)
+      .eq("group_trade_link_id", linkId);
+    if (loadError) return { error: loadError };
+    if (!remainingAllocations?.length) {
+      const { error } = await supabase
+        .from("account_group_trade_links")
+        .delete()
+        .eq("id", linkId)
+        .eq("user_id", userId);
+      return { error };
+    }
+    const totalPnl = cents(remainingAllocations.reduce((total, allocation) => total + Number(allocation.pnl_usd || 0), 0));
+    const { error } = await supabase
+      .from("account_group_trade_links")
+      .update({ actual_pnl_usd: totalPnl })
+      .eq("id", linkId)
+      .eq("user_id", userId);
+    return { error };
+  }));
+  const reconciliationError = totals.find((result) => result.error)?.error;
+  if (reconciliationError) {
+    dialog?.close();
+    await loadAccountLedger();
+    window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
+    return alert(`The account allocations were removed, but one or more group totals could not be refreshed: ${reconciliationError.message}`);
+  }
+
+  dialog?.close();
+  await loadAccountLedger();
+  window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
 }
 
 function groupWithdrawalLedger(group) {
