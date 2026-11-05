@@ -1152,10 +1152,48 @@ function decorateGroupAdminControls() {
 
 function groupAllocationInputs(groupId, type) {
   const members = accountGroupAccounts(groupId).filter((account) => !isPastAccount(account));
+  if (type === "trade") {
+    return `<div class="group-allocation-grid trade-cost-allocation-grid"><p>Net P&amp;L by account</p>${members.map((account) => `<section class="trade-cost-allocation" data-trade-cost-allocation><span>${escapeHtml(account.account_name)} · starts ${money(account.starting_balance)}</span><div><label>Gross P&amp;L<input data-group-trade-gross="${groupId}" data-account-id="${account.id}" type="number" step="0.01" required placeholder="e.g. 1000 or -500" /></label><label>Fees<input data-group-trade-fee="${groupId}" data-account-id="${account.id}" type="number" max="0" step="0.01" value="0" required placeholder="0 or -4.50" /></label><label>Swap<input data-group-trade-swap="${groupId}" data-account-id="${account.id}" type="number" step="0.01" value="0" required placeholder="e.g. -1.20" /></label></div><small data-group-trade-net="${groupId}" data-account-id="${account.id}">Net P&amp;L —</small></section>`).join("")}</div>`;
+  }
   const attribute = type === "trade" ? "data-group-trade-allocation" : "data-withdrawal-allocation";
   const label = type === "trade" ? "Exact PnL" : "Gross withdrawal";
   const placeholder = type === "trade" ? "e.g. 1000 or -500" : "e.g. 1000";
   return `<div class="group-allocation-grid"><p>${label} by account</p>${members.map((account) => `<label><span>${escapeHtml(account.account_name)} · starts ${money(account.starting_balance)}</span><input ${attribute}="${groupId}" data-account-id="${account.id}" type="number" min="${type === "withdrawal" ? "0" : ""}" step="0.01" required placeholder="${placeholder}" /></label>`).join("")}</div>`;
+}
+
+function tradeCashAllocation(grossValue, feeValue, swapValue) {
+  const gross = numberOrNull(String(grossValue ?? "").trim());
+  const fee = numberOrNull(String(feeValue ?? "").trim());
+  const swap = numberOrNull(String(swapValue ?? "").trim());
+  if (!Number.isFinite(gross) || !Number.isFinite(fee) || !Number.isFinite(swap) || fee > 0) return null;
+  return { gross: cents(gross), fee: cents(fee), swap: cents(swap), net: cents(gross + fee + swap) };
+}
+
+function formTradeAllocations(form, groupId) {
+  const grossInputs = [...form.querySelectorAll(`[data-group-trade-gross="${groupId}"]`)];
+  const allocations = grossInputs.map((grossInput) => {
+    const accountId = grossInput.dataset.accountId;
+    const feeInput = form.querySelector(`[data-group-trade-fee="${groupId}"][data-account-id="${accountId}"]`);
+    const swapInput = form.querySelector(`[data-group-trade-swap="${groupId}"][data-account-id="${accountId}"]`);
+    const values = tradeCashAllocation(grossInput.value, feeInput?.value, swapInput?.value);
+    return values && { accountId, ...values };
+  });
+  return allocations.length && allocations.every(Boolean) ? allocations : null;
+}
+
+function refreshGroupTradeNetPreviews(form) {
+  if (!form) return;
+  const groupId = form.dataset.groupTradeForm;
+  form.querySelectorAll(`[data-group-trade-net="${groupId}"]`).forEach((preview) => {
+    const accountId = preview.dataset.accountId;
+    const gross = form.querySelector(`[data-group-trade-gross="${groupId}"][data-account-id="${accountId}"]`);
+    const fee = form.querySelector(`[data-group-trade-fee="${groupId}"][data-account-id="${accountId}"]`);
+    const swap = form.querySelector(`[data-group-trade-swap="${groupId}"][data-account-id="${accountId}"]`);
+    const values = tradeCashAllocation(gross?.value, fee?.value, swap?.value);
+    preview.textContent = values ? `Net P&L ${values.net >= 0 ? "+" : ""}${money(values.net)}` : "Net P&L —";
+    preview.classList.toggle("result-positive", Boolean(values && values.net > 0));
+    preview.classList.toggle("result-negative", Boolean(values && values.net < 0));
+  });
 }
 
 function formAllocations(form, selector, { allowZero = true, allowNegative = false } = {}) {
@@ -1179,6 +1217,7 @@ function decorateGroupAllocationForms() {
     form.innerHTML = `<label>Attach journal trade <select data-group-trade-select="${group.id}"><option value="">Choose a closed trade</option>${options}</select></label>${groupAllocationInputs(group.id, "trade")}<button class="primary compact" type="submit">Add trade allocations</button>`;
     const select = form.querySelector(`[data-group-trade-select="${group.id}"]`);
     if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+    refreshGroupTradeNetPreviews(form);
   });
   document.querySelectorAll("[data-group-withdrawal-form]").forEach((form) => {
     const group = accountGroups.find((item) => String(item.id) === String(form.dataset.groupWithdrawalForm));
@@ -1516,32 +1555,45 @@ async function moveAccount(accountId, groupId) {
   await loadAccountLedger();
 }
 
+async function verifyTradeCostStorage() {
+  const { error } = await supabase
+    .from("account_group_trade_allocations")
+    .select("gross_pnl_usd, fee_usd, swap_usd")
+    .limit(1);
+  return error || null;
+}
+
 async function saveGroupTrade(groupId, form) {
   const tradeId = form.querySelector(`[data-group-trade-select="${groupId}"]`)?.value;
-  const allocations = formAllocations(form, `[data-group-trade-allocation="${groupId}"]`, { allowNegative: true });
-  if (!tradeId || !allocations?.length) return alert("Choose a closed journal trade and enter a non-zero exact dollar PnL for each participating account.");
+  const allocations = formTradeAllocations(form, groupId);
+  if (!tradeId || !allocations?.length) return alert("Choose a closed journal trade and enter gross P&L, a zero-or-negative fee, and swap for every participating account.");
   if (groupTradeLinks.some((link) => String(link.group_id) === String(groupId) && String(link.trade_id) === String(tradeId))) return alert("This journal trade is already linked to this group.");
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return alert("Please sign in before linking a group trade.");
-  const totalPnl = cents(allocations.reduce((total, allocation) => total + allocation.amount, 0));
+  const storageError = await verifyTradeCostStorage();
+  if (storageError) return alert(`Fee and swap storage is not ready: ${storageError.message}. Run migration 106 first.`);
+  const totalPnl = cents(allocations.reduce((total, allocation) => total + allocation.net, 0));
   const { data: link, error } = await supabase.from("account_group_trade_links").insert({ user_id: sessionData.session.user.id, group_id: groupId, trade_id: tradeId, actual_pnl_usd: totalPnl }).select().single();
   if (error) return alert(`The trade could not be attached: ${error.message}`);
   const allocationResult = await supabase.from("account_group_trade_allocations").insert(allocations.map((allocation) => ({
     user_id: sessionData.session.user.id,
     group_trade_link_id: link.id,
     account_id: allocation.accountId,
-    pnl_usd: allocation.amount,
+    pnl_usd: allocation.net,
+    gross_pnl_usd: allocation.gross,
+    fee_usd: allocation.fee,
+    swap_usd: allocation.swap,
   })));
   if (allocationResult.error) {
     await supabase.from("account_group_trade_links").delete().eq("id", link.id);
-    const migrationHint = /relation|schema cache|does not exist/i.test(String(allocationResult.error.message || "")) ? " Run migration 094 first." : "";
+    const migrationHint = /gross_pnl_usd|fee_usd|swap_usd|relation|schema cache|does not exist/i.test(String(allocationResult.error.message || "")) ? " Run migration 106 first." : "";
     return alert(`The trade could not be allocated: ${allocationResult.error.message}.${migrationHint}`);
   }
   await loadAccountLedger();
   window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
 }
 
-async function openLinkedTradePnlEditor(linkId) {
+async function openLegacyLinkedTradePnlEditor(linkId) {
   const link = groupTradeLinks.find((item) => String(item.id) === String(linkId));
   const allocations = link ? tradeAllocationsForLink(link.id) : [];
   if (!link || !supabase) return;
@@ -1589,6 +1641,96 @@ async function openLinkedTradePnlEditor(linkId) {
       return;
     }
     const totalPnl = cents(updates.reduce((total, { pnl }) => total + pnl, 0));
+    const { error: linkError } = await supabase
+      .from("account_group_trade_links")
+      .update({ actual_pnl_usd: totalPnl })
+      .eq("id", link.id)
+      .eq("user_id", sessionData.session.user.id);
+    if (linkError) {
+      submit.disabled = false;
+      submit.textContent = "Save linked P&L";
+      alert(`The account amounts were saved, but the group total could not be refreshed: ${linkError.message}`);
+      return;
+    }
+    dialog.close();
+    await loadAccountLedger();
+    window.dispatchEvent(new CustomEvent("aegis:accounts-changed"));
+  });
+  dialog.showModal();
+}
+
+async function openLinkedTradePnlEditor(linkId) {
+  const link = groupTradeLinks.find((item) => String(item.id) === String(linkId));
+  const allocations = link ? tradeAllocationsForLink(link.id) : [];
+  if (!link || !supabase) return;
+  if (!allocations.length) {
+    alert("This older linked trade has no per-account allocation to edit. Unlink and re-link it once with the exact account amounts.");
+    return;
+  }
+
+  const trade = loadedTrades.find((item) => String(item.id) === String(link.trade_id));
+  const fields = allocations.map((allocation) => {
+    const account = accountBalances.find((item) => String(item.id) === String(allocation.account_id));
+    const gross = allocation.gross_pnl_usd == null ? Number(allocation.pnl_usd || 0) : Number(allocation.gross_pnl_usd);
+    const fee = Number(allocation.fee_usd || 0);
+    const swap = Number(allocation.swap_usd || 0);
+    const net = cents(gross + fee + swap);
+    return `<section class="trade-cost-allocation"><span>${escapeHtml(account?.account_name || "Account")}</span><div><label>Gross P&amp;L<input type="number" step="0.01" data-linked-trade-gross="${allocation.id}" value="${gross}" required /></label><label>Fees<input type="number" max="0" step="0.01" data-linked-trade-fee="${allocation.id}" value="${fee}" required /></label><label>Swap<input type="number" step="0.01" data-linked-trade-swap="${allocation.id}" value="${swap}" required /></label></div><small data-linked-trade-net="${allocation.id}" class="${net > 0 ? "result-positive" : net < 0 ? "result-negative" : ""}">Net P&amp;L ${net >= 0 ? "+" : ""}${money(net)}</small></section>`;
+  }).join("");
+  const dialog = document.createElement("dialog");
+  dialog.className = "detective-dialog";
+  dialog.innerHTML = `<form method="dialog" class="dialog-card"><button class="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow blue-text">EDIT LINKED TRADE</p><h2>${escapeHtml(trade?.pair || "Journal trade")} P&amp;L</h2><p class="mission-details-definition">Enter each account’s gross result, fee, and swap. Fees must be zero or negative; the net amount updates that account balance.</p><div class="group-allocation-grid trade-cost-allocation-grid">${fields}</div><button class="primary" type="submit">Save linked P&amp;L</button></form>`;
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.querySelector(".dialog-close")?.addEventListener("click", () => dialog.close());
+  const syncNetPreviews = () => {
+    allocations.forEach((allocation) => {
+      const preview = dialog.querySelector(`[data-linked-trade-net="${allocation.id}"]`);
+      const values = tradeCashAllocation(
+        dialog.querySelector(`[data-linked-trade-gross="${allocation.id}"]`)?.value,
+        dialog.querySelector(`[data-linked-trade-fee="${allocation.id}"]`)?.value,
+        dialog.querySelector(`[data-linked-trade-swap="${allocation.id}"]`)?.value,
+      );
+      if (!preview) return;
+      preview.textContent = values ? `Net P&L ${values.net >= 0 ? "+" : ""}${money(values.net)}` : "Net P&L —";
+      preview.classList.toggle("result-positive", Boolean(values && values.net > 0));
+      preview.classList.toggle("result-negative", Boolean(values && values.net < 0));
+    });
+  };
+  dialog.querySelector("form")?.addEventListener("input", syncNetPreviews);
+  dialog.querySelector("form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const updates = allocations.map((allocation) => ({
+      allocation,
+      values: tradeCashAllocation(
+        dialog.querySelector(`[data-linked-trade-gross="${allocation.id}"]`)?.value,
+        dialog.querySelector(`[data-linked-trade-fee="${allocation.id}"]`)?.value,
+        dialog.querySelector(`[data-linked-trade-swap="${allocation.id}"]`)?.value,
+      )
+    }));
+    if (updates.some(({ values }) => !values)) {
+      alert("Enter a valid gross P&L, a zero-or-negative fee, and a valid swap for every linked account.");
+      return;
+    }
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) return alert("Please sign in before editing a linked trade.");
+    const submit = event.currentTarget.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    submit.textContent = "Saving…";
+    const results = await Promise.all(updates.map(({ allocation, values }) => supabase
+      .from("account_group_trade_allocations")
+      .update({ pnl_usd: values.net, gross_pnl_usd: values.gross, fee_usd: values.fee, swap_usd: values.swap })
+      .eq("id", allocation.id)
+      .eq("user_id", sessionData.session.user.id)));
+    const allocationError = results.find((result) => result.error)?.error;
+    if (allocationError) {
+      submit.disabled = false;
+      submit.textContent = "Save linked P&L";
+      const migrationHint = /gross_pnl_usd|fee_usd|swap_usd|schema cache|column/i.test(String(allocationError.message || "")) ? " Run migration 106 first." : "";
+      alert(`The linked P&L could not be updated: ${allocationError.message}.${migrationHint}`);
+      return;
+    }
+    const totalPnl = cents(updates.reduce((total, { values }) => total + values.net, 0));
     const { error: linkError } = await supabase
       .from("account_group_trade_links")
       .update({ actual_pnl_usd: totalPnl })
@@ -2598,7 +2740,12 @@ function init() {
     const theoreticalForm = event.target.closest("[data-theoretical-trade-form]");
     if (theoreticalForm) { event.preventDefault(); saveTheoreticalTrade(theoreticalForm.dataset.theoreticalTradeForm, theoreticalForm); }
   });
-  document.addEventListener("input", (event) => { const input = event.target.closest("[data-withdrawal-allocation]"); if (input) updateWithdrawalPreview(input.dataset.withdrawalAllocation); });
+  document.addEventListener("input", (event) => {
+    const withdrawalInput = event.target.closest("[data-withdrawal-allocation]");
+    if (withdrawalInput) updateWithdrawalPreview(withdrawalInput.dataset.withdrawalAllocation);
+    const tradeCostInput = event.target.closest("[data-group-trade-gross], [data-group-trade-fee], [data-group-trade-swap]");
+    if (tradeCostInput) refreshGroupTradeNetPreviews(tradeCostInput.closest("[data-group-trade-form]"));
+  });
   document.addEventListener("change", (event) => {
     const accountCalendarScopeControl = event.target.closest("[data-account-calendar-scope]");
     if (accountCalendarScopeControl) {
