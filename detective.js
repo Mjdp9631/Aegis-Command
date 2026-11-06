@@ -531,15 +531,17 @@ function accountDeniedPayoutTotal(accountId) {
 }
 
 function accountStatus(account) {
+  if (account?.is_breached) return "breached";
   return account?.account_status === "failed" ? "failed" : "active";
 }
 
 function isPastAccount(account) {
-  return accountStatus(account) === "failed" || accountDeniedPayoutTotal(account.id) > 0;
+  return accountStatus(account) !== "active" || accountDeniedPayoutTotal(account.id) > 0;
 }
 
 function pastAccountLabel(account) {
   const reasons = [];
+  if (accountStatus(account) === "breached") reasons.push("ACCOUNT BREACHED");
   if (accountStatus(account) === "failed") reasons.push("ACCOUNT FAILED");
   if (accountDeniedPayoutTotal(account.id) > 0) reasons.push("PAYOUT DENIED");
   return reasons.join(" · ");
@@ -677,6 +679,15 @@ function renderAccountAdminControls() {
     statusField.innerHTML = 'Account status <select id="account-status"><option value="active">Active</option><option value="failed">Account failed</option></select>';
     accountForm.insertBefore(statusField, accountForm.querySelector(".account-primary") || accountForm.querySelector("button"));
   }
+  if (!$("#account-breach-wrap")) {
+    const breachField = document.createElement("label");
+    breachField.id = "account-breach-wrap";
+    breachField.className = "account-primary account-breach-toggle";
+    breachField.hidden = true;
+    breachField.innerHTML = '<input id="account-breached" type="checkbox" /> Mark account as breached';
+    accountForm.insertBefore(breachField, accountForm.querySelector(".account-primary:not(.account-breach-toggle)") || accountForm.querySelector("button"));
+    breachField.querySelector("#account-breached").addEventListener("change", syncAccountBreachState);
+  }
   if (!$("#account-deposit-wrap")) {
     const depositField = document.createElement("label");
     depositField.id = "account-deposit-wrap";
@@ -744,13 +755,30 @@ function closedTradesAvailableForGroup(groupId) {
 function syncAccountStatusVisibility() {
   const wrap = $("#account-status-wrap");
   const control = $("#account-status");
+  const breachWrap = $("#account-breach-wrap");
+  const breachControl = $("#account-breached");
   const account = editingAccountId ? accountBalances.find((item) => item.id === editingAccountId) : null;
   const visible = Boolean(account && $("#account-balance-type")?.value === "Prop Firm");
   if (wrap) wrap.hidden = !visible;
+  if (breachWrap) breachWrap.hidden = !visible;
   if (control) {
     control.disabled = !visible;
-    control.value = accountStatus(account);
+    control.value = account?.account_status === "failed" ? "failed" : "active";
   }
+  if (breachControl) {
+    breachControl.disabled = !visible;
+    breachControl.checked = Boolean(account?.is_breached);
+  }
+  syncAccountBreachState();
+}
+
+function syncAccountBreachState() {
+  const breached = $("#account-breached");
+  const primary = $("#account-primary");
+  if (!primary) return;
+  const disablePrimary = Boolean(breached?.checked && !breached.disabled);
+  if (disablePrimary) primary.checked = false;
+  primary.disabled = disablePrimary;
 }
 
 function groupTradePnlForAccount(accountId) {
@@ -1398,7 +1426,8 @@ async function saveAccountWithGroup(event) {
   const accountType = $("#account-balance-type")?.value || "Live";
   const groupId = $("#account-balance-group")?.value || "";
   const selectedAccountStatus = editingAccountId && accountType === "Prop Firm" ? $("#account-status")?.value || "active" : "active";
-  const primary = selectedAccountStatus !== "failed" && $("#account-primary").checked;
+  const breached = Boolean(editingAccountId && accountType === "Prop Firm" && $("#account-breached")?.checked);
+  const primary = selectedAccountStatus !== "failed" && !breached && $("#account-primary").checked;
   const depositAmount = editingAccountId && accountType === "Live" ? numberOrNull($("#account-deposit-amount")?.value) : null;
   if (!accountName || !startingBalance || startingBalance <= 0) return;
   if (depositAmount != null && (!Number.isFinite(depositAmount) || depositAmount <= 0)) return alert("Enter a positive deposit amount or leave it blank.");
@@ -1414,7 +1443,11 @@ async function saveAccountWithGroup(event) {
   const accountPayload = { user_id: userId, account_name: accountName, starting_balance: startingBalance, account_type: accountType, is_primary: primary };
   if (editingAccountId && accountType === "Prop Firm") {
     accountPayload.account_status = selectedAccountStatus;
-    if (selectedAccountStatus !== accountStatus(existingAccount)) accountPayload.account_status_changed_at = new Date().toISOString();
+    if (selectedAccountStatus !== (existingAccount?.account_status === "failed" ? "failed" : "active")) accountPayload.account_status_changed_at = new Date().toISOString();
+  }
+  if (editingAccountId) {
+    accountPayload.is_breached = breached;
+    if (breached !== Boolean(existingAccount?.is_breached)) accountPayload.breached_at = breached ? new Date().toISOString() : null;
   }
   const accountQuery = editingAccountId
     ? supabase.from("account_balances").update(accountPayload).eq("id", editingAccountId).select().single()
