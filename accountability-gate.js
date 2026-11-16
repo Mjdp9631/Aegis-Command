@@ -21,6 +21,11 @@ function shiftDay(key, amount) {
   return date.toISOString().slice(0, 10);
 }
 
+function operatingWeekKey(key = dayKey()) {
+  const weekday = new Date(`${key}T12:00:00Z`).getUTCDay();
+  return shiftDay(key, -((weekday + 6) % 7));
+}
+
 function dateOnly(value) {
   return value ? String(value).slice(0, 10) : "";
 }
@@ -164,7 +169,10 @@ function evaluateExecution(operations, occurrences) {
   return {
     severity,
     trigger_type: "weekly_execution",
-    trigger_date: shiftDay(today, -1),
+    // The review stays one occurrence for the whole operating week. Without
+    // this stable key, a rolling seven-day calculation can create the same
+    // breach again after every login or refresh.
+    trigger_date: operatingWeekKey(today),
     execution_rate: Number((rate * 100).toFixed(2)),
     summary: `${done}/${total} scheduled operations completed over the last ${dailyRates.length} scheduled days (${Math.round(rate * 100)}%). Primary corrective focus: ${domainLabel(primaryDomain)} (${primaryMisses} missed operations).`,
   };
@@ -187,6 +195,24 @@ function inactivityProtocol(operations, occurrences, campaign) {
     execution_rate: null,
     summary: "No completed execution evidence has been recorded in the last seven operating days. Re-entry is required before the command center reopens.",
   };
+}
+
+function isHandledProtocol(protocol) {
+  return ["acknowledged", "completed"].includes(String(protocol?.status || "").toLowerCase());
+}
+
+function isSameBreachOccurrence(existing, breach) {
+  if (!existing || !breach || existing.trigger_type !== breach.trigger_type) return false;
+  if (breach.trigger_type === "weekly_execution") return operatingWeekKey(existing.trigger_date) === operatingWeekKey(breach.trigger_date);
+  // A seven-day inactivity gap is one ongoing occurrence. It becomes eligible
+  // again only after a completed action breaks the gap and a later gap forms.
+  return existing.trigger_type === "inactivity" && existing.trigger_date >= shiftDay(dayKey(), -7);
+}
+
+function hasHandledOccurrence(protocols, breach, ignoreId = null) {
+  return (protocols || []).some((protocol) => String(protocol.id) !== String(ignoreId || "")
+    && isHandledProtocol(protocol)
+    && isSameBreachOccurrence(protocol, breach));
 }
 
 function ensureGate() {
@@ -305,21 +331,26 @@ async function loadGate(session) {
   document.body.classList.add("accountability-pending");
   const load = async () => Promise.all([
     supabase.from("accountability_protocols").select("id,severity,trigger_type,trigger_date,execution_rate,summary,status").eq("user_id", activeUserId).eq("status", "open").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("accountability_protocols").select("id,trigger_type,trigger_date,status").eq("user_id", activeUserId).gte("trigger_date", shiftDay(dayKey(), -8)).order("created_at", { ascending: false }).limit(30),
     supabase.from("operations").select("id,title,brief,category,metric_key,scheduled_date,scheduled_end_date,operation_date,schedule_mode,is_daily,completed,completed_on,status,created_at").eq("user_id", activeUserId).or(`scheduled_date.gte.${shiftDay(dayKey(), -10)},schedule_mode.in.(daily,weekly,recurring)`).limit(250),
     supabase.from("operation_occurrences").select("id,operation_id,occurrence_date,completed,completed_on,status").eq("user_id", activeUserId).gte("occurrence_date", shiftDay(dayKey(), -10)).lt("occurrence_date", dayKey()),
     supabase.from("xp_campaigns").select("started_at").eq("user_id", activeUserId).maybeSingle(),
   ]);
-  const [protocolResult, operationsResult, occurrencesResult, campaignResult] = window.AEGIS_DATA_GUARD
+  const [protocolResult, protocolHistoryResult, operationsResult, occurrencesResult, campaignResult] = window.AEGIS_DATA_GUARD
     ? await window.AEGIS_DATA_GUARD.run("accountability:gate", load, { ttl: 60000 })
     : await load();
-  if (protocolResult.error) {
+  if (protocolResult.error || protocolHistoryResult.error) {
     // The migration may be deployed after this client bundle. Do not make a
     // missing table look like a user discipline failure.
-    console.warn("Accountability protocol unavailable", protocolResult.error.message);
+    console.warn("Accountability protocol unavailable", protocolResult.error?.message || protocolHistoryResult.error?.message);
     unlock();
     return;
   }
-  if (protocolResult.data) return showProtocol(protocolResult.data);
+  const history = protocolHistoryResult.data || [];
+  if (protocolResult.data) {
+    if (hasHandledOccurrence(history, protocolResult.data, protocolResult.data.id)) return unlock();
+    return showProtocol(protocolResult.data);
+  }
   if (operationsResult.error || occurrencesResult.error || campaignResult.error) {
     console.warn("Accountability evaluation deferred until the activity snapshot is available", operationsResult.error?.message || occurrencesResult.error?.message || campaignResult.error?.message);
     unlock();
@@ -330,6 +361,7 @@ async function loadGate(session) {
   const breach = inactivityProtocol(operations, occurrences, campaignResult.data)
     || evaluateExecution(operations, occurrences);
   if (!breach) return unlock();
+  if (hasHandledOccurrence(history, breach)) return unlock();
   const { data: created, error } = await supabase.from("accountability_protocols").insert({ ...breach, user_id: activeUserId }).select("id,severity,trigger_type,trigger_date,execution_rate,summary,status").single();
   if (error) {
     console.warn("Could not create accountability protocol", error.message);
