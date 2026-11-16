@@ -1,0 +1,38 @@
+/* The correction gate deliberately borrows the same visual language as the
+   authenticated command center instead of impersonating an external lockout. */
+body.accountability-pending .app-shell,
+body.accountability-locked .app-shell { visibility: hidden; pointer-events: none; }
+
+#aegis-accountability-gate {
+  display: none;
+  position: fixed;
+  z-index: 101;
+  inset: 0;
+  overflow-y: auto;
+  padding: 28px;
+  background: radial-gradient(circle at 80% 0%, rgba(228, 173, 99, .1), transparent 30%), rgba(4, 10, 17, .92);
+}
+
+body.accountability-pending #aegis-accountability-gate,
+body.accountability-locked #aegis-accountability-gate { display: grid; place-items: center; }
+
+.accountability-gate-card {
+  width: min(100%, 590px);
+  padding: clamp(24px, 5vw, 42px);
+  border: 1px solid rgba(228, 173, 99, .34);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(12, 25, 39, .98), rgba(5, 14, 24, .98));
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(240, 191, 117, .12);
+}
+
+.accountability-gate-card h1 { margin: 0; color: var(--ink); font: 600 clamp(34px, 5vw, 52px)/.95 "Rajdhani", sans-serif; letter-spacing: -.04em; }
+.accountability-gate-card > p:not(.eyebrow):not(.accountability-gate-message) { margin: 14px 0 24px; color: #a8b7c8; line-height: 1.65; font-size: 14px; }
+.accountability-brief { margin: 0 0 20px; padding: 15px; border: 1px solid var(--line); border-left: 3px solid var(--amber); border-radius: 7px; background: rgba(4, 12, 21, .64); }
+.accountability-brief strong { display: block; color: var(--amber); font-size: 10px; letter-spacing: .13em; }
+.accountability-brief span { display: block; margin-top: 7px; color: #c1ccda; font-size: 13px; line-height: 1.5; }
+.accountability-gate-card label { display: grid; gap: 7px; margin-top: 15px; color: #8eb2d6; font: 700 10px/1 "Space Mono", ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
+.accountability-gate-card textarea { min-height: 105px; resize: vertical; padding: 13px; border: 1px solid rgba(115, 180, 234, .26); border-radius: 6px; outline: 0; background: rgba(1, 9, 17, .72); color: var(--ink); font: 600 15px/1.5 "Rajdhani", sans-serif; }
+.accountability-gate-card textarea:focus { border-color: var(--amber); box-shadow: 0 0 0 3px rgba(240, 175, 69, .12); }
+.accountability-gate-card .primary { width: 100%; min-height: 47px; margin-top: 20px; }
+.accountability-gate-message { min-height: 19px; margin: 13px 0 -4px; color: var(--blue); font-size: 13px; }
+.accountability-severity { color: var(--amber); }
