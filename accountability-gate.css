@@ -33,6 +33,17 @@ body.accountability-locked #aegis-accountability-gate { display: grid; place-ite
 .accountability-gate-card label { display: grid; gap: 7px; margin-top: 15px; color: #8eb2d6; font: 700 10px/1 "Space Mono", ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
 .accountability-gate-card textarea { min-height: 105px; resize: vertical; padding: 13px; border: 1px solid rgba(115, 180, 234, .26); border-radius: 6px; outline: 0; background: rgba(1, 9, 17, .72); color: var(--ink); font: 600 15px/1.5 "Rajdhani", sans-serif; }
 .accountability-gate-card textarea:focus { border-color: var(--amber); box-shadow: 0 0 0 3px rgba(240, 175, 69, .12); }
+.accountability-options { min-width: 0; margin: 19px 0 0; padding: 0; border: 0; }
+.accountability-options legend { padding: 0; color: #8eb2d6; font: 700 10px/1 "Space Mono", ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
+.accountability-option-hint { margin: 8px 0 10px; color: #9eafc1; font-size: 12px; line-height: 1.45; }
+.accountability-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 11px; align-items: start; margin: 8px 0 0; padding: 12px; border: 1px solid rgba(115, 180, 234, .2); border-radius: 7px; background: rgba(1, 9, 17, .48); cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
+.accountability-option:hover { border-color: rgba(240, 175, 69, .52); background: rgba(16, 31, 45, .72); transform: translateY(-1px); }
+.accountability-option:has(input:checked) { border-color: var(--amber); background: linear-gradient(90deg, rgba(240, 175, 69, .12), rgba(1, 9, 17, .55)); box-shadow: inset 3px 0 0 var(--amber); }
+.accountability-option input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--amber); }
+.accountability-option-copy { display: grid; gap: 5px; min-width: 0; }
+.accountability-option-copy strong { color: var(--ink); font: 700 16px/1 "Rajdhani", sans-serif; letter-spacing: .02em; }
+.accountability-option-copy > span { color: #b6c5d3; font-size: 13px; line-height: 1.42; }
+.accountability-option-copy small { color: var(--amber); font: 700 9px/1.45 "Space Mono", ui-monospace, monospace; letter-spacing: .06em; }
 .accountability-gate-card .primary { width: 100%; min-height: 47px; margin-top: 20px; }
 .accountability-gate-message { min-height: 19px; margin: 13px 0 -4px; color: var(--blue); font-size: 13px; }
 .accountability-severity { color: var(--amber); }
