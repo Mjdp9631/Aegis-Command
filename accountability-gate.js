@@ -265,7 +265,6 @@ async function submitCorrection(event) {
     user_id: activeUserId,
     title: `Correction protocol — ${recommendation.title}`.slice(0, 220),
     category: recommendation.category,
-    priority: recommendation.priority,
     brief: `Accountability correction for ${activeProtocol.trigger_type.replace(/_/g, " ")}.\n\nAssigned corrective order: ${recommendation.task}\n\nConsequence: ${recommendation.consequence}\n\nReason recorded: ${reason}`,
     status: "Queued",
     completed: false,
